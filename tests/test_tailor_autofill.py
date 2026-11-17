@@ -208,3 +208,13 @@ def test_shared_nationality_dropdown_but_not_gender(profile):
     assert choose_option("Nationality", ["German", "Italian"], values) == "Italian"
     assert choose_option("Gender", ["Male", "Female"], values) == ""
     assert choose_option("Highest degree", ["Bachelor's Degree", "Master's Degree"], values) == "Master's Degree"
+
+
+def test_asked_for_skills_go_first_and_nothing_is_invented(profile):
+    from jobhunter.tailor import fallback
+    job = {"title": "Data Engineer", "company": "X",
+           "description": "We use Docker, PostgreSQL and Kubernetes. Python is a must."}
+    t = fallback(profile, job)
+    assert "Docker" in " ".join(t.skill_priority)
+    assert not any("kubernetes" in s.lower() for s in t.skill_priority)   # you don't have it: never added
+    assert "Kubernetes" in t.gaps

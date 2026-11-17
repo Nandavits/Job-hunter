@@ -70,7 +70,10 @@ def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
                           make_pdf=settings.config.get("tailoring", {}).get("make_pdf", True))
     Path(docs["folder"], "tailoring.json").write_text(json.dumps({
         "title": t.title, "summary": t.summary, "letter": t.letter_paragraphs,
-        "fit_notes": t.fit_notes, "gaps": t.gaps, "engine": t.engine}, indent=2), encoding="utf-8")
+        "fit_notes": t.fit_notes, "gaps": t.gaps, "engine": t.engine,
+        "ad_skills_you_have_all_on_cv": t.skill_priority,
+        "ad_skills_you_lack_not_added": (job.get("extra") or {}).get("missing_skills", []),
+    }, indent=2), encoding="utf-8")
     store.update(job["uid"], status="prepared",
                  cv_path=docs.get("cv_pdf") or docs["cv_docx"],
                  letter_path=docs.get("letter_pdf") or docs["letter_docx"])
