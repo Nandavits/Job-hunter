@@ -47,6 +47,16 @@ class Store:
     def __init__(self, url: str):
         self.engine = create_engine(url, future=True)
         metadata.create_all(self.engine)
+        self._upgrade_columns()
+
+    def _upgrade_columns(self) -> None:
+        """Databases created by v0.1 had length-limited text columns; widen them (Postgres only)."""
+        if self.engine.dialect.name != "postgresql":
+            return
+        with self.engine.begin() as conn:
+            for col in jobs_table.columns:
+                if isinstance(col.type, Text):
+                    conn.exec_driver_sql(f'ALTER TABLE jobs ALTER COLUMN "{col.name}" TYPE TEXT')
 
     def save(self, jobs: list[Job]) -> list[str]:
         """Insert jobs not seen before (by uid). Returns uids of newly inserted jobs."""
