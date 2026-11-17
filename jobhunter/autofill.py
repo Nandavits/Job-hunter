@@ -6,9 +6,14 @@ for YOU to review and submit (or close the window). Run it on your own computer,
 """
 from __future__ import annotations
 
+import json
+import logging
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+log = logging.getLogger("jobhunter")
 
 # (label regex, key in the value map). First match wins, so order matters.
 FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k in [
@@ -31,6 +36,16 @@ FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k i
     (r"english|englisch", "english_level"),
     (r"\bcity\b|\blocation\b|where are you (based|located)|wohnort|\bort\b", "city"),
     (r"cover letter|anschreiben|motivation", "cover_letter_text"),
+]]
+
+# Open questions answered from the tailored cover letter (or by Claude, if an API key is set).
+QUESTION_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k in [
+    (r"why (are )?you (a |the )?(good|right|best|ideal|great|strong)|why should we|what makes you|good fit|right fit|suitable|qualif|strength|stand out|"
+     r"relevant experience|experience (with|in)|tell us about a (project|time)|describe .*(project|experience)",
+     "why_you"),
+    (r"why .*(join|us\b|company|apply|this (role|position|job)|interested)|motivat|warum|"
+     r"interest(ed)? in (this|the|our|joining)|what (excites|attracts) you", "why_us"),
+    (r"about (yourself|you)\b|introduce yourself|über (dich|sie|mich)|short summary|who are you", "about_you"),
 ]]
 
 SUBMIT_TEXT = re.compile(r"submit|apply|send|bewerb|absenden|senden", re.I)
@@ -57,6 +72,64 @@ def value_map(profile: dict, letter_text: str = "") -> dict[str, str]:
     return values
 
 
+def first_person_summary(profile: dict) -> str:
+    text = (profile.get("default_summary") or "").strip()
+    if not text:
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    out = [f"I am {'an' if sentences[0][:1].lower() in 'aeiou' else 'a'} {sentences[0][:1].lower()}{sentences[0][1:]}"]
+    for sentence in sentences[1:]:
+        if re.match(r"(Strong|Experienced|Skilled|Focused|Completing|Seeking)\b", sentence):
+            sentence = "I am " + sentence[:1].lower() + sentence[1:]
+        out.append(sentence)
+    return " ".join(out).replace(" and seeking ", " and I am looking for ")
+
+
+def draft_answers(profile: dict, letter_paragraphs: list[str]) -> dict[str, str]:
+    """Answers to common open questions, built from the tailored letter (facts from the profile only)."""
+    paras = [p.strip() for p in letter_paragraphs if p.strip()]
+    return {
+        "why_us": paras[0] if paras else "",
+        "why_you": paras[1] if len(paras) > 1 else "",
+        "about_you": first_person_summary(profile),
+    }
+
+
+def match_question(label: str) -> str:
+    for pattern, key in QUESTION_RULES:
+        if pattern.search(label):
+            return key
+    return ""
+
+
+def claude_answer(question: str, job: dict, profile: dict, letter_paragraphs: list[str]) -> str:
+    """Optional: a fresh answer to the exact question, written by Claude from the same facts."""
+    key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    if not key:
+        return ""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        facts = {k: profile.get(k) for k in ("default_summary", "experience", "skills", "projects",
+                                             "education", "languages", "relocation")}
+        msg = client.messages.create(
+            model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
+            max_tokens=400,
+            system=("Answer one job-application question for the candidate, in the first person, in English, "
+                    "60-120 words, plain text. Use ONLY facts from the candidate profile and cover letter; "
+                    "never invent experience, numbers or tools. Be specific to the company and role."),
+            messages=[{"role": "user", "content":
+                       f"Question: {question}\n\nCompany: {job.get('company')}\nRole: {job.get('title')}\n"
+                       f"Job ad (excerpt): {(job.get('description') or '')[:3000]}\n\n"
+                       f"Cover letter: {' '.join(letter_paragraphs)}\n\n"
+                       f"Candidate profile: {json.dumps(facts, ensure_ascii=False)[:8000]}"}],
+        )
+        return "".join(getattr(b, "text", "") for b in msg.content).strip()
+    except Exception as exc:
+        log.warning("Claude answer failed (%s); using the cover-letter draft", exc)
+        return ""
+
+
 def match_field(label: str, values: dict[str, str]) -> tuple[str, str]:
     """Return (key, value) for a form label, or ('', '') if we should not touch it."""
     for pattern, key in FIELD_RULES:
@@ -75,6 +148,7 @@ def letter_plain_text(job: dict, profile: dict, paragraphs: list[str]) -> str:
 class FillReport:
     filled: list[str] = field(default_factory=list)
     uploaded: list[str] = field(default_factory=list)
+    drafted: list[str] = field(default_factory=list)
     needs_you: list[str] = field(default_factory=list)
 
 
@@ -104,6 +178,7 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
 
     url = job.get("apply_url") or job.get("url")
     values = value_map(profile, letter_plain_text(job, profile, letter_paragraphs))
+    drafts = draft_answers(profile, letter_paragraphs)
     cv_file = docs.get("cv_pdf") or docs.get("cv_docx")
     letter_file = docs.get("letter_pdf") or docs.get("letter_docx")
     report = FillReport()
@@ -143,9 +218,15 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
             if not info["visible"] or info["value"]:
                 continue
             key, value = match_field(info["label"], values)
+            question = "" if key else match_question(info["label"])
             if value:
                 el.fill(value)
                 report.filled.append(f"{info['label']} = {value[:60]}{'…' if len(value) > 60 else ''}")
+            elif question and (drafts.get(question) or os.environ.get("ANTHROPIC_API_KEY")):
+                answer = claude_answer(info["label"], job, profile, letter_paragraphs) or drafts.get(question, "")
+                if answer:
+                    el.fill(answer)
+                    report.drafted.append(f"{info['label']} = {answer[:70]}…")
             elif info["required"]:
                 report.needs_you.append(info["label"] or "(unlabelled required field)")
 

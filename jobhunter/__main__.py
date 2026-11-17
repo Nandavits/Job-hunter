@@ -91,6 +91,8 @@ def cmd_fill(args, settings):
     report = fill(job, settings.profile, docs, letter, headless=args.headless)
     print("\nFilled:", *report.filled, sep="\n  ")
     print("Uploaded:", *report.uploaded, sep="\n  ")
+    if report.drafted:
+        print("Drafted answers - read and adjust before submitting:", *report.drafted, sep="\n  ")
     if report.needs_you:
         print("Needs your answer:", *report.needs_you, sep="\n  ")
     if input("\nDid you submit the application? [y/N] ").strip().lower() == "y":
