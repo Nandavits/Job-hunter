@@ -158,3 +158,53 @@ def test_choose_option(label, options, expected, profile):
     profile = dict(profile, answers=dict(profile["answers"], work_authorization="Yes, allowed",
                                          requires_sponsorship="No"))
     assert choose_option(label, options, value_map(profile)) == expected
+
+
+FULL_ANSWERS = dict(salutation="Mr", street="Musterstraße 1", postal_code="10115", date_of_birth="01.02.2000",
+                    nationality="Italian", driving_licence="No", years_experience="1.5", years_sql="2",
+                    years_dbt="0.5", work_model="Open to remote, hybrid or on-site", employment_type="Full-time",
+                    travel="Yes, willing to travel", residence_permit="Student residence permit",
+                    requires_sponsorship="No", applied_before="No", referred="No", highest_degree="Master's degree",
+                    earliest_start_date="Immediately")
+
+
+@pytest.mark.parametrize("label, expected", [
+    ("Email address *", "jane.doe@example.com"),
+    ("Street address", "Musterstraße 1"),
+    ("Postleitzahl", "10115"),
+    ("Anrede", "Mr"),
+    ("Geburtsdatum", "01.02.2000"),
+    ("Führerschein vorhanden?", "No"),
+    ("How many years of professional experience do you have?", "1.5"),
+    ("Years of experience with SQL", "2"),
+    ("Wie viele Jahre Berufserfahrung haben Sie?", "1.5"),
+    ("Preferred working model (remote/hybrid/on-site)", "Open to remote, hybrid or on-site"),
+    ("Were you referred by an employee?", "No"),
+    ("Residence permit type", "Student residence permit"),
+    ("Will you require visa sponsorship?", "No"),
+    ("Kündigungsfrist", "Immediately"),
+    ("Job Title at current company", "Working Student, AI Engineering"),
+    ("Current company", "Example Company"),
+])
+def test_more_application_questions(label, expected, profile):
+    values = value_map(dict(profile, answers=dict(profile["answers"], **FULL_ANSWERS)))
+    assert match_field(label, values)[1] == expected
+
+
+def test_number_and_date_fields():
+    from jobhunter.autofill import fit_to_input
+    assert fit_to_input("2", "number") == "2"
+    assert fit_to_input("0.5", "number") == "1"
+    assert fit_to_input("55,000 - 60,000 EUR", "number") == "55000"  # number field: lower end of the range
+    assert fit_to_input("55.000 €", "number") == "55000"
+    assert fit_to_input("1.5", "number") == "2"
+    assert fit_to_input("01.02.2000", "date") == "2000-02-01"
+    assert fit_to_input("December 2026", "date") == ""
+
+
+def test_shared_nationality_dropdown_but_not_gender(profile):
+    from jobhunter.autofill import choose_option
+    values = value_map(dict(profile, answers=dict(profile["answers"], **FULL_ANSWERS)))
+    assert choose_option("Nationality", ["German", "Italian"], values) == "Italian"
+    assert choose_option("Gender", ["Male", "Female"], values) == ""
+    assert choose_option("Highest degree", ["Bachelor's Degree", "Master's Degree"], values) == "Master's Degree"

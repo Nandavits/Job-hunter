@@ -49,6 +49,9 @@ search:
     - germany
     - deutschland
 
+  # A repost of a role you applied to within this many days is skipped.
+  reapply_after_days: 180
+
   # Drop jobs that ask for more years of experience than this.
   max_years_experience: 3
 
