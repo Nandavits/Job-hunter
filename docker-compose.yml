@@ -5,6 +5,8 @@ services:
       POSTGRES_USER: jobhunter
       POSTGRES_PASSWORD: jobhunter
       POSTGRES_DB: jobhunter
+    ports:
+      - "127.0.0.1:5433:5432"   # only this computer: lets apply.bat read the job list
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

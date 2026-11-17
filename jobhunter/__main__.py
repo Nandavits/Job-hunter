@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .collectors import ats
 from .collectors.base import make_session
-from .config import DATA_DIR, load_settings
+from .config import DATA_DIR, OUTPUT_DIR, load_settings
 from .filters import evaluate
 from .models import Job, html_to_text
 from .storage import STATUSES, Store
@@ -60,20 +60,34 @@ def cmd_prepare(args, settings):
     print(json.dumps(docs, indent=2))
 
 
+def local_path(path: str) -> Path:
+    """Documents made inside Docker are stored as /app/output/...; find them in this folder's output/."""
+    p = Path(path or "")
+    if path and not p.exists() and "/output/" in path.replace("\\", "/"):
+        candidate = OUTPUT_DIR / path.replace("\\", "/").split("/output/", 1)[1]
+        if candidate.exists():
+            return candidate
+    return p
+
+
 def cmd_fill(args, settings):
     from .autofill import fill
     from .pipeline import prepare_job
     store = _store(settings)
     job = _need(store, args.id)
-    folder = Path(job["cv_path"]).parent if job.get("cv_path") else None
-    if not folder or not folder.exists():
-        print("No documents yet – preparing CV and cover letter first…")
+    if args.url:
+        job["apply_url"] = args.url
+        store.update(job["uid"], apply_url=args.url)
+    cv, letter_file = local_path(job.get("cv_path")), local_path(job.get("letter_path"))
+    if not cv.is_file() or not letter_file.is_file():
+        print("No documents yet - preparing CV and cover letter first...")
         prepare_job(settings, store, job)
-        job = store.get(job["uid"])
-        folder = Path(job["cv_path"]).parent
-    docs = {"cv_pdf" if job["cv_path"].endswith(".pdf") else "cv_docx": job["cv_path"],
-            "letter_pdf" if job["letter_path"].endswith(".pdf") else "letter_docx": job["letter_path"]}
-    letter = json.loads((folder / "tailoring.json").read_text())["letter"]
+        job.update(store.get(job["uid"]))
+        cv, letter_file = local_path(job["cv_path"]), local_path(job["letter_path"])
+    docs = {"cv_pdf" if cv.suffix == ".pdf" else "cv_docx": str(cv),
+            "letter_pdf" if letter_file.suffix == ".pdf" else "letter_docx": str(letter_file)}
+    letter = json.loads((cv.parent / "tailoring.json").read_text(encoding="utf-8"))["letter"]
+    print(f"\nOpening: {job['company']} - {job['title']}\n{job.get('apply_url') or job.get('url')}")
     report = fill(job, settings.profile, docs, letter, headless=args.headless)
     print("\nFilled:", *report.filled, sep="\n  ")
     print("Uploaded:", *report.uploaded, sep="\n  ")
@@ -223,6 +237,7 @@ def main(argv=None):
         p.add_argument("id")
         if name == "fill":
             p.add_argument("--headless", action="store_true", help="for testing only")
+            p.add_argument("--url", help="use this application link (e.g. the company page for a LinkedIn job)")
         p.set_defaults(func=func)
 
     p = sub.add_parser("mark", help="update application status")
