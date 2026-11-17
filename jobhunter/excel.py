@@ -16,7 +16,10 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from datetime import datetime
+
 from .dedupe import APPLIED_STATUSES
+from .models import Job
 from .storage import STATUSES, Store
 
 log = logging.getLogger("jobhunter")
@@ -85,6 +88,7 @@ def export_excel(store: Store, path: Path) -> Path:
         "Open jobs: jobs found and not applied to yet. All jobs: everything, including skipped ones and why.",
         "",
         "Applied somewhere yourself (e.g. LinkedIn Easy Apply)? Set Status to 'applied' and save the file.",
+        "Not in the list? Add a row in Applications: leave ID empty, fill Status, Applied on, Company and Title.",
         "On its next run Job Hunter records it, and reposts of that job are skipped automatically.",
         "You can also change statuses to interview / offer / rejected, and write Notes.",
         "Please don't edit the ID column. Close the file before Job Hunter runs, so it can update it.",
@@ -103,6 +107,44 @@ def export_excel(store: Store, path: Path) -> Path:
         log.warning("%s is open in Excel; wrote %s instead. Close Excel to update the main file.", path.name, alt.name)
         return alt
     return path
+
+
+def _day(value) -> str:
+    """Excel date cell, or text like 15.11.2026 / 2026-11-15 / 15/11/2026 -> YYYY-MM-DD."""
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%Y-%m-%d")
+    text = str(value or "").strip()
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%y"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return ""
+
+
+def _add_manual_row(store: Store, row) -> int:
+    """A row you typed yourself (no ID): Company + Title (+ Status, Applied on, Link, Notes)."""
+    company = str(row[4] or "").strip() if len(row) > 4 else ""
+    title = str(row[5] or "").strip() if len(row) > 5 else ""
+    if not company or not title:
+        return 0
+    status = str(row[1] or "applied").strip().lower()
+    status = status if status in STATUSES else "applied"
+    link = str(row[8] or "").strip() if len(row) > 8 else ""
+    job = Job(source="manual", external_id=f"{company}|{title}".lower(), company=company, title=title,
+              url=link, location=str(row[6] or "").strip() if len(row) > 6 else "")
+    if store.get(job.uid):
+        return 0
+    store.save([job])
+    store.update(job.uid, status=status, excluded_reason="",
+                 applied_at=_day(row[2]) if len(row) > 2 and status in APPLIED_STATUSES else "",
+                 notes=str(row[11] or "").strip() if len(row) > 11 else "")
+    if status == "applied":
+        day = store.get(job.uid)["applied_at"]
+        store.mark_applied(job.uid)          # also hides open copies of the same role
+        if day:
+            store.update(job.uid, applied_at=day)
+    return 1
 
 
 def sync_from_excel(store: Store, path: Path) -> int:
@@ -125,7 +167,10 @@ def sync_from_excel(store: Store, path: Path) -> int:
         if name not in wb.sheetnames:
             continue
         for row in wb[name].iter_rows(min_row=2, values_only=True):
-            if not row or not row[0]:
+            if not row:
+                continue
+            if not row[0]:
+                changes += _add_manual_row(store, row)
                 continue
             uid, status = str(row[0]).strip(), str(row[1] or "").strip().lower()
             notes = str(row[11] or "").strip() if len(row) > 11 else ""
@@ -142,6 +187,11 @@ def sync_from_excel(store: Store, path: Path) -> int:
                     store.mark_applied(job["uid"])
                 else:
                     store.update(job["uid"], status=status)
+                changes += 1
+            applied_on = _day(row[2]) if len(row) > 2 else ""
+            current = store.get(job["uid"])
+            if applied_on and current["status"] in APPLIED_STATUSES and applied_on != (current.get("applied_at") or ""):
+                store.update(job["uid"], applied_at=applied_on)   # e.g. you applied a few days ago
                 changes += 1
             if notes and notes != old_notes and notes != (job.get("notes") or "").strip():
                 store.update(job["uid"], notes=notes)
