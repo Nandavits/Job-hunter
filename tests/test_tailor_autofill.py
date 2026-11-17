@@ -86,6 +86,7 @@ def test_autofill_fills_but_never_submits(form, profile, tmp_path):
         seen["email"] = page.locator("input[type=email]").first.input_value()
         seen["files"] = page.evaluate("() => [...document.querySelectorAll('input[type=file]')]"
                                       ".map(i => i.files.length)")
+        seen["why"] = page.locator("textarea").first.input_value()
     job = {"company": "Acme", "title": "Data Engineer",
            "apply_url": (FIX / "forms" / f"{form}.html").as_uri()}
     report = fill(job, profile, {"cv_pdf": str(cv)}, ["One.", "Two.", "Three.", "Four."],
@@ -94,6 +95,9 @@ def test_autofill_fills_but_never_submits(form, profile, tmp_path):
     assert seen["email"] == profile["personal"]["email"]
     assert seen["files"][0] == 1
     assert report.filled
+    if form == "greenhouse_like":  # "Why do you want to join us?" answered from the letter's first paragraph
+        assert seen["why"] == "One."
+        assert any("Why do you want to join us" in d for d in report.drafted)
 
 
 def test_letter_mentions_relocation(profile):
@@ -101,3 +105,27 @@ def test_letter_mentions_relocation(profile):
     assert "open to relocating anywhere in germany" in t.letter_paragraphs[-1].lower()
     t = fallback({k: v for k, v in profile.items() if k != "relocation"}, JOB)
     assert "relocat" not in t.letter_paragraphs[-1].lower()
+
+
+@pytest.mark.parametrize("label, key", [
+    ("Why do you want to join us? *", "why_us"),
+    ("Why are you interested in this role?", "why_us"),
+    ("What motivates you to apply?", "why_us"),
+    ("Warum möchtest du bei uns arbeiten?", "why_us"),
+    ("Why are you a good fit for this position?", "why_you"),
+    ("Describe a project you are proud of", "why_you"),
+    ("Tell us about yourself", "about_you"),
+    ("Favourite colour", ""),
+])
+def test_match_question(label, key):
+    from jobhunter.autofill import match_question
+    assert match_question(label) == key
+
+
+def test_drafts_come_from_letter_and_profile(profile):
+    from jobhunter.autofill import draft_answers
+    d = draft_answers(profile, ["Para about company.", "Para about evidence.", "x", "y"])
+    assert d["why_us"] == "Para about company."
+    assert d["why_you"] == "Para about evidence."
+    assert d["about_you"].startswith("I am a data engineer with production experience")
+    assert "I am strong in SQL" in d["about_you"]
