@@ -32,7 +32,7 @@ Applying in Germany without fluent German means most postings are dead ends, and
 |---|---|---|
 | Find new jobs from company career pages, the federal job board, Arbeitnow and your job-alert emails | ✅ | |
 | Drop jobs needing C1 German, senior roles, wrong city, too many years | ✅ | |
-| Rank by skill match | ✅ | |
+| Rank by match score (0-100: tools you have out of the tools the job asks for, title, experience, language) | ✅ | |
 | Tailor CV + write cover letter (honest about gaps) | ✅ | Read once |
 | Fill name, email, phone, links, uploads, standard answers | ✅ | Answer the rest |
 | Submit | ❌ never | ✅ |
@@ -155,7 +155,7 @@ jobhunter/
   pipeline.py      collect → filter → store → tailor → digest
   __main__.py      CLI
 config/            config.example.yaml, profile.example.yaml (real ones are git-ignored)
-tests/             120 tests with recorded API fixtures and sample application forms
+tests/             124 tests with recorded API fixtures and sample application forms
 ```
 
 ## Tests

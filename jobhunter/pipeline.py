@@ -19,6 +19,24 @@ from .tailor import tailor
 log = logging.getLogger("jobhunter")
 
 
+def rescore_open_jobs(store: Store, search: dict) -> int:
+    """Recompute the match score of jobs you have not applied to yet (scoring can improve over time)."""
+    from .filters import score_job
+    from .models import Job
+    changed = 0
+    for row in store.list(limit=100_000):
+        if row["status"] not in ("new", "prepared"):
+            continue
+        job = Job(source=row["source"], external_id=row["external_id"], company=row["company"] or "",
+                  title=row["title"] or "", url=row["url"] or "", location=row["location"] or "",
+                  description=row["description"] or "")
+        score = score_job(job, search)
+        if score != row["score"]:
+            store.update(row["uid"], score=score, matched_skills=",".join(job.matched_skills))
+            changed += 1
+    return changed
+
+
 def skip_known_jobs(store: Store, jobs: list[dict], reapply_after_days: int = 180):
     """Drop reposts of roles you already applied to, and second copies of the same role (other job board)."""
     fresh, reposts, duplicates = [], [], []
@@ -65,6 +83,7 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     search = settings.search
     excel_path = DATA_DIR / "applications.xlsx"
     sync_from_excel(store, excel_path)   # statuses you changed in Excel (e.g. applied on LinkedIn)
+    rescore_open_jobs(store, search)
 
     raw = collect_all(settings, keep=quick_keep(search), session=session)
     kept, dropped = filter_jobs(raw, search)

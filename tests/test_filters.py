@@ -132,3 +132,26 @@ def test_every_30_minutes():
     assert not due_interval(now, 30, "2026-11-18T09:45")          # 15 min ago
     assert due_interval(now, 30, "2026-11-18T09:30")              # 30 min ago
     assert due_interval(now, 30, "2026-11-17T22:10")              # laptop was off overnight
+
+
+def test_match_score_ranks_like_a_recruiter(config):
+    cfg = config["search"]
+    ideal = _job("Junior Data Engineer", "Our working language is English. You build ETL pipelines in Python and SQL, "
+                 "model data with dbt on PostgreSQL, orchestrate with Airflow and run everything in Docker. "
+                 "0-2 years of experience.")
+    partial = _job("Data Engineer", "Ingestion from Postgres to BigQuery. Must have: Airflow, Dagster, or similar; "
+                   "Kubernetes; PostgreSQL; dbt. Nice to have: Kafka, Google Cloud Platform. 2-4 years experience.")
+    cloud = _job("Data Engineer", "Build pipelines with Spark, Kafka and Databricks on AWS with Terraform. "
+                 "Python and SQL required. 3 years experience. English speaking team.")
+    scores = [evaluate(j, cfg).score for j in (ideal, partial, cloud)]
+    assert scores[0] >= 90
+    assert scores[0] > scores[1] > scores[2]
+
+
+def test_alternatives_and_nice_to_haves_are_not_full_gaps(config):
+    cfg = config["search"]
+    job = evaluate(_job("Data Engineer", "You orchestrate with Airflow, Dagster or similar. SQL and dbt. "
+                        "Kafka is a plus."), cfg)
+    assert "dagster" not in job.extra["missing_skills"]          # alternative to Airflow, which you have
+    assert "kafka" in job.extra["missing_skills"]                # optional, but still listed as a gap
+    assert job.score >= 80
