@@ -71,6 +71,8 @@ docker compose up -d --build        # PostgreSQL + daily scheduler (08:00 Europe
 docker compose logs -f jobhunter
 ```
 
+If the computer is off or asleep at 08:00, the search runs as soon as it is back on that day (it never runs twice a day). Turn on *Docker Desktop → Settings → General → Start Docker Desktop when you sign in* so it starts by itself.
+
 The form filler opens a visible browser, so run `fill` on your own computer, not in Docker.
 
 ## Daily use

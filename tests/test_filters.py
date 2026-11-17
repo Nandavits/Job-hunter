@@ -82,3 +82,12 @@ def test_evaluate_years(config):
 def test_email_jobs_without_description_are_kept(config):
     kept, dropped = filter_jobs([_job("Analytics Engineer", "")], config["search"])
     assert len(kept) == 1 and not dropped
+
+
+def test_schedule_catches_up_after_laptop_was_off():
+    from datetime import datetime
+    from jobhunter.__main__ import due_today
+    assert not due_today(datetime(2026, 11, 18, 7, 59), "08:00", "2026-11-17")   # too early
+    assert due_today(datetime(2026, 11, 18, 8, 0), "08:00", "2026-11-17")        # on time
+    assert due_today(datetime(2026, 11, 18, 11, 30), "08:00", "2026-11-17")      # laptop opened late
+    assert not due_today(datetime(2026, 11, 18, 15, 0), "08:00", "2026-11-18")   # already ran today

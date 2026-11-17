@@ -29,10 +29,11 @@ def test_ashby_skips_unlisted():
     assert jobs[0].location == "Berlin, Vienna"
 
 
-def test_personio_parse():
-    jobs = ats.parse_personio((FIX / "personio.xml").read_text(), "Zeta", "zeta")
-    assert jobs[0].company == "Zeta Energy GmbH"
-    assert jobs[0].location == "Berlin, Hamburg"
+def test_personio_parse_bytes_keeps_umlauts():
+    jobs = ats.parse_personio((FIX / "personio.xml").read_bytes(), "Zeta", "zeta")
+    assert jobs[0].company == "Zeta Energy° GmbH"
+    assert jobs[0].location.startswith("Berlin, Hamburg, Lüneburg 0")
+    assert len(jobs[0].location) > 600  # long locations must be storable (Postgres)
     assert jobs[0].url == "https://zeta.jobs.personio.de/job/555?language=en"
     assert "Power BI" in jobs[0].description
     assert jobs[0].extra["seniority"] == "entry-level"
