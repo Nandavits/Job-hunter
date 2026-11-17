@@ -40,6 +40,6 @@ https://www.linkedin.com/comm/premium/products/?upsellOrderOrigin=email
 
 ----------------------------------------
 
-This email was intended for Nanda Mummadireddy (AI Engineer at Curagita)
+This email was intended for Jane Doe (Engineer at Example)
 Manage your job alerts: https://www.linkedin.com/comm/jobs/alerts?x=1
 Unsubscribe: https://www.linkedin.com/job-alert-email-unsubscribe?savedSearchId=1
