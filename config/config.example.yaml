@@ -77,8 +77,9 @@ search:
     data modelling: 1
     data modeling: 1
 
-  # Only keep jobs with at least this score (0-100).
-  min_score: 35
+  # Match score 0-100 (how well you fit what the job asks for). Jobs below this are skipped.
+  # Roughly: 85+ excellent, 70-84 good, 55-69 worth a look.
+  min_score: 55
 
 sources:
   # Arbeitnow (arbeitnow.com): free public API, Germany, many English-speaking jobs.

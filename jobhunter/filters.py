@@ -148,23 +148,73 @@ def quick_keep(cfg: dict):
     return keep
 
 
+# Tools that data job ads often ask for. Ones not in your skills count as gaps in the match score.
+OTHER_TOOLS = ["kubernetes", "bigquery", "snowflake", "databricks", "spark", "kafka", "terraform", "aws", "azure",
+               "gcp", "google cloud", "dagster", "looker", "fivetran", "redshift", "scala", "java", "flink",
+               "airbyte", "sqlmesh", "qlik", "sas", "hadoop", "mongodb", "elasticsearch", "golang"]
+SKILL_ALIASES = {"postgres": ["postgres", "postgresql"], "data modelling": ["data modelling", "data modeling"],
+                 "data modeling": ["data modeling", "data modelling"], "airflow": ["airflow"], "etl": ["etl"],
+                 "elt": ["elt"]}
+
+
 def score_job(job: Job, cfg: dict) -> int:
+    """Match percentage (0-100): how well you fit what this job asks for.
+
+    60  tools the job mentions that you have (out of all tools it mentions)
+    15  job title is one of your target roles
+    10  experience asked for fits (or is not stated)
+    15  English is the working language (10 if the ad simply has no German requirement)
+    """
     text = f"{job.title}\n{job.description}".lower()
-    weights: dict = cfg.get("skills", {})
-    total = sum(weights.values()) or 1
-    matched = [s for s in weights if _contains(text, s)]
+    mine = [s for s in cfg.get("skills", {}) if s not in ("data modeling",)]
+    def has(segment: str, skill: str) -> bool:
+        return any(_contains(segment, a) for a in SKILL_ALIASES.get(skill, [skill]))
+
+    matched = [s for s in mine if has(text, s)]
+    sentences = [x.lower() for x in _sentences(f"{job.title}\n{job.description}")]
+    missing: dict[str, float] = {}
+    for tool in OTHER_TOOLS:
+        if tool in mine or not _contains(text, tool):
+            continue
+        weight = 1.0
+        for sentence in (x for x in sentences if _contains(x, tool)):
+            alternative = re.search(r"\bor\b|\boder\b|similar|ähnlich|equivalent|comparable", sentence) and \
+                any(has(sentence, m) for m in matched)
+            optional = OPTIONAL_MARKERS.search(sentence) or re.search(r"\bideally\b|idealerweise", sentence)
+            weight = min(weight, 0.0 if alternative else 0.5 if optional else 1.0)
+        if weight:
+            missing[tool] = weight
     job.matched_skills = matched
-    skill_part = 60 * sum(weights[s] for s in matched) / total
+    job.extra["missing_skills"] = list(missing)
+
+    gaps = sum(missing.values())
+    mentioned = len(matched) + gaps
+    if not job.description.strip():
+        skill_part = 20.0                          # alert emails: no ad text to compare yet
+    elif mentioned == 0:
+        skill_part = 30.0                          # ad names no tools: neutral
+    else:
+        coverage = len(matched) / mentioned
+        evidence = min(1.0, mentioned / 3)         # one matching tool says less than five
+        skill_part = 60 * coverage * (0.5 + 0.5 * evidence)
 
     title = job.title.lower()
-    strong = ("data engineer", "analytics engineer", "bi engineer", "data analyst")
-    title_part = 30 if any(t in title for t in strong) else 20
-    bonus = 0
+    strong = ("data engineer", "analytics engineer", "bi engineer", "data analyst", "bi analyst",
+              "business intelligence", "datenanalyst", "dateningenieur", "data platform", "etl")
+    title_part = 15 if any(t in title for t in strong) else 8
+
+    years = min_years_required(job.description)
+    max_years = cfg.get("max_years_experience", 99)
+    exp_part = 7 if years is None else (10 if years <= max_years else 0)
+
     if ENGLISH_WORKPLACE.search(job.description):
-        bonus += 10
-    if re.search(r"\bjunior\b|\bentry\b|graduate|berufseinsteiger", title):
-        bonus += 5
-    return int(min(100, round(skill_part + title_part + bonus)))
+        lang_part = 15
+    elif job.description and not written_in_german(job.description):
+        lang_part = 10
+    else:
+        lang_part = 5
+
+    return int(min(100, round(skill_part + title_part + exp_part + lang_part)))
 
 
 def evaluate(job: Job, cfg: dict) -> Job:
