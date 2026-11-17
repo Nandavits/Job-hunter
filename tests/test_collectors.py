@@ -77,3 +77,39 @@ def test_detect_ats():
 def test_fetch_company_unknown_board_returns_empty(session):
     assert ats.fetch_company(session, {"name": "Nope", "ats": "greenhouse", "slug": "nope"}) == []
     assert ats.fetch_company(session, {"name": "Nope", "ats": "workday", "slug": "x"}) == []
+
+
+def test_description_from_personio_job_page():
+    from jobhunter.collectors import description_from_page
+    text = description_from_page((FIX / "personio_job_page.html").read_text())
+    assert "Datenmodelle" in text and "Deutsch- und Englischkenntnisse" in text
+    assert "color:red" not in text and "var a" not in text
+
+
+def test_empty_feed_description_is_filled_from_page(session, config, profile):
+    from conftest import FakeResponse
+    from jobhunter.collectors import collect_all
+    from jobhunter.config import Settings
+    from jobhunter.filters import evaluate, quick_keep
+
+    xml = (FIX / "personio.xml").read_text().replace(
+        "<jobDescriptions><jobDescription><name>Your tasks</name>", "<jobDescriptions><jobDescription><name></name>"
+    )
+    xml = xml.split("<jobDescriptions>")[0] + "<jobDescriptions></jobDescriptions>" + \
+        xml.split("</jobDescriptions>", 1)[1]
+    page = (FIX / "personio_job_page.html").read_text()
+    original = session.get
+
+    def get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/xml"):
+            return FakeResponse(text=xml)
+        if "/job/555" in url:
+            return FakeResponse(text=page)
+        return original(url, params, headers, timeout)
+    session.get = get
+    config["sources"]["companies"] = [{"name": "Zeta", "ats": "personio", "slug": "zeta"}]
+    config["sources"]["arbeitsagentur"]["enabled"] = False
+    jobs = collect_all(Settings(config, profile), keep=quick_keep(config["search"]), session=session)
+    job = next(j for j in jobs if j.title == "Junior Data Analyst")
+    assert "Datenmodelle" in job.description
+    assert evaluate(job, config["search"]).excluded_reason.startswith("needs German C1")

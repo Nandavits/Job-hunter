@@ -1,11 +1,38 @@
 """Job collectors. Each returns a list of normalised `Job` objects."""
 from __future__ import annotations
 
+import re
 from typing import Callable
+
+from bs4 import BeautifulSoup
 
 from ..models import Job
 from . import arbeitsagentur, ats, email_alerts
-from .base import log, make_session
+from .base import get, log, make_session
+
+PAGE_SOURCES = {"personio", "greenhouse", "lever", "ashby"}
+
+
+def description_from_page(html: str) -> str:
+    """Extract a job description from a public job page (used when a feed has none)."""
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style", "noscript", "svg", "header", "footer", "nav", "form"]):
+        tag.decompose()
+    blocks = soup.select('[class*="jobDescription"], [class*="job-description"], [class*="description"]')
+    texts = []
+    for block in blocks or [soup.body or soup]:
+        text = re.sub(r"\s+", " ", block.get_text(" ", strip=True))
+        if len(text) > 40 and not any(text in t or t in text for t in texts):
+            texts.append(text)
+    return "\n".join(texts)[:20000]
+
+
+def fill_missing_descriptions(session, jobs: list[Job], limit: int = 40) -> None:
+    """Some companies publish feeds with empty descriptions; read the job page instead."""
+    for job in [j for j in jobs if j.source in PAGE_SOURCES and len(j.description) < 100][:limit]:
+        resp = get(session, job.url, headers={"Accept": "text/html"})
+        if resp is not None:
+            job.description = description_from_page(resp.text)
 
 
 def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=None) -> list[Job]:
@@ -21,6 +48,8 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
             log.warning("Failed %s: %s", company.get("name"), exc)
             continue
         log.info("%-20s %3d jobs", company.get("name", "?"), len(found))
+        if keep:
+            fill_missing_descriptions(session, [j for j in found if keep(j)])
         jobs.extend(found)
 
     ba = sources.get("arbeitsagentur") or {}
