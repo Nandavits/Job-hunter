@@ -87,8 +87,14 @@ def test_autofill_fills_but_never_submits(form, profile, tmp_path):
         seen["files"] = page.evaluate("() => [...document.querySelectorAll('input[type=file]')]"
                                       ".map(i => i.files.length)")
         seen["why"] = page.locator("textarea").first.input_value()
+        seen["selects"] = page.evaluate("() => Object.fromEntries([...document.querySelectorAll('select')]"
+                                        ".map(s => [s.id, s.options[s.selectedIndex].text]))")
+        seen["sponsor"] = page.evaluate("() => (document.querySelector('input[name=sponsor]:checked') || {}).value")
+        seen["consent"] = page.evaluate("() => (document.querySelector('#consent') || {}).checked")
     job = {"company": "Acme", "title": "Data Engineer",
            "apply_url": (FIX / "forms" / f"{form}.html").as_uri()}
+    profile = dict(profile, answers=dict(profile["answers"], work_authorization="Yes, I am allowed to work in Germany",
+                                         requires_sponsorship="No", salary_expectation="55,000 EUR"))
     report = fill(job, profile, {"cv_pdf": str(cv)}, ["One.", "Two.", "Three.", "Four."],
                   headless=True, inspect=inspect)
     assert seen["title"] != "SUBMITTED"
@@ -98,6 +104,12 @@ def test_autofill_fills_but_never_submits(form, profile, tmp_path):
     if form == "greenhouse_like":  # "Why do you want to join us?" answered from the letter's first paragraph
         assert seen["why"] == "One."
         assert any("Why do you want to join us" in d for d in report.drafted)
+        assert seen["selects"] == {"q4": "Yes", "country": "Germany", "gender": "I prefer not to say",
+                                   "hear": "Company website", "ethn": "Select"}  # no 'prefer not' option -> left
+        assert seen["sponsor"] == "0"            # "No" sponsorship needed
+        assert seen["consent"] is False          # consent stays the person's decision
+        assert any("privacy policy" in n for n in report.needs_you)
+        assert any("Ethnicity" in n for n in report.needs_you) is False  # optional, so not listed
 
 
 def test_letter_mentions_relocation(profile):
@@ -129,3 +141,20 @@ def test_drafts_come_from_letter_and_profile(profile):
     assert d["why_you"] == "Para about evidence."
     assert d["about_you"].startswith("I am a data engineer with production experience")
     assert "I am strong in SQL" in d["about_you"]
+
+
+@pytest.mark.parametrize("label, options, expected", [
+    ("Are you authorized to work in Germany?", ["Select", "Yes", "No"], "Yes"),
+    ("Do you require visa sponsorship?", ["Please select", "Yes", "No"], "No"),
+    ("Gender", ["Male", "Female", "Prefer not to say"], "Prefer not to say"),
+    ("Gender", ["Male", "Female"], ""),
+    ("Disability status", ["Yes", "No", "I don't wish to answer"], "I don't wish to answer"),
+    ("Country", ["--", "Austria", "Germany"], "Germany"),
+    ("How did you hear about this job?", ["LinkedIn", "Karriereseite", "Other"], "Karriereseite"),
+    ("Favourite colour", ["Red", "Blue"], ""),
+])
+def test_choose_option(label, options, expected, profile):
+    from jobhunter.autofill import choose_option
+    profile = dict(profile, answers=dict(profile["answers"], work_authorization="Yes, allowed",
+                                         requires_sponsorship="No"))
+    assert choose_option(label, options, value_map(profile)) == expected
