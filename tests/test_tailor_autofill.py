@@ -94,3 +94,10 @@ def test_autofill_fills_but_never_submits(form, profile, tmp_path):
     assert seen["email"] == profile["personal"]["email"]
     assert seen["files"][0] == 1
     assert report.filled
+
+
+def test_letter_mentions_relocation(profile):
+    t = fallback(dict(profile, relocation="Open to relocating anywhere in Germany"), JOB)
+    assert "open to relocating anywhere in germany" in t.letter_paragraphs[-1].lower()
+    t = fallback({k: v for k, v in profile.items() if k != "relocation"}, JOB)
+    assert "relocat" not in t.letter_paragraphs[-1].lower()

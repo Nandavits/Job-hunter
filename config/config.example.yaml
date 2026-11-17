@@ -39,6 +39,9 @@ search:
     - working student
     - ausbildung
 
+  # true = any city in Germany (jobs abroad are still dropped). false = only the places below.
+  anywhere_in_germany: true
+
   # Where you can work. "remote" matches remote / home office postings.
   locations:
     - berlin
@@ -83,8 +86,8 @@ sources:
       - Analytics Engineer
       - Data Analyst
       - BI Analyst
-    where: Berlin
-    radius_km: 30
+    where: ""          # empty = all of Germany; or a city, e.g. Berlin
+    radius_km: 30      # only used when "where" is a city
     published_since_days: 7
     include_remote: true
 

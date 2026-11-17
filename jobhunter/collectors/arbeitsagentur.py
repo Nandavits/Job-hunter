@@ -95,19 +95,19 @@ def search(session, params: dict) -> list[Job]:
     return []
 
 
-def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_details: int = 60) -> list[Job]:
+def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_details: int = 120) -> list[Job]:
     """Search each query; fetch full descriptions only for jobs that pass the quick `keep` check."""
     results: dict[str, Job] = {}
     for query in cfg.get("queries", []):
         params = {
             "was": query,
-            "wo": cfg.get("where", "Berlin"),
-            "umkreis": cfg.get("radius_km", 30),
             "angebotsart": 1,  # 1 = employment (not apprenticeships/self-employment)
             "veroeffentlichtseit": cfg.get("published_since_days", 7),
             "size": 100,
             "page": 1,
         }
+        if cfg.get("where"):  # empty = all of Germany
+            params.update(wo=cfg["where"], umkreis=cfg.get("radius_km", 30))
         found = search(session, params)
         if not found:
             log.warning("Arbeitsagentur: no results for '%s'", query)
@@ -116,7 +116,7 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_det
 
         if cfg.get("include_remote"):
             params_remote = dict(params, arbeitszeit="ho")
-            params_remote.pop("wo"), params_remote.pop("umkreis")
+            params_remote.pop("wo", None), params_remote.pop("umkreis", None)
             for job in search(session, params_remote):
                 job.remote = True
                 results.setdefault(job.external_id, job)

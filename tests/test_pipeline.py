@@ -15,15 +15,16 @@ def test_full_run_and_dedup(settings, session):
     # kept: good English jobs from every source
     assert {"Data Engineer", "Analytics Engineer", "Business Intelligence & Automations Engineer",
             "Junior Data Analyst", "Junior Data Engineer (m/w/d)"} <= titles
-    # dropped: senior, German-required, US-based, German-language posting, wrong city
+    assert "Data Engineer" in titles  # Munich (Personio) is kept: anywhere in Germany is allowed
+    # dropped: senior, German-required, US-based, German-language posting
     skipped = {j["title"]: j["excluded_reason"] for j in store.list(status="skipped", limit=100)}
     assert "Senior Data Engineer" in skipped
     assert skipped["Data Analyst (m/w/d)"].startswith("needs German")
     assert "Datenanalyst (m/w/d)" in skipped  # written in German
     assert "Koch (m/w/d)" not in titles | set(skipped)  # never fetched in detail
 
-    assert result["new"] == 5
-    assert result["prepared"] == 5
+    assert result["new"] == 6
+    assert result["prepared"] == 5  # the Munich job's description is too short to tailor from
     for job in store.list(status="prepared"):
         assert Path(job["cv_path"]).exists() and Path(job["letter_path"]).exists()
         folder = Path(job["cv_path"]).parent
