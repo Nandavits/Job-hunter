@@ -79,11 +79,19 @@ def _pick_title(job_title: str, default: str) -> str:
     return default
 
 
+# Words that appear in almost every data job ad and say nothing about fit.
+COMMON_WORDS = set("""data with from that this team teams business requirements models model stakeholders
+work working build built using used across into their your other within reporting analysis production
+platform early flag translate partner maintain develop""".split())
+
+
 def _bullet_scores(bullets: list[dict], job_text: str) -> list[int]:
+    """Tags (tools/skills) count 3x; ordinary words count 1x; common words not at all."""
     scores = []
     for b in bullets:
-        words = list(b.get("tags", [])) + re.findall(r"[A-Za-z][\w+.-]{3,}", b["text"])[:8]
-        scores.append(sum(_has(job_text, w) for w in set(w.lower() for w in words)))
+        tags = {t.lower() for t in b.get("tags", [])}
+        words = {w.lower() for w in re.findall(r"[A-Za-z][\w+.-]{3,}", b["text"])} - COMMON_WORDS - tags
+        scores.append(3 * sum(_has(job_text, t) for t in tags) + sum(_has(job_text, w) for w in words))
     return scores
 
 
