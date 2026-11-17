@@ -95,3 +95,38 @@ def test_run_writes_excel(settings, session):
     result = run(settings, send_digest=False, session=session)
     wb = load_workbook(result["excel"])
     assert len(list(wb["Open jobs"].iter_rows(min_row=2))) == result["new"]
+
+
+def test_rows_typed_by_hand_are_imported(settings, tmp_path):
+    from jobhunter.pipeline import skip_known_jobs
+    store = _store(settings)
+    path = export_excel(store, tmp_path / "applications.xlsx")
+    wb = load_workbook(path)
+    ws = wb["Applications"]
+    ws.append([None, "applied", "15.11.2026", None, "Rabot Energy", "Analytics Engineer (m/w/d)", "Berlin",
+               None, "https://rabot.energy/jobs", None, None, "Sent by email"])
+    ws.append([None, None, None, None, "Only Company", None])          # incomplete: ignored
+    wb.save(path)
+    assert sync_from_excel(store, path) == 1
+    rabot = next(j for j in store.list(status="applied") if j["company"] == "Rabot Energy")
+    assert rabot["applied_at"] == "2026-11-15" and rabot["source"] == "manual" and rabot["notes"] == "Sent by email"
+    assert sync_from_excel(store, path) == 0                          # importing twice adds nothing
+
+    repost = Job(source="arbeitnow", external_id="r1", company="Rabot Energy GmbH", title="Analytics Engineer", url="x")
+    store.save([repost])
+    fresh, reposts, _ = skip_known_jobs(store, [store.get(repost.uid)])
+    assert not fresh and reposts
+
+
+def test_applied_date_can_be_corrected(settings, tmp_path):
+    store = _store(settings)
+    acme = next(j for j in store.list() if j["company"] == "Acme GmbH")
+    path = export_excel(store, tmp_path / "applications.xlsx")
+    wb = load_workbook(path)
+    for row in wb["Open jobs"].iter_rows(min_row=2):
+        if row[0].value == acme["uid"][:8]:
+            row[1].value, row[2].value = "applied", "15.11.2026"
+    wb.save(path)
+    sync_from_excel(store, path)
+    assert store.get(acme["uid"])["status"] == "applied"
+    assert store.get(acme["uid"])["applied_at"] == "2026-11-15"
