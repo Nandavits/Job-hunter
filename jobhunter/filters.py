@@ -154,7 +154,7 @@ OTHER_TOOLS = ["kubernetes", "bigquery", "snowflake", "databricks", "spark", "ka
                "airbyte", "sqlmesh", "qlik", "sas", "hadoop", "mongodb", "elasticsearch", "golang"]
 SKILL_ALIASES = {"postgres": ["postgres", "postgresql"], "data modelling": ["data modelling", "data modeling"],
                  "data modeling": ["data modeling", "data modelling"], "airflow": ["airflow"], "etl": ["etl"],
-                 "elt": ["elt"]}
+                 "elt": ["elt"], "google cloud": ["google cloud", "gcp"], "gcp": ["gcp", "google cloud"]}
 
 
 def score_job(job: Job, cfg: dict) -> int:
@@ -174,7 +174,7 @@ def score_job(job: Job, cfg: dict) -> int:
     sentences = [x.lower() for x in _sentences(f"{job.title}\n{job.description}")]
     missing: dict[str, float] = {}
     for tool in OTHER_TOOLS:
-        if tool in mine or not _contains(text, tool):
+        if any(tool in SKILL_ALIASES.get(m, [m]) for m in mine) or not _contains(text, tool):
             continue
         weight = 1.0
         for sentence in (x for x in sentences if _contains(x, tool)):

@@ -60,7 +60,8 @@ FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k i
 ]]
 
 # "How many years of experience do you have with SQL?" -> answers.years_sql
-TOOL_YEARS = ["power bi", "postgres", "airflow", "tableau", "python", "docker", "sql", "dbt"]
+TOOL_YEARS = ["power bi", "postgres", "airflow", "tableau", "python", "docker", "kubernetes", "kafka",
+              "google cloud", "gcp", "sql", "dbt"]
 YEARS_Q = re.compile(r"\byears?\b|\bjahre", re.I)
 EXPERIENCE_Q = re.compile(r"experience|erfahrung|berufserfahrung", re.I)
 
