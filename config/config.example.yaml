@@ -94,6 +94,10 @@ sources:
       - Analytics Engineer
       - Data Analyst
       - BI Analyst
+      - Datenanalyst
+      - Dateningenieur
+      - BI-Entwickler
+      - ETL-Entwickler
     where: ""          # empty = all of Germany; or a city, e.g. Berlin
     radius_km: 30      # only used when "where" is a city
     published_since_days: 7
