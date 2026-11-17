@@ -1,0 +1,38 @@
+[
+ {
+  "id": "lv-1",
+  "text": "Analytics Engineer",
+  "hostedUrl": "https://jobs.lever.co/beta/lv-1",
+  "applyUrl": "https://jobs.lever.co/beta/lv-1/apply",
+  "categories": {
+   "location": "Remote - Germany",
+   "team": "Data",
+   "allLocations": [
+    "Remote - Germany"
+   ]
+  },
+  "workplaceType": "remote",
+  "createdAt": 1763100000000,
+  "descriptionPlain": "Join our analytics engineering team. You build dbt models on Snowflake, write SQL and Python, and maintain Airflow DAGs. Metabase is our BI tool. English is our company language; German is nice to have.",
+  "lists": [
+   {
+    "text": "What you bring",
+    "content": "<li>0-2 years of experience with SQL and dbt</li><li>Git</li>"
+   }
+  ],
+  "additionalPlain": "We offer a learning budget, flexible hours, and a team that genuinely cares about data quality."
+ },
+ {
+  "id": "lv-2",
+  "text": "Data Engineer",
+  "hostedUrl": "https://jobs.lever.co/beta/lv-2",
+  "applyUrl": "https://jobs.lever.co/beta/lv-2/apply",
+  "categories": {
+   "location": "New York, United States"
+  },
+  "workplaceType": "onsite",
+  "createdAt": 1763100000000,
+  "descriptionPlain": "Build pipelines in New York.",
+  "lists": []
+ }
+]

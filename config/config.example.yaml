@@ -1,0 +1,125 @@
+# Job Hunter configuration. Copy to config/config.yaml and adjust.
+
+search:
+  # Job titles you want. A job must match at least one (case-insensitive) in its title.
+  title_keywords:
+    - data engineer
+    - analytics engineer
+    - data analyst
+    - bi analyst
+    - bi engineer
+    - business intelligence
+    - bi developer
+    - etl developer
+    - data platform
+    - automation engineer
+    - ai engineer
+    - data operations
+    - dataops
+    - datenanalyst
+    - dateningenieur
+    - bi-entwickler
+
+  # Titles containing any of these are dropped.
+  exclude_title_keywords:
+    - senior
+    - sr.
+    - lead
+    - principal
+    - staff
+    - head of
+    - director
+    - manager
+    - intern
+    - internship
+    - praktikum
+    - werkstudent
+    - working student
+    - ausbildung
+
+  # Where you can work. "remote" matches remote / home office postings.
+  locations:
+    - berlin
+    - remote
+    - germany
+    - deutschland
+
+  # Drop jobs that ask for more years of experience than this.
+  max_years_experience: 3
+
+  # Your German level: A1, A2, B1, B2, C1, C2. Jobs that clearly require a higher level are dropped.
+  german_level: A2
+
+  # Skills used for scoring (higher weight = more important to you).
+  skills:
+    sql: 3
+    dbt: 3
+    airflow: 3
+    docker: 2
+    postgres: 2
+    python: 2
+    n8n: 2
+    etl: 2
+    elt: 1
+    superset: 1
+    metabase: 1
+    power bi: 1
+    tableau: 1
+    data quality: 1
+    data modelling: 1
+    data modeling: 1
+
+  # Only keep jobs with at least this score (0-100).
+  min_score: 35
+
+sources:
+  # Bundesagentur für Arbeit (Germany's federal job board, public API, covers many boards).
+  arbeitsagentur:
+    enabled: true
+    queries:
+      - Data Engineer
+      - Analytics Engineer
+      - Data Analyst
+      - BI Analyst
+    where: Berlin
+    radius_km: 30
+    published_since_days: 7
+    include_remote: true
+
+  # Company career pages via official public ATS APIs.
+  # Find a company's ATS + slug with:  python -m jobhunter discover <careers-page-url>
+  # The entries below are examples — run `python -m jobhunter check-sources` to verify them.
+  companies:
+    - {name: Talon.One, ats: greenhouse, slug: linkedinjobs, region: eu}
+    - {name: GetYourGuide, ats: greenhouse, slug: getyourguide}
+    - {name: Contentful, ats: greenhouse, slug: contentful}
+    - {name: HelloFresh, ats: greenhouse, slug: hellofresh}
+    - {name: N26, ats: greenhouse, slug: n26}
+    - {name: 1KOMMA5°, ats: personio, slug: 1komma5grad}
+
+  # Job-alert emails from LinkedIn, StepStone, Indeed, XING, etc. (read-only, via Gmail IMAP).
+  # Set up job alerts on those sites first; this only reads the emails they send you.
+  email_alerts:
+    enabled: false
+    imap_host: imap.gmail.com
+    folder: INBOX
+    days_back: 2
+    senders:
+      - jobalerts-noreply@linkedin.com
+      - jobs-listings@linkedin.com
+      - stepstone
+      - indeed
+      - xing
+
+tailoring:
+  # How many top new jobs get a tailored CV + cover letter each run.
+  top_n: 5
+  # Make PDFs with LibreOffice (if installed) in addition to .docx
+  make_pdf: true
+
+digest:
+  email: true        # send the daily digest to GMAIL_ADDRESS
+  telegram: false
+
+schedule:
+  daily_at: "08:00"   # Europe/Berlin

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workzag-jobs>
+ <position><id>555</id><subcompany>Zeta Energy GmbH</subcompany><office>Berlin</office>
+  <additionalOffices><office>Hamburg</office></additionalOffices><department>Data</department>
+  <name>Junior Data Analyst</name><employmentType>permanent</employmentType><seniority>entry-level</seniority>
+  <schedule>full-time</schedule><yearsOfExperience>lt-1</yearsOfExperience><createdAt>2026-11-12T09:00:00+00:00</createdAt>
+  <jobDescriptions><jobDescription><name>Your tasks</name><value><![CDATA[<p>Build dashboards in Power BI and Metabase, write SQL, support dbt models. Our working language is English.</p>]]></value></jobDescription>
+  <jobDescription><name>Your profile</name><value><![CDATA[<ul><li>Strong SQL</li><li>Python basics</li><li>German is a plus</li></ul>]]></value></jobDescription></jobDescriptions>
+ </position>
+ <position><id>556</id><office>Munich</office><name>Data Engineer</name><createdAt>2026-11-12T09:00:00+00:00</createdAt>
+  <jobDescriptions><jobDescription><name>Tasks</name><value><![CDATA[<p>Pipelines.</p>]]></value></jobDescription></jobDescriptions></position>
+</workzag-jobs>

@@ -1,0 +1,30 @@
+{
+ "apiVersion": "1",
+ "jobs": [
+  {
+   "id": "ab-1",
+   "title": "Business Intelligence & Automations Engineer",
+   "location": "Berlin",
+   "secondaryLocations": [
+    {
+     "location": "Vienna"
+    }
+   ],
+   "isRemote": false,
+   "workplaceType": "Hybrid",
+   "isListed": true,
+   "publishedAt": "2026-11-14T08:00:00.000+00:00",
+   "jobUrl": "https://jobs.ashbyhq.com/gamma/ab-1",
+   "applyUrl": "https://jobs.ashbyhq.com/gamma/ab-1/application",
+   "descriptionPlain": "Own our BI stack end to end: pipelines, the data warehouse and dbt transformations on BigQuery with Fivetran. Build internal automations with n8n, Make and scripting. Safeguard data quality behind financial reporting. You have strong SQL, experience with dbt and a pragmatic attitude towards automation. We work in English."
+  },
+  {
+   "id": "ab-2",
+   "title": "Data Engineer (unlisted)",
+   "location": "Berlin",
+   "isListed": false,
+   "jobUrl": "https://jobs.ashbyhq.com/gamma/ab-2",
+   "descriptionPlain": "x"
+  }
+ ]
+}

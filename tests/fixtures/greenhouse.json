@@ -1,0 +1,40 @@
+{
+ "jobs": [
+  {
+   "id": 1001,
+   "title": "Data Engineer",
+   "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/1001",
+   "location": {
+    "name": "Berlin, Germany"
+   },
+   "updated_at": "2026-11-14T10:00:00Z",
+   "first_published": "2026-11-13T09:00:00Z",
+   "content": "&lt;p&gt;We are a Berlin-based scale-up. Our working language is English. You will own data ingestion pipelines from PostgreSQL into the warehouse, build dbt models with tests, orchestrate jobs with Airflow and run services in Docker. You care about data quality, consistency checks and monitoring. 1-3 years of experience in data engineering. Nice to have: Kubernetes, BigQuery. German is a plus but not required.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;SQL&lt;/li&gt;&lt;li&gt;Python&lt;/li&gt;&lt;/ul&gt;",
+   "offices": [
+    {
+     "name": "Berlin"
+    }
+   ]
+  },
+  {
+   "id": 1002,
+   "title": "Senior Data Engineer",
+   "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/1002",
+   "location": {
+    "name": "Berlin"
+   },
+   "updated_at": "2026-11-14T10:00:00Z",
+   "content": "&lt;p&gt;We are a Berlin-based scale-up. Our working language is English. You will own data ingestion pipelines from PostgreSQL into the warehouse, build dbt models with tests, orchestrate jobs with Airflow and run services in Docker. You care about data quality, consistency checks and monitoring. 1-3 years of experience in data engineering. Nice to have: Kubernetes, BigQuery. German is a plus but not required.&lt;/p&gt;"
+  },
+  {
+   "id": 1003,
+   "title": "Data Analyst (m/w/d)",
+   "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/1003",
+   "location": {
+    "name": "Berlin"
+   },
+   "updated_at": "2026-11-14T10:00:00Z",
+   "content": "&lt;p&gt;You analyse data with SQL, dbt and Tableau and build dashboards for stakeholders across the business every week. Requirements: very good SQL skills and experience with BI tools. Fluent German and English (C1) are required for this role because you will work directly with our German-speaking customers.&lt;/p&gt;"
+  }
+ ]
+}

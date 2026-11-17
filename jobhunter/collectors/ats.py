@@ -1,0 +1,225 @@
+"""Collectors for company career pages hosted on public ATS job-board APIs.
+
+All of these are the official, unauthenticated, read-only endpoints that the companies' own
+careers pages use: no login, no scraping of job boards, no applications submitted.
+"""
+from __future__ import annotations
+
+import re
+from datetime import datetime, timezone
+from xml.etree import ElementTree
+
+from ..models import Job, html_to_text
+from .base import get, log
+
+
+# --------------------------------------------------------------------------- Greenhouse
+GREENHOUSE_HOSTS = {
+    "us": ["https://boards-api.greenhouse.io"],
+    "eu": ["https://boards-api.eu.greenhouse.io", "https://boards-api.greenhouse.io"],
+}
+
+
+def parse_greenhouse(data: dict, company: str) -> list[Job]:
+    jobs = []
+    for item in data.get("jobs", []):
+        offices = ", ".join(o.get("name", "") for o in item.get("offices") or [] if o.get("name"))
+        location = (item.get("location") or {}).get("name") or offices
+        jobs.append(Job(
+            source="greenhouse",
+            external_id=str(item.get("id")),
+            company=company,
+            title=item.get("title", "").strip(),
+            url=item.get("absolute_url", ""),
+            location=location,
+            description=html_to_text(item.get("content")),
+            posted_at=(item.get("first_published") or item.get("updated_at") or "")[:10],
+            remote="remote" in location.lower(),
+        ))
+    return jobs
+
+
+def fetch_greenhouse(session, company: dict) -> list[Job]:
+    for host in GREENHOUSE_HOSTS.get(company.get("region", "us"), GREENHOUSE_HOSTS["us"]):
+        resp = get(session, f"{host}/v1/boards/{company['slug']}/jobs", params={"content": "true"})
+        if resp is not None:
+            return parse_greenhouse(resp.json(), company["name"])
+    log.warning("Greenhouse board not found: %s (%s)", company["name"], company["slug"])
+    return []
+
+
+# --------------------------------------------------------------------------- Lever
+LEVER_HOSTS = ["https://api.lever.co", "https://api.eu.lever.co"]
+
+
+def _ms_to_date(ms) -> str:
+    try:
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).date().isoformat()
+    except (TypeError, ValueError):
+        return ""
+
+
+def parse_lever(data: list, company: str) -> list[Job]:
+    jobs = []
+    for item in data:
+        cats = item.get("categories") or {}
+        locations = cats.get("allLocations") or [cats.get("location", "")]
+        location = ", ".join(l for l in locations if l)
+        parts = [item.get("descriptionPlain") or html_to_text(item.get("description"))]
+        for section in item.get("lists") or []:
+            parts.append(section.get("text", ""))
+            parts.append(html_to_text(section.get("content")))
+        parts.append(item.get("additionalPlain") or "")
+        workplace = (item.get("workplaceType") or "").lower()
+        jobs.append(Job(
+            source="lever",
+            external_id=item.get("id", ""),
+            company=company,
+            title=item.get("text", "").strip(),
+            url=item.get("hostedUrl", ""),
+            apply_url=item.get("applyUrl", ""),
+            location=location,
+            description="\n".join(p for p in parts if p).strip(),
+            posted_at=_ms_to_date(item.get("createdAt")),
+            remote=workplace == "remote" or "remote" in location.lower(),
+        ))
+    return jobs
+
+
+def fetch_lever(session, company: dict) -> list[Job]:
+    hosts = LEVER_HOSTS[::-1] if company.get("region") == "eu" else LEVER_HOSTS
+    for host in hosts:
+        resp = get(session, f"{host}/v0/postings/{company['slug']}", params={"mode": "json"})
+        if resp is not None and resp.json():
+            return parse_lever(resp.json(), company["name"])
+    log.warning("Lever board not found or empty: %s (%s)", company["name"], company["slug"])
+    return []
+
+
+# --------------------------------------------------------------------------- Ashby
+def parse_ashby(data: dict, company: str) -> list[Job]:
+    jobs = []
+    for item in data.get("jobs", []):
+        if item.get("isListed") is False:
+            continue
+        locs = [item.get("location", "")] + [
+            s.get("location", "") for s in item.get("secondaryLocations") or []
+        ]
+        location = ", ".join(l for l in locs if l)
+        job_url = item.get("jobUrl", "")
+        jobs.append(Job(
+            source="ashby",
+            external_id=item.get("id") or job_url.rstrip("/").split("/")[-1],
+            company=company,
+            title=item.get("title", "").strip(),
+            url=job_url,
+            apply_url=item.get("applyUrl", ""),
+            location=location,
+            description=item.get("descriptionPlain") or html_to_text(item.get("descriptionHtml")),
+            posted_at=(item.get("publishedAt") or "")[:10],
+            remote=bool(item.get("isRemote")) or "remote" in location.lower(),
+        ))
+    return jobs
+
+
+def fetch_ashby(session, company: dict) -> list[Job]:
+    resp = get(session, f"https://api.ashbyhq.com/posting-api/job-board/{company['slug']}")
+    if resp is None:
+        log.warning("Ashby board not found: %s (%s)", company["name"], company["slug"])
+        return []
+    return parse_ashby(resp.json(), company["name"])
+
+
+# --------------------------------------------------------------------------- Personio
+def _text(node, tag: str) -> str:
+    found = node.find(tag)
+    return (found.text or "").strip() if found is not None and found.text else ""
+
+
+def parse_personio(xml_text: str, company: str, slug: str) -> list[Job]:
+    root = ElementTree.fromstring(xml_text)
+    jobs = []
+    for pos in root.iter("position"):
+        pid = _text(pos, "id")
+        offices = [_text(pos, "office")] + [
+            (o.text or "").strip() for o in pos.findall("additionalOffices/office")
+        ]
+        location = ", ".join(o for o in offices if o)
+        desc_parts = []
+        for jd in pos.findall("jobDescriptions/jobDescription"):
+            desc_parts.append(_text(jd, "name"))
+            desc_parts.append(html_to_text(_text(jd, "value")))
+        extra = {k: _text(pos, k) for k in ("seniority", "yearsOfExperience", "employmentType", "schedule")}
+        url = f"https://{slug}.jobs.personio.de/job/{pid}?language=en"
+        jobs.append(Job(
+            source="personio",
+            external_id=pid,
+            company=_text(pos, "subcompany") or company,
+            title=_text(pos, "name"),
+            url=url,
+            apply_url=url + "#apply",
+            location=location,
+            description="\n".join(p for p in desc_parts if p),
+            posted_at=_text(pos, "createdAt")[:10],
+            remote="remote" in location.lower(),
+            extra=extra,
+        ))
+    return jobs
+
+
+def fetch_personio(session, company: dict) -> list[Job]:
+    for domain in ("jobs.personio.de", "jobs.personio.com"):
+        resp = get(session, f"https://{company['slug']}.{domain}/xml", params={"language": "en"},
+                   headers={"Accept": "application/xml"})
+        if resp is not None and "<position" in resp.text:
+            return parse_personio(resp.text, company["name"], company["slug"])
+    log.warning("Personio feed not found or empty: %s (%s)", company["name"], company["slug"])
+    return []
+
+
+FETCHERS = {
+    "greenhouse": fetch_greenhouse,
+    "lever": fetch_lever,
+    "ashby": fetch_ashby,
+    "personio": fetch_personio,
+}
+
+
+def fetch_company(session, company: dict) -> list[Job]:
+    fetcher = FETCHERS.get(company.get("ats", "").lower())
+    if not fetcher:
+        log.warning("Unsupported ATS '%s' for %s", company.get("ats"), company.get("name"))
+        return []
+    return fetcher(session, company)
+
+
+# --------------------------------------------------------------------------- discovery
+ATS_PATTERNS = [
+    (re.compile(r"job-boards\.eu\.greenhouse\.io/(?:embed/job_board\?for=)?([\w-]+)"), "greenhouse", "eu"),
+    (re.compile(r"(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([\w-]+)"), "greenhouse", "us"),
+    (re.compile(r"boards-api(?:\.eu)?\.greenhouse\.io/v1/boards/([\w-]+)"), "greenhouse", "us"),
+    (re.compile(r"greenhouse\.io/embed/job_board(?:/js)?\?for=([\w-]+)"), "greenhouse", "us"),
+    (re.compile(r"jobs\.eu\.lever\.co/([\w.-]+)"), "lever", "eu"),
+    (re.compile(r"jobs\.lever\.co/([\w.-]+)"), "lever", "us"),
+    (re.compile(r"jobs\.ashbyhq\.com/([\w.%-]+)"), "ashby", ""),
+    (re.compile(r"api\.ashbyhq\.com/posting-api/job-board/([\w.%-]+)"), "ashby", ""),
+    (re.compile(r"([\w-]+)\.jobs\.personio\.(?:de|com)"), "personio", ""),
+]
+
+IGNORED_SLUGS = {"embed", "v1", "js", "api", "www", "jobs", "job"}
+
+
+def detect_ats(text: str) -> list[dict]:
+    """Find ATS + slug references in a URL or a page's HTML."""
+    found, seen = [], set()
+    for pattern, ats, region in ATS_PATTERNS:
+        for slug in pattern.findall(text):
+            key = (ats, slug.lower())
+            if slug.lower() in IGNORED_SLUGS or key in seen:
+                continue
+            seen.add(key)
+            entry = {"ats": ats, "slug": slug}
+            if region == "eu":
+                entry["region"] = "eu"
+            found.append(entry)
+    return found

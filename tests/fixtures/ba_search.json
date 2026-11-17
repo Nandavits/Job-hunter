@@ -1,0 +1,39 @@
+{
+ "stellenangebote": [
+  {
+   "beruf": "Data Engineer",
+   "titel": "Junior Data Engineer (m/w/d)",
+   "refnr": "10000-1111111111-S",
+   "arbeitsort": {
+    "ort": "Berlin",
+    "region": "Berlin",
+    "land": "Deutschland"
+   },
+   "arbeitgeber": "Delta GmbH",
+   "aktuelleVeroeffentlichungsdatum": "2026-11-15",
+   "externeUrl": "https://delta.example/jobs/42"
+  },
+  {
+   "beruf": "Data Analyst",
+   "titel": "Datenanalyst (m/w/d)",
+   "refnr": "10000-2222222222-S",
+   "arbeitsort": {
+    "ort": "Berlin"
+   },
+   "arbeitgeber": "Epsilon AG",
+   "aktuelleVeroeffentlichungsdatum": "2026-11-14"
+  },
+  {
+   "beruf": "Koch",
+   "titel": "Koch (m/w/d)",
+   "refnr": "10000-3333333333-S",
+   "arbeitsort": {
+    "ort": "Berlin"
+   },
+   "arbeitgeber": "Restaurant"
+  }
+ ],
+ "maxErgebnisse": 3,
+ "page": 1,
+ "size": 100
+}

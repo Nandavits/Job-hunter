@@ -1,0 +1,233 @@
+"""Tailor the CV and write a cover letter for one job.
+
+With ANTHROPIC_API_KEY set, Claude picks the CV title, rewrites the summary, orders bullets and
+skills, and writes the cover letter — using ONLY facts from profile.yaml. Without a key a
+rule-based fallback produces a decent (more generic) version, so the pipeline always works.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from dataclasses import dataclass, field
+
+log = logging.getLogger("jobhunter")
+
+# Tools that often appear in data job ads; used to name honest gaps in the fallback letter.
+KNOWN_TOOLS = {"kubernetes": "Kubernetes", "bigquery": "BigQuery", "snowflake": "Snowflake",
+               "databricks": "Databricks", "spark": "Spark", "kafka": "Kafka", "terraform": "Terraform",
+               "aws": "AWS", "azure": "Azure", "gcp": "GCP", "google cloud": "Google Cloud",
+               "dagster": "Dagster", "looker": "Looker", "fivetran": "Fivetran", "redshift": "Redshift",
+               "scala": "Scala", "java": "Java", "flink": "Flink", "airbyte": "Airbyte",
+               "posthog": "PostHog", "sqlmesh": "SQLMesh"}
+
+
+def _skill_variants(skill: str) -> list[str]:
+    """'Apache Airflow' -> ['apache airflow', 'airflow']; 'PostgreSQL' -> ['postgresql', 'postgres']."""
+    base = skill.split(" (")[0].strip().lower()
+    variants = {base}
+    if base.startswith("apache "):
+        variants.add(base[7:])
+    if base == "postgresql":
+        variants.add("postgres")
+    if base.startswith("etl/elt"):
+        variants.update({"etl", "elt"})
+    return list(variants)
+
+
+def _skill_in(text: str, skill: str) -> bool:
+    return any(_has(text, v) for v in _skill_variants(skill))
+
+
+def _join(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+@dataclass
+class Tailoring:
+    title: str
+    summary: str
+    bullet_order: dict[int, list[int]]
+    skills_order: list[str]
+    letter_paragraphs: list[str]
+    fit_notes: list[str] = field(default_factory=list)
+    gaps: list[str] = field(default_factory=list)
+    engine: str = "fallback"
+
+
+# --------------------------------------------------------------------------- helpers
+def _profile_text(profile: dict) -> str:
+    return json.dumps(profile, ensure_ascii=False).lower()
+
+
+def _has(text: str, word: str) -> bool:
+    return re.search(rf"(?<![\w]){re.escape(word.lower())}(?![\w])", text) is not None
+
+
+def _pick_title(job_title: str, default: str) -> str:
+    t = job_title.lower()
+    if "analytics engineer" in t:
+        return "Analytics Engineer"
+    if "data engineer" in t or "data platform" in t or "dataops" in t or "etl" in t:
+        return "Data Engineer"
+    if "automation" in t and ("bi" in t.split() or "business intelligence" in t):
+        return "BI & Data Engineer"
+    if "bi " in t or t.startswith("bi") or "business intelligence" in t:
+        return "BI & Data Engineer"
+    if "analyst" in t:
+        return "Data Analyst"
+    return default
+
+
+def _bullet_scores(bullets: list[dict], job_text: str) -> list[int]:
+    scores = []
+    for b in bullets:
+        words = list(b.get("tags", [])) + re.findall(r"[A-Za-z][\w+.-]{3,}", b["text"])[:8]
+        scores.append(sum(_has(job_text, w) for w in set(w.lower() for w in words)))
+    return scores
+
+
+def gaps_for(job_text: str, profile: dict) -> list[str]:
+    ptext = _profile_text(profile)
+    return [name for key, name in KNOWN_TOOLS.items() if _has(job_text, key) and not _has(ptext, key)]
+
+
+# --------------------------------------------------------------------------- fallback
+def fallback(profile: dict, job: dict) -> Tailoring:
+    job_text = f"{job.get('title', '')}\n{job.get('description', '')}".lower()
+    order = {}
+    for i, exp in enumerate(profile.get("experience", [])):
+        scores = _bullet_scores(exp["bullets"], job_text)
+        order[i] = sorted(range(len(exp["bullets"])), key=lambda k: (-scores[k], k))
+        if i == 0 and order[i] and 0 in order[i]:  # keep the "ownership" bullet first
+            order[i].remove(0)
+            order[i].insert(0, 0)
+
+    skills = profile.get("skills", {})
+    def cat_score(cat):
+        return sum(_skill_in(job_text, s) for s in skills[cat])
+    skills_order = sorted(skills, key=lambda c: (-cat_score(c), list(skills).index(c)))
+
+    matched = [s.split(" (")[0] for cat in skills.values() for s in cat if _skill_in(job_text, s)]
+    matched = list(dict.fromkeys(m.replace("Apache ", "") for m in matched))[:5] or ["SQL", "dbt", "Airflow"]
+    gaps = gaps_for(job_text, profile)
+
+    exp0 = profile["experience"][0]
+    top = [exp0["bullets"][k]["text"] for k in order[0][:3]]
+    company = job.get("company") or "your company"
+    title = job.get("title") or "this"
+    city = profile.get("personal", {}).get("city", "Berlin")
+
+    def sentence(text: str) -> str:
+        return text[0].lower() + text[1:] if text else text
+
+    paragraphs = [
+        f"I am applying for the {title} position at {company}. The role's focus on "
+        f"{_join(matched)} matches the work I do every day, which is why it immediately caught my attention.",
+        f"In my role as {exp0['title']} at {exp0['company']}, I {sentence(top[0]).rstrip('.')}. "
+        f"In this role I {sentence(top[1]).rstrip('.')}." + (
+            f" I also {sentence(top[2]).rstrip('.')}." if len(top) > 2 else ""),
+        "I bring hands-on experience with " + _join(matched) + ", together with a strong habit of "
+        "validating data before it reaches stakeholders." + (
+            f" {_join(gaps[:3])} would be new to me, "
+            "but the concepts carry over directly from my current work and I pick up new tools quickly."
+            if gaps else ""),
+        f"I am based in {city} and work fully in English. I would welcome the opportunity to discuss "
+        f"how I can contribute to your team.",
+    ]
+    return Tailoring(
+        title=_pick_title(job.get("title", ""), profile.get("default_title", "")),
+        summary=profile.get("default_summary", "").strip(),
+        bullet_order=order,
+        skills_order=skills_order,
+        letter_paragraphs=paragraphs,
+        fit_notes=[f"Matched skills: {', '.join(matched)}"],
+        gaps=gaps,
+    )
+
+
+# --------------------------------------------------------------------------- Claude
+SYSTEM_PROMPT = """You tailor a candidate's CV and cover letter to one job ad.
+
+Hard rules:
+- Use ONLY facts in the candidate profile. Never invent tools, employers, numbers, degrees or results.
+- You may reorder and rephrase. You may say a tool from the job ad is new to the candidate, honestly.
+- CV title: short (2-4 words), close to the job title, and truthful for the candidate's experience.
+- Summary: 55-85 words, third-person-free CV style (no "I"), leading with what this job cares about most.
+- Cover letter: exactly 4 paragraphs, 230-320 words total, in English, no greeting or sign-off lines.
+  Paragraph 1: why this role/company (specific to the ad). Paragraph 2: strongest matching evidence
+  from the profile. Paragraph 3: further fit + honest note on the main gap, if any. Paragraph 4: based
+  in the candidate's city, works in English, wants to discuss. No clichés like "I am writing to apply".
+- bullet_order: for each experience index, the bullet indices from most to least relevant. Include every index.
+- skills_order: every skills category name, most relevant first.
+
+Reply with JSON only, no prose, matching:
+{"title": str, "summary": str, "bullet_order": {"0": [int], "1": [int]}, "skills_order": [str],
+ "cover_letter": [str, str, str, str], "fit_notes": [str], "gaps": [str]}"""
+
+
+def _profile_for_prompt(profile: dict) -> dict:
+    p = {k: v for k, v in profile.items() if k not in ("personal", "answers")}
+    p["city"] = profile.get("personal", {}).get("city", "")
+    p["experience"] = [
+        {**{k: v for k, v in e.items() if k != "bullets"},
+         "bullets": {str(i): b["text"] for i, b in enumerate(e["bullets"])}}
+        for e in profile.get("experience", [])
+    ]
+    return p
+
+
+def _extract_json(text: str) -> dict:
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
+    start, end = text.find("{"), text.rfind("}")
+    return json.loads(text[start:end + 1])
+
+
+def _validate(data: dict, profile: dict, base: Tailoring) -> Tailoring:
+    order = {}
+    for i, exp in enumerate(profile.get("experience", [])):
+        n = len(exp["bullets"])
+        given = [int(x) for x in (data.get("bullet_order") or {}).get(str(i), []) if str(x).isdigit()]
+        given = [x for x in dict.fromkeys(given) if 0 <= x < n]
+        order[i] = given + [x for x in range(n) if x not in given]
+    cats = list(profile.get("skills", {}))
+    skills = [c for c in data.get("skills_order", []) if c in cats]
+    skills += [c for c in cats if c not in skills]
+    letter = [p.strip() for p in data.get("cover_letter", []) if isinstance(p, str) and p.strip()]
+    return Tailoring(
+        title=(data.get("title") or base.title).strip()[:60],
+        summary=(data.get("summary") or base.summary).strip(),
+        bullet_order=order,
+        skills_order=skills,
+        letter_paragraphs=letter if len(letter) >= 3 else base.letter_paragraphs,
+        fit_notes=[str(x) for x in data.get("fit_notes", [])][:6],
+        gaps=[str(x) for x in data.get("gaps", [])][:6],
+        engine="claude",
+    )
+
+
+def tailor(profile: dict, job: dict, api_key: str = "", model: str = "claude-sonnet-5-5",
+           client=None) -> Tailoring:
+    base = fallback(profile, job)
+    if not (api_key or client):
+        return base
+    try:
+        if client is None:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+        ad = f"Company: {job.get('company')}\nTitle: {job.get('title')}\nLocation: {job.get('location')}\n\n" \
+             f"{(job.get('description') or '')[:9000]}"
+        msg = client.messages.create(
+            model=model,
+            max_tokens=2500,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content":
+                       f"<candidate_profile>\n{json.dumps(_profile_for_prompt(profile), ensure_ascii=False, indent=1)}"
+                       f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}],
+        )
+        text = "".join(getattr(block, "text", "") for block in msg.content)
+        return _validate(_extract_json(text), profile, base)
+    except Exception as exc:
+        log.warning("AI tailoring failed (%s); using rule-based version", exc)
+        return base
