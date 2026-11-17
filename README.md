@@ -64,6 +64,10 @@ python -m jobhunter run                                 # first run
 
 PDFs need LibreOffice (`soffice`) on your PATH; without it you get `.docx` files only.
 
+### Windows: one click
+
+With Docker Desktop running, double-click `start-jobhunter.bat`. It builds the containers, checks every job source (`logs/sources.txt`), runs a search (`logs/first-run.log`) and lists the results.
+
 ### Run it every morning with Docker
 
 ```bash
@@ -111,7 +115,7 @@ Paste the line into `sources.companies` in `config/config.yaml`, then check all 
 | Feature | What you need |
 |---|---|
 | AI tailoring | `ANTHROPIC_API_KEY` in `.env` |
-| Job-alert emails | Job alerts on LinkedIn/StepStone/Indeed/XING sent to Gmail; a Gmail [App Password](https://myaccount.google.com/apppasswords); `email_alerts.enabled: true` |
+| Job-alert emails | Job alerts on LinkedIn/StepStone/Indeed/XING sent to Gmail; a Gmail [App Password](https://myaccount.google.com/apppasswords) created **in that same Gmail account**; `email_alerts.enabled: true`. The plain-text part of each alert is parsed (title / company / city / link); StepStone tracking links are de-duplicated by title + company. |
 | Email digest | Same Gmail address + App Password |
 | Telegram digest | A bot from @BotFather, your chat id, `digest.telegram: true` |
 | PostgreSQL | `DATABASE_URL=postgresql+psycopg://user:pass@host/db` (Docker Compose sets this) |
@@ -130,7 +134,7 @@ jobhunter/
   pipeline.py      collect → filter → store → tailor → digest
   __main__.py      CLI
 config/            config.example.yaml, profile.example.yaml (real ones are git-ignored)
-tests/             54 tests with recorded API fixtures and sample application forms
+tests/             61 tests with recorded API fixtures and sample application forms
 ```
 
 ## Tests
