@@ -68,6 +68,10 @@ PDFs need LibreOffice (`soffice`) on your PATH; without it you get `.docx` files
 
 With Docker Desktop running, double-click `start-jobhunter.bat`. It builds the containers, checks every job source (`logs/sources.txt`), runs a search (`logs/first-run.log`) and lists the results.
 
+### Windows: applying
+
+Double-click `apply.bat`. The first run installs Python packages and Chromium into `.venv` (3-5 minutes). It lists your jobs, asks for a job id (and, for LinkedIn/StepStone/XING/Indeed jobs, the company's application link), opens the form pre-filled with your details, CV and cover letter, and waits. **You review and click Submit**; then it asks whether you submitted and marks the job as applied.
+
 ### Run it every morning with Docker
 
 ```bash

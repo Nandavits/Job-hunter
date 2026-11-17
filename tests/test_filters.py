@@ -110,3 +110,14 @@ def test_app_password_spaces_and_quotes_removed(monkeypatch):
     s = Settings(config={}, profile={})
     assert s.env("GMAIL_APP_PASSWORD") == "abcdefghijklmnop"
     assert s.env("GMAIL_ADDRESS") == "me@example.com"
+
+
+def test_documents_made_in_docker_are_found_locally(tmp_path, monkeypatch):
+    from jobhunter import __main__ as cli
+    monkeypatch.setattr(cli, "OUTPUT_DIR", tmp_path)
+    (tmp_path / "2026-11-17_Acme_Data_Engineer").mkdir()
+    cv = tmp_path / "2026-11-17_Acme_Data_Engineer" / "CV.pdf"
+    cv.write_bytes(b"%PDF")
+    assert cli.local_path("/app/output/2026-11-17_Acme_Data_Engineer/CV.pdf") == cv
+    assert cli.local_path(str(cv)) == cv
+    assert not cli.local_path("/app/output/missing/CV.pdf").exists()
