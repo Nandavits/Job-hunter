@@ -91,3 +91,12 @@ def test_schedule_catches_up_after_laptop_was_off():
     assert due_today(datetime(2026, 11, 18, 8, 0), "08:00", "2026-11-17")        # on time
     assert due_today(datetime(2026, 11, 18, 11, 30), "08:00", "2026-11-17")      # laptop opened late
     assert not due_today(datetime(2026, 11, 18, 15, 0), "08:00", "2026-11-18")   # already ran today
+
+
+def test_app_password_spaces_and_quotes_removed(monkeypatch):
+    from jobhunter.config import Settings
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", '"abcd efgh ijkl mnop"\r')
+    monkeypatch.setenv("GMAIL_ADDRESS", " me@example.com ")
+    s = Settings(config={}, profile={})
+    assert s.env("GMAIL_APP_PASSWORD") == "abcdefghijklmnop"
+    assert s.env("GMAIL_ADDRESS") == "me@example.com"
