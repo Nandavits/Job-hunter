@@ -121,9 +121,9 @@ sources:
     senders:
       - jobalerts-noreply@linkedin.com
       - jobs-listings@linkedin.com
-      - stepstone
+      - jobagent.stepstone.de
       - indeed
-      - xing
+      - mail.xing.com
 
 tailoring:
   # How many top new jobs get a tailored CV + cover letter each run.
