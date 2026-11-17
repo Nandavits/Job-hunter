@@ -103,6 +103,20 @@ python -m jobhunter prepare <id>
 
 All commands: `run`, `list`, `show`, `prepare`, `fill`, `mark`, `add`, `export`, `stats`, `discover`, `check-sources`, `schedule`.
 
+## Application tracker (Excel) and reposts
+
+`data/applications.xlsx` is rewritten after every run and every apply, with three sheets: **Applications**
+(applied / interview / offer / rejected), **Open jobs** and **All jobs** (including why a job was skipped).
+Change a Status or Notes cell in Excel and save, and the next run reads it back. For example, mark a job you
+applied to on LinkedIn as `applied`. Only cells you changed are read, so an old copy of the file never undoes newer
+updates.
+
+Companies often repost the same role with a new posting id, and the same role arrives from the careers page
+and from a LinkedIn alert. Jobs are treated as the same when the company and the title match after removing
+"(m/w/d)", "(all genders)", locations and job-board suffixes (seniority must match: Junior ≠ Senior).
+A repost of a role you applied to in the last `reapply_after_days` (default 180) is skipped and listed in the
+digest; `apply` asks before filling a form for a role you already applied to.
+
 ## Adding companies
 
 Open a company's careers page and run:
@@ -131,6 +145,8 @@ jobhunter/
   collectors/      greenhouse · lever · ashby · personio (ats.py), arbeitsagentur.py, email_alerts.py
   filters.py       German-level detection, seniority, location, years, skill scoring
   storage.py       SQLAlchemy models, dedup, application tracker + CSV export
+  dedupe.py        same-role detection across reposts and job boards
+  excel.py         applications.xlsx export with two-way status sync
   tailor.py        Claude prompt + output validation, rule-based fallback
   documents.py     python-docx CV + cover letter, auto-shrinks to one page, PDF via LibreOffice
   autofill.py      Playwright form filler (never submits)
@@ -138,7 +154,7 @@ jobhunter/
   pipeline.py      collect → filter → store → tailor → digest
   __main__.py      CLI
 config/            config.example.yaml, profile.example.yaml (real ones are git-ignored)
-tests/             61 tests with recorded API fixtures and sample application forms
+tests/             118 tests with recorded API fixtures and sample application forms
 ```
 
 ## Tests

@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy import (Boolean, Column, Integer, MetaData, String, Table, Text, create_engine,
                         func, select, update)
 
+from .dedupe import APPLIED_STATUSES, same_job
 from .models import Job
 
 metadata = MetaData()
@@ -94,6 +95,26 @@ class Store:
             values["applied_at"] = datetime.now(timezone.utc).date().isoformat()
         with self.engine.begin() as conn:
             conn.execute(update(jobs_table).where(jobs_table.c.uid == uid).values(**values))
+
+    def find_same_job(self, company: str, title: str, exclude_uid: str = "") -> list[dict]:
+        """Other stored jobs that are the same role at the same company (reposts, other job boards)."""
+        query = select(jobs_table).where(jobs_table.c.status != "skipped")
+        with self.engine.connect() as conn:
+            rows = [dict(r) for r in conn.execute(query).mappings()]
+        return [r for r in rows if r["uid"] != exclude_uid and same_job(company, title, r["company"], r["title"])]
+
+    def applied_versions(self, job: dict) -> list[dict]:
+        return [r for r in self.find_same_job(job["company"], job["title"], job["uid"])
+                if r["status"] in APPLIED_STATUSES]
+
+    def mark_applied(self, uid: str) -> int:
+        """Mark a job applied and retire open copies of the same role. Returns how many copies were retired."""
+        self.update(uid, status="applied")
+        job = self.get(uid)
+        copies = [r for r in self.find_same_job(job["company"], job["title"], uid) if r["status"] in ("new", "prepared")]
+        for r in copies:
+            self.update(r["uid"], status="skipped", excluded_reason=f"same job as {uid[:8]}, already applied")
+        return len(copies)
 
     def stats(self) -> dict:
         with self.engine.connect() as conn:

@@ -14,7 +14,8 @@ import requests
 log = logging.getLogger("jobhunter")
 
 
-def build_digest(new_jobs: list[dict], prepared: dict[str, dict], stats: dict) -> tuple[str, str]:
+def build_digest(new_jobs: list[dict], prepared: dict[str, dict], stats: dict,
+                 reposts: list[dict] | None = None) -> tuple[str, str]:
     """Return (markdown, html) for the digest."""
     today = date.today().strftime("%A %d %B %Y")
     md = [f"# Job Hunter – {today}", "", f"**{len(new_jobs)} new matching jobs.** "
@@ -33,11 +34,18 @@ def build_digest(new_jobs: list[dict], prepared: dict[str, dict], stats: dict) -
             f"{html.escape(job['title'])}</a><br><small>{html.escape(job['company'])} · "
             f"{html.escape(job.get('location') or '')}</small></td><td>{job['score']}</td>"
             f"<td>{'✅' if docs else ''}</td><td><code>{job['uid'][:8]}</code></td></tr>")
+    reposts = reposts or []
+    if reposts:
+        md += ["", f"Skipped {len(reposts)} repost(s) you already applied to:"]
+        md += [f"- {r['title']} – {r['company']} (applied {r.get('applied_on') or 'earlier'})" for r in reposts]
     md += ["", "Next: `python -m jobhunter fill <id>` opens the form pre-filled. You click Submit."]
     page = (f"<h2>Job Hunter – {today}</h2><p><b>{len(new_jobs)} new matching jobs</b></p>"
             "<table cellpadding=6 border=1 style='border-collapse:collapse;font-family:sans-serif'>"
             "<tr><th>#</th><th>Job</th><th>Score</th><th>Docs</th><th>ID</th></tr>" + "".join(rows) +
-            "</table><p>Run <code>python -m jobhunter fill &lt;id&gt;</code> to open a pre-filled form. "
+            "</table>" + ("<p><b>Skipped reposts you already applied to:</b><br>" + "<br>".join(
+                f"{html.escape(r['title'])} – {html.escape(r['company'])} (applied {html.escape(r.get('applied_on') or 'earlier')})"
+                for r in reposts) + "</p>" if reposts else "") +
+            "<p>Run <code>python -m jobhunter fill &lt;id&gt;</code> to open a pre-filled form. "
             "You always click Submit yourself.</p>")
     return "\n".join(md), page
 

@@ -24,19 +24,46 @@ FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k i
     (r"phone|telefon|mobile|handy", "phone"),
     (r"linkedin", "linkedin"),
     (r"github", "github"),
+    (r"xing", "xing"),
     (r"website|portfolio|personal (site|url)", "github"),
+    (r"salutation|anrede|^\s*title\s*\*?\s*$", "salutation"),
+    (r"date of birth|birth ?date|birthday|geburtsdatum", "date_of_birth"),
+    (r"nationality|citizenship|staatsangehörigkeit|staatsangehoerigkeit", "nationality"),
+    (r"postal|zip|postleitzahl|\bplz\b", "postal_code"),
+    (r"street|straße|strasse|address line|^\s*(home |postal |mailing )?address|anschrift|adresse", "street"),
+    (r"\bcountry\b|\bland\b", "country"),
+    (r"driv(er.?s|ing) licen[cs]e|führerschein|fuehrerschein", "driving_licence"),
+    (r"job ?title|position title|current (title|position|role)|aktuelle position|jobtitel", "current_title"),
     (r"current (company|employer)|aktueller arbeitgeber", "current_company"),
-    (r"current (title|position|role)", "current_title"),
     (r"salary|gehalt|compensation expectation", "salary_expectation"),
-    (r"start date|notice period|kündigungsfrist|eintritt|earliest", "earliest_start_date"),
+    (r"start date|notice period|kündigungsfrist|eintritt|earliest|availability|verfügbar", "earliest_start_date"),
+    (r"residence permit|residence title|aufenthalt|visa (status|type)|immigration status|permit type", "residence_permit"),
     (r"sponsor|visa", "requires_sponsorship"),
-    (r"authori[sz]ed|work permit|right to work|eligible to work|arbeitserlaubnis", "work_authorization"),
-    (r"how did you (hear|find)|wie sind sie|where did you", "how_did_you_hear"),
+    (r"authori[sz]ed|work permit|right to work|eligible to work|arbeitserlaubnis|arbeitsgenehmigung", "work_authorization"),
+    (r"how did you (hear|find)|wie sind sie|wie hast du|where did you|referral source|\bsource\b", "how_did_you_hear"),
+    (r"applied .*before|previously applied|bereits beworben|worked (here|for us)|previously (employed|worked)", "applied_before"),
+    (r"\breferr|know (anyone|someone)|empfohlen|empfehlung", "referred"),
+    (r"non-?compete|wettbewerbsverbot|restrictive covenant", "non_compete"),
+    (r"relocat|umzug|umziehen", "relocation_answer"),
+    (r"remote|hybrid|on-?site|work(ing)? model|arbeitsmodell|home ?office", "work_model"),
+    (r"full[- ]?time|part[- ]?time|vollzeit|teilzeit|employment type|working hours|wochenstunden", "employment_type"),
+    (r"contract type|vertragsart|befrist|permanent|fixed[- ]term|freelance", "contract_type"),
+    (r"travel|reise", "travel"),
+    (r"graduat|abschlussdatum|completion date|expected (completion|degree)", "graduation_date"),
+    (r"\bgpa\b|cgpa|\bgrade\b|abschlussnote|durchschnittsnote|\bnote\b(?!s)", "degree_grade"),
+    (r"highest (degree|level of education|education)|höchster (bildungs)?abschluss|education level|degree", "highest_degree"),
+    (r"university|universität|hochschule|school|institution", "university"),
     (r"german|deutsch", "german_level"),
     (r"english|englisch", "english_level"),
     (r"\bcity\b|\blocation\b|where are you (based|located)|wohnort|\bort\b", "city"),
     (r"cover letter|anschreiben|motivation", "cover_letter_text"),
 ]]
+
+# "How many years of experience do you have with SQL?" -> answers.years_sql
+TOOL_YEARS = ["power bi", "postgres", "airflow", "tableau", "python", "docker", "sql", "dbt"]
+YEARS_Q = re.compile(r"\byears?\b|\bjahre", re.I)
+EXPERIENCE_Q = re.compile(r"experience|erfahrung|berufserfahrung", re.I)
+
 
 # Open questions answered from the tailored cover letter (or by Claude, if an API key is set).
 QUESTION_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k in [
@@ -62,9 +89,10 @@ def choose_option(label: str, options: list[str], values: dict[str, str]) -> str
     real = [o for o in options if not PLACEHOLDER.match(o)]
     if not real:
         return ""
-    if SENSITIVE.search(label):
-        return next((o for o in real if PREFER_NOT.search(o)), "")
     key, value = match_field(label, values)
+    shared = key in ("nationality", "date_of_birth", "salutation") and value  # the person chose to share these
+    if SENSITIVE.search(label) and not shared:
+        return next((o for o in real if PREFER_NOT.search(o)), "")
     if not value:
         if re.search(r"country|land\b|where .*(based|live|located)", label, re.I):
             value = values.get("country", "")
@@ -140,6 +168,7 @@ def value_map(profile: dict, letter_text: str = "") -> dict[str, str]:
         "current_title": exp0.get("title", ""),
         "cover_letter_text": letter_text,
         "country": me.get("country", "Germany"),
+        "xing": me.get("xing", ""),
     }
     values.update({k: str(v) for k, v in answers.items() if v})
     return values
@@ -205,10 +234,36 @@ def claude_answer(question: str, job: dict, profile: dict, letter_paragraphs: li
 
 def match_field(label: str, values: dict[str, str]) -> tuple[str, str]:
     """Return (key, value) for a form label, or ('', '') if we should not touch it."""
+    if YEARS_Q.search(label) and (EXPERIENCE_Q.search(label) or re.search(r"how many|wie viele", label, re.I)):
+        low = label.lower()
+        for tool in TOOL_YEARS:
+            if re.search(rf"(?<![\w]){re.escape(tool)}", low):
+                key = "years_" + tool.replace(" ", "_")
+                return key, values.get(key, "")
+        return "years_experience", values.get("years_experience", "")
     for pattern, key in FIELD_RULES:
         if pattern.search(label):
             return key, values.get(key, "")
     return "", ""
+
+
+def fit_to_input(value: str, input_type: str) -> str:
+    """Adapt a saved answer to the input type: numbers for number fields, YYYY-MM-DD for date fields."""
+    if input_type == "number":
+        m = re.search(r"\d{1,3}(?:[.,]\d{3})+(?!\d)|\d+(?:[.,]\d+)?", value)
+        if not m:
+            return ""
+        text = m.group(0)
+        if re.fullmatch(r"\d{1,3}(?:[.,]\d{3})+", text):   # 55,000 or 55.000 -> 55000
+            text = re.sub(r"[.,]", "", text)
+        number = float(text.replace(",", "."))
+        return str(int(round(number))) if number >= 1 else "1"
+    if input_type == "date":
+        m = re.match(r"\s*(\d{1,2})[./-](\d{1,2})[./-](\d{4})\s*$", value)
+        if m:
+            return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+        return value if re.match(r"\d{4}-\d{2}-\d{2}$", value) else ""
+    return value
 
 
 def letter_plain_text(job: dict, profile: dict, paragraphs: list[str]) -> str:
@@ -291,6 +346,7 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
             if not info["visible"] or info["value"]:
                 continue
             key, value = match_field(info["label"], values)
+            value = fit_to_input(value, info["type"]) if value else value
             question = "" if key else match_question(info["label"])
             if value:
                 el.fill(value)

@@ -9,12 +9,39 @@ from pathlib import Path
 from . import notify
 from .collectors import collect_all
 from .config import DATA_DIR, OUTPUT_DIR, Settings
+from .dedupe import days_since
+from .excel import export_excel, sync_from_excel
 from .documents import make_documents
 from .filters import filter_jobs, quick_keep
 from .storage import Store
 from .tailor import tailor
 
 log = logging.getLogger("jobhunter")
+
+
+def skip_known_jobs(store: Store, jobs: list[dict], reapply_after_days: int = 180):
+    """Drop reposts of roles you already applied to, and second copies of the same role (other job board)."""
+    fresh, reposts, duplicates = [], [], []
+    for job in jobs:
+        matches = store.find_same_job(job["company"], job["title"], job["uid"])
+        applied = [m for m in matches if m["status"] in ("applied", "interview", "offer", "rejected")
+                   and days_since(m.get("applied_at") or m.get("collected_at") or "") <= reapply_after_days]
+        if applied:
+            a = applied[0]
+            store.update(job["uid"], status="skipped",
+                         excluded_reason=f"already applied on {a.get('applied_at') or '?'} (id {a['uid'][:8]}) - repost")
+            reposts.append(dict(job, applied_on=a.get("applied_at") or "", status=a["status"]))
+            continue
+        open_copy = [m for m in matches if m["status"] in ("new", "prepared")]
+        if open_copy:
+            store.update(job["uid"], status="skipped",
+                         excluded_reason=f"same job as {open_copy[0]['uid'][:8]} ({open_copy[0]['source']})")
+            duplicates.append(job)
+            continue
+        fresh.append(job)
+    if reposts or duplicates:
+        log.info("Skipped %d reposts you already applied to and %d duplicates", len(reposts), len(duplicates))
+    return fresh, reposts, duplicates
 
 
 def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
@@ -36,6 +63,8 @@ def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
 def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True, session=None) -> dict:
     store = Store(settings.database_url)
     search = settings.search
+    excel_path = DATA_DIR / "applications.xlsx"
+    sync_from_excel(store, excel_path)   # statuses you changed in Excel (e.g. applied on LinkedIn)
 
     raw = collect_all(settings, keep=quick_keep(search), session=session)
     kept, dropped = filter_jobs(raw, search)
@@ -44,6 +73,7 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     relevant_dropped = [j for j in dropped if not j.excluded_reason.startswith("title not in target")]
     new_uids = set(store.save(kept + relevant_dropped))
     new_jobs = [store.get(j.uid) for j in kept if j.uid in new_uids]
+    new_jobs, reposts, duplicates = skip_known_jobs(store, new_jobs, search.get("reapply_after_days", 180))
     log.info("Collected %d · matching %d · new %d", len(raw), len(kept), len(new_jobs))
 
     prepared: dict[str, dict] = {}
@@ -57,7 +87,8 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
                 log.warning("Could not prepare %s: %s", job["title"], exc)
 
     tracker = store.export_tracker(DATA_DIR / "tracker.csv")
-    md, page = notify.build_digest(new_jobs, prepared, store.stats())
+    excel_file = export_excel(store, excel_path)
+    md, page = notify.build_digest(new_jobs, prepared, store.stats(), reposts)
     digest_path = DATA_DIR / f"digest-{date.today().isoformat()}.md"
     digest_path.write_text(md, encoding="utf-8")
 
@@ -74,6 +105,7 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
 
     return {"collected": len(raw), "matching": len(kept), "new": len(new_jobs),
             "prepared": len(prepared), "dropped": len(dropped), "tracker": str(tracker),
+            "reposts_already_applied": len(reposts), "duplicates": len(duplicates), "excel": str(excel_file),
             "digest": str(digest_path), "sent": sent,
             "drop_reasons": _reason_counts(dropped)}
 

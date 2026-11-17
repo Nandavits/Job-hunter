@@ -19,8 +19,20 @@ from .storage import STATUSES, Store
 log = logging.getLogger("jobhunter")
 
 
-def _store(settings) -> Store:
-    return Store(settings.database_url)
+EXCEL = DATA_DIR / "applications.xlsx"
+
+
+def _store(settings, sync: bool = True) -> Store:
+    store = Store(settings.database_url)
+    if sync:
+        from .excel import sync_from_excel
+        sync_from_excel(store, EXCEL)   # pick up statuses changed in Excel
+    return store
+
+
+def _export(store: Store) -> None:
+    from .excel import export_excel
+    print(f"Excel tracker: {export_excel(store, EXCEL)}")
 
 
 def _need(store: Store, uid: str) -> dict:
@@ -75,6 +87,16 @@ def cmd_fill(args, settings):
     from .pipeline import prepare_job
     store = _store(settings)
     job = _need(store, args.id)
+    earlier = store.applied_versions(job)
+    if earlier:
+        e = earlier[0]
+        print(f"\n!! You already applied to this role: {e['company']} - {e['title']}"
+              f" on {e.get('applied_at') or '?'} (status: {e['status']}, id {e['uid'][:8]}).")
+        if input("Apply again anyway? [y/N] ").strip().lower() != "y":
+            store.update(job["uid"], status="skipped", excluded_reason=f"already applied (id {e['uid'][:8]})")
+            print("Skipped.")
+            _export(store)
+            return
     if args.url:
         job["apply_url"] = args.url
         store.update(job["uid"], apply_url=args.url)
@@ -96,18 +118,22 @@ def cmd_fill(args, settings):
     if report.needs_you:
         print("Needs your answer:", *report.needs_you, sep="\n  ")
     if input("\nDid you submit the application? [y/N] ").strip().lower() == "y":
-        store.update(job["uid"], status="applied")
-        print("Marked as applied.")
+        retired = store.mark_applied(job["uid"])
+        print("Marked as applied." + (f" Also hid {retired} copy/copies of this job from other sources." if retired else ""))
+    _export(store)
 
 
 def cmd_mark(args, settings):
     store = _store(settings)
     job = _need(store, args.id)
+    if args.status == "applied":
+        store.mark_applied(job["uid"])
     values = {"status": args.status}
     if args.note:
         values["notes"] = ((job.get("notes") or "") + f"\n{datetime.now():%Y-%m-%d}: {args.note}").strip()
     store.update(job["uid"], **values)
     print(f"{job['company']} – {job['title']}: {args.status}")
+    _export(store)
 
 
 def cmd_add(args, settings):
@@ -122,6 +148,11 @@ def cmd_add(args, settings):
         print(f"Warning: the filter would skip this job ({job.excluded_reason}). Saved anyway as 'new'.")
         store.update(job.uid, status="new", excluded_reason="")
     print(f"Added {job.uid[:8]} (score {job.score}). Next: python -m jobhunter prepare {job.uid[:8]}")
+    _export(store)
+
+
+def cmd_excel(args, settings):
+    _export(_store(settings))
 
 
 def cmd_export(args, settings):
@@ -255,6 +286,9 @@ def main(argv=None):
     p.add_argument("--location", default="Berlin")
     p.add_argument("--description-file", help="text file with the pasted job description")
     p.set_defaults(func=cmd_add)
+
+    sub.add_parser("excel", help="update data/applications.xlsx (reads your Excel edits first)").set_defaults(
+        func=cmd_excel)
 
     p = sub.add_parser("export", help="write the tracker CSV")
     p.add_argument("--path")
