@@ -149,3 +149,14 @@ def test_email_jobs_then_filtered_by_city(config):
     assert {j.company for j in kept} == {"BEW Berliner Energie und Wärme GmbH", "mobile.de"}
     kept, _ = filter_jobs(jobs, dict(config["search"], anywhere_in_germany=True))
     assert len(kept) == 4  # Oldenburg and Bochum are fine too
+
+
+def test_arbeitnow_parse_and_paging(session):
+    from jobhunter.collectors import arbeitnow
+    jobs = arbeitnow.fetch(session, {"max_pages": 5})
+    assert [j.title for j in jobs] == ["Data Engineer (m/f/d)", "Sales Manager"]
+    job = jobs[0]
+    assert job.company == "Planet A Ventures" and job.location == "Berlin"
+    assert job.url.startswith("https://www.arbeitnow.com/")      # link back to Arbeitnow, as they ask
+    assert "dbt" in job.description and job.posted_at.startswith("2025-")
+    assert sum("arbeitnow" in u for u, _ in session.calls) == 2   # followed links.next once, then stopped

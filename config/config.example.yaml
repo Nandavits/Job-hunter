@@ -81,6 +81,11 @@ search:
   min_score: 35
 
 sources:
+  # Arbeitnow (arbeitnow.com): free public API, Germany, many English-speaking jobs.
+  arbeitnow:
+    enabled: true
+    max_pages: 5
+
   # Bundesagentur für Arbeit (Germany's federal job board, public API, covers many boards).
   arbeitsagentur:
     enabled: true
@@ -144,4 +149,5 @@ digest:
   telegram: false
 
 schedule:
-  daily_at: "08:00"   # Europe/Berlin
+  every_minutes: 30   # check for new jobs every 30 minutes while the computer is on
+  daily_at: "08:00"   # used only if every_minutes is removed
