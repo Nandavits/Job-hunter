@@ -46,7 +46,10 @@ class Settings:
         return self.config.get("sources", {})
 
     def env(self, key: str, default: str = "") -> str:
-        return os.environ.get(key, default) or default
+        value = (os.environ.get(key, default) or default).strip().strip('"').strip("'")
+        if key.endswith("APP_PASSWORD"):
+            value = value.replace(" ", "")  # Google shows app passwords as "abcd efgh ijkl mnop"
+        return value
 
     @property
     def database_url(self) -> str:
