@@ -6,7 +6,7 @@ import json
 import logging
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from .collectors import ats
@@ -144,23 +144,34 @@ def cmd_check_sources(args, settings):
         print(f"{'OK ' if jobs else '---'} {company['name']:<20} {company['ats']:<10} {len(jobs):>4} jobs")
 
 
+def due_today(now: datetime, at: str, last_run: str) -> bool:
+    """True if today's run time has passed and today's run hasn't happened yet."""
+    hour, minute = map(int, at.split(":"))
+    return now.date().isoformat() != last_run and (now.hour, now.minute) >= (hour, minute)
+
+
 def cmd_schedule(args, settings):
+    """Run once a day. If the laptop was off/asleep at the set time, run as soon as it is back on.
+
+    Checks every few minutes instead of sleeping until 08:00, because a long sleep does not
+    notice that the computer was suspended.
+    """
     from .pipeline import run
     at = args.at or settings.config.get("schedule", {}).get("daily_at", "08:00")
-    hour, minute = map(int, at.split(":"))
-    print(f"Running every day at {at} (local time). Ctrl+C to stop.")
+    marker = DATA_DIR / "last_run.txt"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    log.info("Daily run at %s, or later that day if the computer was off. Ctrl+C to stop.", at)
     while True:
+        last_run = marker.read_text().strip() if marker.exists() else ""
         now = datetime.now()
-        nxt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if nxt <= now:
-            nxt += timedelta(days=1)
-        log.info("Next run: %s", nxt)
-        time.sleep((nxt - now).total_seconds())
-        try:
-            settings = load_settings()  # pick up config edits
-            log.info("Run finished: %s", run(settings))
-        except Exception as exc:  # keep the scheduler alive
-            log.exception("Run failed: %s", exc)
+        if due_today(now, at, last_run):
+            try:
+                settings = load_settings()  # pick up config edits
+                log.info("Run finished: %s", run(settings))
+            except Exception as exc:  # keep the scheduler alive
+                log.exception("Run failed: %s", exc)
+            marker.write_text(now.date().isoformat())
+        time.sleep(args.check_every * 60)
 
 
 def main(argv=None):
@@ -217,6 +228,7 @@ def main(argv=None):
 
     p = sub.add_parser("schedule", help="run every day at a fixed time")
     p.add_argument("--at", help="HH:MM, default from config.yaml")
+    p.add_argument("--check-every", type=int, default=5, help="minutes between checks")
     p.set_defaults(func=cmd_schedule)
 
     args = parser.parse_args(argv)

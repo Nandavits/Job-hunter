@@ -27,6 +27,9 @@ def get(session, url: str, *, params=None, headers=None, retries: int = 2, timeo
         else:
             if resp.status_code == 404:
                 return None
+            if 400 <= resp.status_code < 500 and resp.status_code != 429:
+                log.warning("HTTP %s from %s: %s", resp.status_code, url, resp.text[:200])
+                return None
             if resp.status_code == 429 or resp.status_code >= 500:
                 log.warning("HTTP %s from %s, retrying", resp.status_code, url)
             else:

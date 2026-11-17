@@ -23,21 +23,46 @@ def _location(arbeitsort: dict | None) -> str:
     return ", ".join(p for p in (arbeitsort.get("ort"), arbeitsort.get("region")) if p)
 
 
+SEARCH_PATHS = ["/pc/v6/jobs", "/pc/v4/jobs", "/pc/v4/app/jobs"]
+
+
+def _job_list(data: dict) -> list[dict]:
+    """The list key has changed between API versions; find the list of job dicts."""
+    for key in ("stellenangebote", "stellenAngebote", "jobs", "ergebnisse", "content"):
+        if isinstance(data.get(key), list):
+            return data[key]
+    for value in data.values():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            return value
+    return []
+
+
+def _first(item: dict, *keys) -> str:
+    for key in keys:
+        value = item.get(key)
+        if isinstance(value, dict):
+            value = value.get("name") or value.get("ort")
+        if value:
+            return str(value).strip()
+    return ""
+
+
 def parse_search(data: dict) -> list[Job]:
     jobs = []
-    for item in data.get("stellenangebote") or []:
-        refnr = item.get("refnr") or item.get("referenznummer") or ""
+    for item in _job_list(data):
+        refnr = _first(item, "refnr", "referenznummer", "refNr")
         if not refnr:
             continue
         jobs.append(Job(
             source="arbeitsagentur",
             external_id=refnr,
-            company=(item.get("arbeitgeber") or "").strip(),
-            title=(item.get("titel") or item.get("beruf") or "").strip(),
+            company=_first(item, "arbeitgeber", "arbeitgeberName", "firma"),
+            title=_first(item, "titel", "stellenangebotsTitel", "stellentitel", "beruf"),
             url=f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
             apply_url=item.get("externeUrl") or "",
-            location=_location(item.get("arbeitsort")),
-            posted_at=(item.get("aktuelleVeroeffentlichungsdatum") or "")[:10],
+            location=_location(item.get("arbeitsort") or (item.get("arbeitsorte") or [None])[0]),
+            posted_at=_first(item, "aktuelleVeroeffentlichungsdatum", "veroeffentlichungsdatum",
+                             "eintrittsdatum")[:10],
             extra={"beruf": item.get("beruf", "")},
         ))
     return jobs
@@ -56,6 +81,20 @@ def fetch_detail(session, refnr: str) -> dict:
     return resp.json() if resp is not None else {}
 
 
+def search(session, params: dict) -> list[Job]:
+    """Try the API versions newest-first; the agency has retired old paths before."""
+    for path in SEARCH_PATHS:
+        resp = get(session, f"{BASE}{path}", params=params, headers=HEADERS)
+        if resp is None:
+            continue
+        data = resp.json()
+        jobs = parse_search(data)
+        if jobs or _job_list(data) == [] and "maxErgebnisse" in data:
+            return jobs
+        log.warning("Arbeitsagentur %s: unexpected response keys %s", path, list(data)[:10])
+    return []
+
+
 def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_details: int = 60) -> list[Job]:
     """Search each query; fetch full descriptions only for jobs that pass the quick `keep` check."""
     results: dict[str, Job] = {}
@@ -69,21 +108,18 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_det
             "size": 100,
             "page": 1,
         }
-        resp = get(session, f"{BASE}/pc/v4/jobs", params=params, headers=HEADERS)
-        if resp is None:
-            log.warning("Arbeitsagentur search failed for '%s'", query)
-            continue
-        for job in parse_search(resp.json()):
+        found = search(session, params)
+        if not found:
+            log.warning("Arbeitsagentur: no results for '%s'", query)
+        for job in found:
             results.setdefault(job.external_id, job)
 
         if cfg.get("include_remote"):
             params_remote = dict(params, arbeitszeit="ho")
             params_remote.pop("wo"), params_remote.pop("umkreis")
-            resp = get(session, f"{BASE}/pc/v4/jobs", params=params_remote, headers=HEADERS)
-            if resp is not None:
-                for job in parse_search(resp.json()):
-                    job.remote = True
-                    results.setdefault(job.external_id, job)
+            for job in search(session, params_remote):
+                job.remote = True
+                results.setdefault(job.external_id, job)
 
     jobs = [j for j in results.values() if keep is None or keep(j)]
     for job in jobs[:max_details]:

@@ -39,7 +39,10 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
 
     raw = collect_all(settings, keep=quick_keep(search), session=session)
     kept, dropped = filter_jobs(raw, search)
-    new_uids = set(store.save(kept + dropped))
+    # Only remember skipped jobs that were relevant roles (so you can see why they were skipped);
+    # the hundreds of unrelated jobs on big career pages are not stored.
+    relevant_dropped = [j for j in dropped if not j.excluded_reason.startswith("title not in target")]
+    new_uids = set(store.save(kept + relevant_dropped))
     new_jobs = [store.get(j.uid) for j in kept if j.uid in new_uids]
     log.info("Collected %d · matching %d · new %d", len(raw), len(kept), len(new_jobs))
 

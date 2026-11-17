@@ -14,10 +14,7 @@ from .base import get, log
 
 
 # --------------------------------------------------------------------------- Greenhouse
-GREENHOUSE_HOSTS = {
-    "us": ["https://boards-api.greenhouse.io"],
-    "eu": ["https://boards-api.eu.greenhouse.io", "https://boards-api.greenhouse.io"],
-}
+GREENHOUSE_HOSTS = ["https://boards-api.greenhouse.io"]  # serves EU-hosted boards too
 
 
 def parse_greenhouse(data: dict, company: str) -> list[Job]:
@@ -40,7 +37,7 @@ def parse_greenhouse(data: dict, company: str) -> list[Job]:
 
 
 def fetch_greenhouse(session, company: dict) -> list[Job]:
-    for host in GREENHOUSE_HOSTS.get(company.get("region", "us"), GREENHOUSE_HOSTS["us"]):
+    for host in GREENHOUSE_HOSTS:
         resp = get(session, f"{host}/v1/boards/{company['slug']}/jobs", params={"content": "true"})
         if resp is not None:
             return parse_greenhouse(resp.json(), company["name"])
@@ -136,8 +133,9 @@ def _text(node, tag: str) -> str:
     return (found.text or "").strip() if found is not None and found.text else ""
 
 
-def parse_personio(xml_text: str, company: str, slug: str) -> list[Job]:
-    root = ElementTree.fromstring(xml_text)
+def parse_personio(xml: str | bytes, company: str, slug: str) -> list[Job]:
+    """Pass bytes when possible: the XML declares its own encoding (usually UTF-8)."""
+    root = ElementTree.fromstring(xml)
     jobs = []
     for pos in root.iter("position"):
         pid = _text(pos, "id")
@@ -171,8 +169,8 @@ def fetch_personio(session, company: dict) -> list[Job]:
     for domain in ("jobs.personio.de", "jobs.personio.com"):
         resp = get(session, f"https://{company['slug']}.{domain}/xml", params={"language": "en"},
                    headers={"Accept": "application/xml"})
-        if resp is not None and "<position" in resp.text:
-            return parse_personio(resp.text, company["name"], company["slug"])
+        if resp is not None and b"<position" in resp.content:
+            return parse_personio(resp.content, company["name"], company["slug"])
     log.warning("Personio feed not found or empty: %s (%s)", company["name"], company["slug"])
     return []
 

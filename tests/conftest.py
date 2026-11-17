@@ -16,6 +16,7 @@ class FakeResponse:
         self.status_code = status
         self.text = text if data is None else json.dumps(data)
         self._data = data
+        self.content = self.text.encode("utf-8")
 
     def json(self):
         return self._data if self._data is not None else json.loads(self.text)
@@ -42,7 +43,7 @@ class FakeSession:
             return FakeResponse(data=json.loads((FIX / "ashby.json").read_text()))
         if "zeta.jobs.personio.de/xml" in url:
             return FakeResponse(text=(FIX / "personio.xml").read_text())
-        if url.endswith("/pc/v4/jobs"):
+        if url.endswith("/pc/v6/jobs"):
             return FakeResponse(data=json.loads((FIX / "ba_search.json").read_text()))
         if "/pc/v4/jobdetails/" in url:
             refnr = base64.b64decode(url.rsplit("/", 1)[1]).decode()

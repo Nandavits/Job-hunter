@@ -15,26 +15,26 @@ metadata = MetaData()
 jobs_table = Table(
     "jobs", metadata,
     Column("uid", String(16), primary_key=True),
-    Column("source", String(32), nullable=False),
-    Column("external_id", String(256), nullable=False),
-    Column("company", String(256)),
-    Column("title", String(512)),
-    Column("location", String(512)),
+    Column("source", Text, nullable=False),
+    Column("external_id", Text, nullable=False),
+    Column("company", Text),
+    Column("title", Text),
+    Column("location", Text),
     Column("url", Text),
     Column("apply_url", Text),
     Column("description", Text),
-    Column("posted_at", String(32)),
+    Column("posted_at", Text),
     Column("remote", Boolean, default=False),
     Column("score", Integer, default=0),
     Column("german_required", Boolean, default=False),
     Column("excluded_reason", Text, default=""),
     Column("matched_skills", Text, default=""),
-    Column("collected_at", String(40)),
+    Column("collected_at", Text),
     # application tracking
-    Column("status", String(32), default="new"),   # new | prepared | applied | interview | offer | rejected | skipped
+    Column("status", Text, default="new"),   # new | prepared | applied | interview | offer | rejected | skipped
     Column("cv_path", Text, default=""),
     Column("letter_path", Text, default=""),
-    Column("applied_at", String(40), default=""),
+    Column("applied_at", Text, default=""),
     Column("notes", Text, default=""),
 )
 
