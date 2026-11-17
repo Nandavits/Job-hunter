@@ -57,6 +57,13 @@ class Tailoring:
     fit_notes: list[str] = field(default_factory=list)
     gaps: list[str] = field(default_factory=list)
     engine: str = "fallback"
+    skill_priority: list[str] = field(default_factory=list)   # your skills this ad asks for, listed first
+
+
+def skills_in_ad(profile: dict, job_text: str) -> list[str]:
+    """Every skill from your profile that the job ad mentions (exact profile wording)."""
+    job_text = job_text.lower()
+    return [s for cat in profile.get("skills", {}).values() for s in cat if _skill_in(job_text, s)]
 
 
 # --------------------------------------------------------------------------- helpers
@@ -155,6 +162,7 @@ def fallback(profile: dict, job: dict) -> Tailoring:
         letter_paragraphs=paragraphs,
         fit_notes=[f"Matched skills: {', '.join(matched)}"],
         gaps=gaps,
+        skill_priority=skills_in_ad(profile, job_text),
     )
 
 
@@ -164,6 +172,9 @@ SYSTEM_PROMPT = """You tailor a candidate's CV and cover letter to one job ad.
 Hard rules:
 - Use ONLY facts in the candidate profile. Never invent tools, employers, numbers, degrees or results.
 - You may reorder and rephrase. You may say a tool from the job ad is new to the candidate, honestly.
+- Name every tool the ad asks for that the candidate really has in the summary or the letter, using
+  the ad's own wording (e.g. "Postgres" if the ad says Postgres), so recruiters and ATS filters find it.
+  Never list a tool the candidate does not have as a skill.
 - CV title: short (2-4 words), close to the job title, and truthful for the candidate's experience.
 - Summary: 55-85 words, third-person-free CV style (no "I"), leading with what this job cares about most.
 - Cover letter: exactly 4 paragraphs, 230-320 words total, in English, no greeting or sign-off lines.
@@ -217,6 +228,7 @@ def _validate(data: dict, profile: dict, base: Tailoring) -> Tailoring:
         fit_notes=[str(x) for x in data.get("fit_notes", [])][:6],
         gaps=[str(x) for x in data.get("gaps", [])][:6],
         engine="claude",
+        skill_priority=base.skill_priority,
     )
 
 

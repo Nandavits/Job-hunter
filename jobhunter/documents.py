@@ -107,7 +107,8 @@ def build_cv(profile: dict, t: Tailoring, path: Path, body_pt: float = 9.5) -> P
     w.heading("TECHNICAL SKILLS")
     skills = profile.get("skills", {})
     for cat in t.skills_order or list(skills):
-        w.para([(f"{cat}: ", {"bold": True}), ", ".join(skills[cat])], after=0.5)
+        items = sorted(skills[cat], key=lambda x: x not in t.skill_priority)   # asked-for skills first
+        w.para([(f"{cat}: ", {"bold": True}), ", ".join(items)], after=0.5)
 
     if profile.get("projects"):
         w.heading("PROJECTS")
