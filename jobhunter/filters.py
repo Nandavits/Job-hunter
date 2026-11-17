@@ -47,6 +47,14 @@ ENGLISH_STOPWORDS = set("and the we you for with a an is of to on at our your or
 YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:[-–]|to|bis)?\s*(\d{1,2})?\s*\+?\s*(?:years?|yrs|jahre?n?)\b", re.I)
 EXPERIENCE_WORDS = re.compile(r"experience|erfahrung", re.I)
 
+FOREIGN = re.compile(
+    r"\b(?:united states|usa|u\.s\.|canada|india|brazil|mexico|singapore|australia|united kingdom|uk|england|"
+    r"london|ireland|dublin|netherlands|amsterdam|rotterdam|belgium|brussels|brüssel|france|paris|spain|madrid|"
+    r"barcelona|portugal|lisbon|lissabon|italy|milan|mailand|austria|österreich|vienna|wien|switzerland|schweiz|"
+    r"zurich|zürich|poland|polen|warsaw|warschau|czech|prague|prag|denmark|copenhagen|sweden|stockholm|"
+    r"norway|oslo|finland|helsinki|luxembourg|luxemburg|new york|san francisco|toronto)\b", re.I)
+IN_GERMANY = re.compile(r"\b(?:germany|deutschland|bundesweit)\b", re.I)
+
 FAR_AWAY = re.compile(r"\b(?:united states|usa|u\.s\.|canada|india|brazil|mexico|singapore|australia|"
                       r"new york|san francisco|london|toronto)\b", re.I)
 
@@ -119,6 +127,12 @@ def title_matches(job: Job, cfg: dict) -> str:
 def location_matches(job: Job, cfg: dict) -> str:
     loc = (job.location or "").lower()
     if not loc:
+        return ""
+    if cfg.get("anywhere_in_germany"):
+        # Any German city is fine; drop only jobs that are clearly abroad.
+        if FOREIGN.search(loc) and not (IN_GERMANY.search(loc) or any(
+                _contains(loc, l) for l in cfg.get("locations", []) if l not in ("remote", "germany"))):
+            return f"location '{job.location}'"
         return ""
     if FAR_AWAY.search(loc) and not any(_contains(loc, l) for l in cfg.get("locations", []) if l != "remote"):
         return f"location '{job.location}'"

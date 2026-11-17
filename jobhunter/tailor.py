@@ -39,6 +39,10 @@ def _skill_in(text: str, skill: str) -> bool:
     return any(_has(text, v) for v in _skill_variants(skill))
 
 
+def _lower_first(text: str) -> str:
+    return text[:1].lower() + text[1:]
+
+
 def _join(items: list[str]) -> str:
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
@@ -140,8 +144,8 @@ def fallback(profile: dict, job: dict) -> Tailoring:
             f" {_join(gaps[:3])} would be new to me, "
             "but the concepts carry over directly from my current work and I pick up new tools quickly."
             if gaps else ""),
-        f"I am based in {city} and work fully in English. I would welcome the opportunity to discuss "
-        f"how I can contribute to your team.",
+        f"I am based in {city}{', ' + _lower_first(profile['relocation'].rstrip('.')) + ',' if profile.get('relocation') else ''} "
+        f"and work fully in English. I would welcome the opportunity to discuss how I can contribute to your team.",
     ]
     return Tailoring(
         title=_pick_title(job.get("title", ""), profile.get("default_title", "")),
@@ -177,6 +181,7 @@ Reply with JSON only, no prose, matching:
 def _profile_for_prompt(profile: dict) -> dict:
     p = {k: v for k, v in profile.items() if k not in ("personal", "answers")}
     p["city"] = profile.get("personal", {}).get("city", "")
+    p["relocation"] = profile.get("relocation", "")
     p["experience"] = [
         {**{k: v for k, v in e.items() if k != "bullets"},
          "bullets": {str(i): b["text"] for i, b in enumerate(e["bullets"])}}

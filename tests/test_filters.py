@@ -66,12 +66,22 @@ def test_evaluate_keeps_and_scores(config):
     assert {"dbt", "airflow", "sql"} <= set(job.matched_skills)
 
 
-def test_evaluate_location(config):
-    cfg = config["search"]
+def test_evaluate_location_berlin_only(config):
+    cfg = dict(config["search"], anywhere_in_germany=False)
     assert evaluate(_job(desc=GOOD, location="New York, United States"), cfg).excluded_reason
     assert evaluate(_job(desc=GOOD, location="Munich"), cfg).excluded_reason
     assert not evaluate(_job(desc=GOOD, location="Remote - Germany"), cfg).excluded_reason
     assert not evaluate(_job(desc=GOOD, location="Munich", remote=True), cfg).excluded_reason
+
+
+def test_evaluate_location_anywhere_in_germany(config):
+    cfg = dict(config["search"], anywhere_in_germany=True)
+    for city in ("Munich", "München", "Hamburg", "Oldenburg", "Bochum", "Frankfurt am Main", "Remote - Germany",
+                 "Berlin, Vienna", "Bundesweit"):
+        assert not evaluate(_job(desc=GOOD, location=city), cfg).excluded_reason, city
+    for city in ("New York, United States", "London, UK", "Vienna", "Wien, Österreich", "Amsterdam",
+                 "Zürich, Schweiz", "Remote - Poland"):
+        assert evaluate(_job(desc=GOOD, location=city), cfg).excluded_reason, city
 
 
 def test_evaluate_years(config):

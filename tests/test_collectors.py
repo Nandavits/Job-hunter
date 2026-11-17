@@ -144,5 +144,8 @@ def test_stepstone_alert_plain_text():
 def test_email_jobs_then_filtered_by_city(config):
     from jobhunter.filters import filter_jobs
     jobs = email_alerts.parse_alert_text((FIX / "linkedin_alert.txt").read_text())
-    kept, dropped = filter_jobs(jobs, config["search"])
+    berlin_only = dict(config["search"], anywhere_in_germany=False)
+    kept, _ = filter_jobs(jobs, berlin_only)
     assert {j.company for j in kept} == {"BEW Berliner Energie und Wärme GmbH", "mobile.de"}
+    kept, _ = filter_jobs(jobs, dict(config["search"], anywhere_in_germany=True))
+    assert len(kept) == 4  # Oldenburg and Bochum are fine too

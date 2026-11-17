@@ -10,6 +10,8 @@ personal:
   country: Germany
   linkedin: https://linkedin.com/in/janedoe
   github: https://github.com/janedoe
+relocation: Open to relocating anywhere in Germany
+
 default_title: Data & Analytics Engineer
 default_summary: Data engineer with production experience building analytics infrastructure for a German healthcare billing
   platform. Strong in SQL and PostgreSQL, data modelling with dbt, pipeline orchestration with Apache Airflow and Docker,
