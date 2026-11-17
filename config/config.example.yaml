@@ -97,34 +97,19 @@ sources:
     - {name: 1KOMMA5°, ats: personio, slug: 1komma5grad}
     - {name: GetYourGuide, ats: greenhouse, slug: getyourguide}
     - {name: SumUp, ats: greenhouse, slug: sumup}
-    - {name: Babbel, ats: greenhouse, slug: babbel}
     - {name: Celonis, ats: greenhouse, slug: celonis}
-    - {name: Taxfix, ats: greenhouse, slug: taxfix}
     - {name: Raisin, ats: greenhouse, slug: raisin}
-    - {name: Wefox, ats: greenhouse, slug: wefox}
-    - {name: Omio, ats: greenhouse, slug: omio}
-    - {name: Ecosia, ats: greenhouse, slug: ecosia}
-    - {name: Delivery Hero, ats: greenhouse, slug: deliveryhero}
-    - {name: Zalando, ats: greenhouse, slug: zalando}
     - {name: Trade Republic, ats: greenhouse, slug: traderepublicbank}
-    - {name: Personio, ats: greenhouse, slug: personio}
     - {name: Solaris, ats: greenhouse, slug: solarisbank}
     - {name: Moss, ats: ashby, slug: moss}
     - {name: Enpal, ats: ashby, slug: enpal}
-    - {name: Pitch, ats: ashby, slug: pitch}
     - {name: Flinn, ats: ashby, slug: flinn}
-    - {name: Trade Republic, ats: ashby, slug: traderepublic}
-    - {name: Kittl, ats: ashby, slug: kittl}
     - {name: Parloa, ats: ashby, slug: parloa}
     - {name: Upvest, ats: ashby, slug: upvest}
     - {name: Choco, ats: ashby, slug: choco}
     - {name: Mobimeo, ats: personio, slug: mobimeo}
-    - {name: Doctolib, ats: lever, slug: doctolib}
     - {name: Ada Health, ats: greenhouse, slug: adahealth}
-    - {name: Clue, ats: greenhouse, slug: clue}
     - {name: Spotify, ats: lever, slug: spotify}
-    - {name: Klarna, ats: lever, slug: klarna}
-    - {name: Rabot Energy, ats: personio, slug: rabot}
 
   # Job-alert emails from LinkedIn, StepStone, Indeed, XING, etc. (read-only, via Gmail IMAP).
   # Set up job alerts on those sites first; this only reads the emails they send you.
