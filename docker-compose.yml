@@ -21,6 +21,7 @@ services:
       TZ: Europe/Berlin
     volumes:
       - ./config:/app/config
+      - ./jobhunter:/app/jobhunter   # code changes apply without a rebuild
       - ./data:/app/data
       - ./output:/app/output
     depends_on:
