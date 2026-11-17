@@ -121,3 +121,14 @@ def test_documents_made_in_docker_are_found_locally(tmp_path, monkeypatch):
     assert cli.local_path("/app/output/2026-11-17_Acme_Data_Engineer/CV.pdf") == cv
     assert cli.local_path(str(cv)) == cv
     assert not cli.local_path("/app/output/missing/CV.pdf").exists()
+
+
+def test_every_30_minutes():
+    from datetime import datetime
+    from jobhunter.__main__ import due_interval
+    now = datetime(2026, 11, 18, 10, 0)
+    assert due_interval(now, 30, "")                              # never ran
+    assert due_interval(now, 30, "2026-11-18")                    # old date-only marker
+    assert not due_interval(now, 30, "2026-11-18T09:45")          # 15 min ago
+    assert due_interval(now, 30, "2026-11-18T09:30")              # 30 min ago
+    assert due_interval(now, 30, "2026-11-17T22:10")              # laptop was off overnight

@@ -43,6 +43,10 @@ class FakeSession:
             return FakeResponse(data=json.loads((FIX / "ashby.json").read_text()))
         if "zeta.jobs.personio.de/xml" in url:
             return FakeResponse(text=(FIX / "personio.xml").read_text())
+        if "arbeitnow.com/api/job-board-api" in url:
+            if "page=2" in url:
+                return FakeResponse(data={"data": [], "links": {"next": None}})
+            return FakeResponse(data=json.loads((FIX / "arbeitnow.json").read_text()))
         if url.endswith("/pc/v6/jobs"):
             return FakeResponse(data=json.loads((FIX / "ba_search.json").read_text()))
         if "/pc/v4/jobdetails/" in url:

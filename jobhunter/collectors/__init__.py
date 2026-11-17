@@ -7,7 +7,7 @@ from typing import Callable
 from bs4 import BeautifulSoup
 
 from ..models import Job
-from . import arbeitsagentur, ats, email_alerts
+from . import arbeitnow, arbeitsagentur, ats, email_alerts
 from .base import get, log, make_session
 
 PAGE_SOURCES = {"personio", "greenhouse", "lever", "ashby"}
@@ -51,6 +51,16 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
         if keep:
             fill_missing_descriptions(session, [j for j in found if keep(j)])
         jobs.extend(found)
+
+    an = sources.get("arbeitnow") or {}
+    if an.get("enabled"):
+        try:
+            found = arbeitnow.fetch(session, an)
+            if keep:
+                fill_missing_descriptions(session, [j for j in found if keep(j)])
+            jobs.extend(found)
+        except Exception as exc:
+            log.warning("Arbeitnow failed: %s", exc)
 
     ba = sources.get("arbeitsagentur") or {}
     if ba.get("enabled"):

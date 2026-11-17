@@ -19,6 +19,8 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+rem restart the scheduler so changed settings (e.g. every_minutes) take effect
+docker compose restart jobhunter >nul 2>&1
 echo [2/3] Checking company job boards...
 docker compose run --rm jobhunter python -m jobhunter check-sources > logs\sources.txt 2>&1
 echo Running the job search...
@@ -28,5 +30,5 @@ docker compose run --rm jobhunter python -m jobhunter list > logs\jobs.txt 2>&1
 type logs\jobs.txt
 echo.
 echo DONE >> logs\setup.log
-echo Finished. The daily search runs at 08:00, or as soon as the computer is on that day.
+echo Finished. Job Hunter now checks for new jobs every 30 minutes while Docker Desktop is running.
 pause

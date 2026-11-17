@@ -23,8 +23,9 @@ def test_full_run_and_dedup(settings, session):
     assert "Datenanalyst (m/w/d)" in skipped  # written in German
     assert "Koch (m/w/d)" not in titles | set(skipped)  # never fetched in detail
 
-    assert result["new"] == 6
-    assert result["prepared"] == 5  # the Munich job's description is too short to tailor from
+    assert "Data Engineer (m/f/d)" in titles  # from Arbeitnow
+    assert result["new"] == 7
+    assert result["prepared"] == 5  # top 5 get documents
     for job in store.list(status="prepared"):
         assert Path(job["cv_path"]).exists() and Path(job["letter_path"]).exists()
         folder = Path(job["cv_path"]).parent
@@ -39,6 +40,7 @@ def test_full_run_and_dedup(settings, session):
 
 
 def test_cv_contains_only_profile_facts(settings, session):
+    settings.config["tailoring"]["top_n"] = 10
     run(settings, send_digest=False, session=session)
     store = Store(settings.database_url)
     job = next(j for j in store.list(status="prepared") if j["company"] == "Gamma")

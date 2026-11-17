@@ -12,6 +12,7 @@ flowchart LR
         AB[Ashby]
         PE[Personio]
         BA[Bundesagentur für Arbeit]
+        AN[Arbeitnow]
         EM[Job-alert emails<br/>LinkedIn · StepStone · Indeed · XING]
     end
     Sources --> F[Filter & score<br/>German level · seniority ·<br/>location · years · skills]
@@ -29,7 +30,7 @@ Applying in Germany without fluent German means most postings are dead ends, and
 
 | Step | Automated | You |
 |---|---|---|
-| Find new jobs from company career pages, the federal job board and your job-alert emails | ✅ | |
+| Find new jobs from company career pages, the federal job board, Arbeitnow and your job-alert emails | ✅ | |
 | Drop jobs needing C1 German, senior roles, wrong city, too many years | ✅ | |
 | Rank by skill match | ✅ | |
 | Tailor CV + write cover letter (honest about gaps) | ✅ | Read once |
@@ -75,11 +76,11 @@ Double-click `apply.bat`. The first run installs Python packages and Chromium in
 ### Run it every morning with Docker
 
 ```bash
-docker compose up -d --build        # PostgreSQL + daily scheduler (08:00 Europe/Berlin)
+docker compose up -d --build        # PostgreSQL + scheduler (every 30 minutes; see schedule in config.yaml)
 docker compose logs -f jobhunter
 ```
 
-If the computer is off or asleep at 08:00, the search runs as soon as it is back on that day (it never runs twice a day). Turn on *Docker Desktop → Settings → General → Start Docker Desktop when you sign in* so it starts by itself.
+It checks for new jobs every `schedule.every_minutes` (30) while the computer is on, and right after it wakes up. Remove `every_minutes` to run once a day at `daily_at` instead. Turn on *Docker Desktop → Settings → General → Start Docker Desktop when you sign in* so it starts by itself.
 
 The form filler opens a visible browser, so run `fill` on your own computer, not in Docker.
 
@@ -142,7 +143,7 @@ Paste the line into `sources.companies` in `config/config.yaml`, then check all 
 
 ```
 jobhunter/
-  collectors/      greenhouse · lever · ashby · personio (ats.py), arbeitsagentur.py, email_alerts.py
+  collectors/      greenhouse · lever · ashby · personio (ats.py), arbeitsagentur.py, arbeitnow.py, email_alerts.py
   filters.py       German-level detection, seniority, location, years, skill scoring
   storage.py       SQLAlchemy models, dedup, application tracker + CSV export
   dedupe.py        same-role detection across reposts and job boards
@@ -154,7 +155,7 @@ jobhunter/
   pipeline.py      collect → filter → store → tailor → digest
   __main__.py      CLI
 config/            config.example.yaml, profile.example.yaml (real ones are git-ignored)
-tests/             118 tests with recorded API fixtures and sample application forms
+tests/             120 tests with recorded API fixtures and sample application forms
 ```
 
 ## Tests

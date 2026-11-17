@@ -191,6 +191,12 @@ def cmd_check_sources(args, settings):
         jobs = ats.fetch_company(session, company)
         print(f"{'OK ' if jobs else '---'} {company['name']:<20} {company['ats']:<10} {len(jobs):>4} jobs")
 
+    an = settings.sources.get("arbeitnow") or {}
+    if an.get("enabled"):
+        from .collectors import arbeitnow
+        jobs = arbeitnow.fetch(session, dict(an, max_pages=1))
+        print(f"{'OK ' if jobs else '---'} {'Arbeitnow':<20} {'api':<10} {len(jobs):>4} jobs on page 1")
+
     ba = dict(settings.sources.get("arbeitsagentur") or {}, include_remote=False)
     if ba.get("enabled"):
         ba["queries"] = (ba.get("queries") or ["Data Engineer"])[:1]
@@ -220,30 +226,44 @@ def cmd_check_sources(args, settings):
 def due_today(now: datetime, at: str, last_run: str) -> bool:
     """True if today's run time has passed and today's run hasn't happened yet."""
     hour, minute = map(int, at.split(":"))
-    return now.date().isoformat() != last_run and (now.hour, now.minute) >= (hour, minute)
+    return now.date().isoformat() != last_run[:10] and (now.hour, now.minute) >= (hour, minute)
+
+
+def due_interval(now: datetime, every_minutes: int, last_run: str) -> bool:
+    """True if the last run is at least `every_minutes` old (or there was none)."""
+    try:
+        last = datetime.fromisoformat(last_run)
+    except ValueError:
+        return True
+    if len(last_run) <= 10:  # only a date was stored (older versions)
+        return True
+    return (now - last).total_seconds() >= every_minutes * 60 - 30
 
 
 def cmd_schedule(args, settings):
-    """Run once a day. If the laptop was off/asleep at the set time, run as soon as it is back on.
+    """Run on a schedule while the computer is on.
 
-    Checks every few minutes instead of sleeping until 08:00, because a long sleep does not
-    notice that the computer was suspended.
+    schedule.every_minutes (e.g. 30): check for new jobs every N minutes.
+    otherwise schedule.daily_at: once a day, or as soon as the computer is on after that time.
     """
     from .pipeline import run
-    at = args.at or settings.config.get("schedule", {}).get("daily_at", "08:00")
+    cfg = settings.config.get("schedule", {})
+    every = args.every or cfg.get("every_minutes")
+    at = args.at or cfg.get("daily_at", "08:00")
     marker = DATA_DIR / "last_run.txt"
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    log.info("Daily run at %s, or later that day if the computer was off. Ctrl+C to stop.", at)
+    log.info("Checking for new jobs every %s minutes." % every if every else
+             "Daily run at %s, or later that day if the computer was off." % at)
     while True:
         last_run = marker.read_text().strip() if marker.exists() else ""
         now = datetime.now()
-        if due_today(now, at, last_run):
+        if (due_interval(now, int(every), last_run) if every else due_today(now, at, last_run)):
             try:
                 settings = load_settings()  # pick up config edits
                 log.info("Run finished: %s", run(settings))
             except Exception as exc:  # keep the scheduler alive
                 log.exception("Run failed: %s", exc)
-            marker.write_text(now.date().isoformat())
+            marker.write_text(now.isoformat(timespec="minutes"))
         time.sleep(args.check_every * 60)
 
 
@@ -305,6 +325,7 @@ def main(argv=None):
 
     p = sub.add_parser("schedule", help="run every day at a fixed time")
     p.add_argument("--at", help="HH:MM, default from config.yaml")
+    p.add_argument("--every", type=int, help="minutes between searches (overrides daily_at)")
     p.add_argument("--check-every", type=int, default=5, help="minutes between checks")
     p.set_defaults(func=cmd_schedule)
 
