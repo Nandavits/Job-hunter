@@ -138,10 +138,36 @@ def cmd_discover(args, settings):
 
 
 def cmd_check_sources(args, settings):
+    from .collectors import arbeitsagentur, email_alerts
     session = make_session()
     for company in settings.sources.get("companies") or []:
         jobs = ats.fetch_company(session, company)
         print(f"{'OK ' if jobs else '---'} {company['name']:<20} {company['ats']:<10} {len(jobs):>4} jobs")
+
+    ba = dict(settings.sources.get("arbeitsagentur") or {}, include_remote=False)
+    if ba.get("enabled"):
+        ba["queries"] = (ba.get("queries") or ["Data Engineer"])[:1]
+        jobs = arbeitsagentur.fetch(session, ba, max_details=3)
+        with_text = sum(len(j.description) > 100 for j in jobs[:3])
+        print(f"{'OK ' if jobs else '---'} {'Arbeitsagentur':<20} {'api':<10} {len(jobs):>4} jobs, "
+              f"{with_text}/{min(3, len(jobs))} with full description")
+
+    mail = settings.sources.get("email_alerts") or {}
+    address, password = settings.env("GMAIL_ADDRESS"), settings.env("GMAIL_APP_PASSWORD")
+    if not mail.get("enabled"):
+        print("--- Email alerts         disabled in config.yaml (email_alerts.enabled)")
+    elif not (address and password):
+        print("--- Email alerts         GMAIL_ADDRESS / GMAIL_APP_PASSWORD missing in .env")
+    else:
+        try:
+            jobs = email_alerts.fetch(dict(mail, days_back=max(mail.get("days_back", 2), 7)), address, password)
+            by_site: dict[str, int] = {}
+            for job in jobs:
+                by_site[job.extra.get("site", "?")] = by_site.get(job.extra.get("site", "?"), 0) + 1
+            detail = ", ".join(f"{k} {v}" for k, v in sorted(by_site.items())) or "no job links found"
+            print(f"{'OK ' if jobs else '---'} {'Email alerts':<20} {'imap':<10} {len(jobs):>4} jobs ({detail})")
+        except Exception as exc:
+            print(f"--- Email alerts         login/read failed: {exc}")
 
 
 def due_today(now: datetime, at: str, last_run: str) -> bool:

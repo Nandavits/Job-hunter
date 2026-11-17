@@ -113,3 +113,36 @@ def test_empty_feed_description_is_filled_from_page(session, config, profile):
     job = next(j for j in jobs if j.title == "Junior Data Analyst")
     assert "Datenmodelle" in job.description
     assert evaluate(job, config["search"]).excluded_reason.startswith("needs German C1")
+
+
+def test_linkedin_alert_plain_text():
+    jobs = email_alerts.parse_alert_text((FIX / "linkedin_alert.txt").read_text())
+    assert [(j.title, j.company, j.location) for j in jobs] == [
+        ("Data Analyst:in", "BEW Berliner Energie und Wärme GmbH", "Berlin"),
+        ("Analytics Engineer (w/m/d)", "sikwel GmbH", "Oldenburg"),
+        ("Data Analytics Engineer (m/w/d)", "BV Bestseller Verlag GmbH", "Bochum"),
+        ("Data Analyst (d/f/m) - Customer Service (18 months)", "mobile.de", "Berlin"),
+    ]
+    assert jobs[0].url == "https://www.linkedin.com/jobs/view/4490113275/"
+    assert jobs[0].external_id == "linkedin:4490113275"
+
+
+def test_stepstone_alert_plain_text():
+    jobs = email_alerts.parse_alert_text((FIX / "stepstone_alert.txt").read_text())
+    assert [(j.title, j.company, j.location) for j in jobs] == [
+        ("Junior Data Engineer (m/w/d)", "Sigma Analytics GmbH", "Berlin-Mitte"),
+        ("BI Analyst (m/w/d)", "Tau AG", "Berlin"),
+        ("Data Analyst (m/w/d)", "Omega GmbH", "Potsdam"),
+    ]
+    assert all(j.url.startswith("https://click.stepstone.de/") for j in jobs)
+    # the same job in tomorrow's email (different tracking link) gets the same id
+    again = email_alerts.parse_alert_text(
+        (FIX / "stepstone_alert.txt").read_text().replace("tracking-1", "tracking-2"))
+    assert again[0].external_id == jobs[0].external_id
+
+
+def test_email_jobs_then_filtered_by_city(config):
+    from jobhunter.filters import filter_jobs
+    jobs = email_alerts.parse_alert_text((FIX / "linkedin_alert.txt").read_text())
+    kept, dropped = filter_jobs(jobs, config["search"])
+    assert {j.company for j in kept} == {"BEW Berliner Energie und Wärme GmbH", "mobile.de"}
