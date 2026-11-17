@@ -48,6 +48,78 @@ QUESTION_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, 
     (r"about (yourself|you)\b|introduce yourself|über (dich|sie|mich)|short summary|who are you", "about_you"),
 ]]
 
+SENSITIVE = re.compile(r"gender|geschlecht|pronoun|race|ethnic|disab|behinder|veteran|sexual|orientation|"
+                       r"religio|marital|age\b|date of birth|geburtsdatum|nationality|citizenship|staatsangeh", re.I)
+PREFER_NOT = re.compile(r"prefer not|decline|don.t wish|do not wish|not to (say|answer|disclose)|keine angabe|"
+                        r"möchte (ich )?nicht", re.I)
+YES = re.compile(r"^\s*(yes|ja|y)\b", re.I)
+NO = re.compile(r"^\s*(no|nein|n)\b", re.I)
+PLACEHOLDER = re.compile(r"^\s*(select|choose|please|bitte|--|—|-|\.\.\.)|^\s*$", re.I)
+
+
+def choose_option(label: str, options: list[str], values: dict[str, str]) -> str:
+    """Pick the option to select for a dropdown / radio question, or '' to leave it to the person."""
+    real = [o for o in options if not PLACEHOLDER.match(o)]
+    if not real:
+        return ""
+    if SENSITIVE.search(label):
+        return next((o for o in real if PREFER_NOT.search(o)), "")
+    key, value = match_field(label, values)
+    if not value:
+        if re.search(r"country|land\b|where .*(based|live|located)", label, re.I):
+            value = values.get("country", "")
+        elif re.search(r"how did you (hear|find)|wie .*erfahren|source", label, re.I):
+            value = values.get("how_did_you_hear", "")
+    if not value:
+        return ""
+    if YES.match(value) or NO.match(value):
+        pattern = YES if YES.match(value) else NO
+        return next((o for o in real if pattern.match(o)), "")
+    low = value.lower()
+    exact = next((o for o in real if o.strip().lower() == low), "")
+    if exact:
+        return exact
+    contains = [o for o in real if o.strip().lower() in low or low in o.strip().lower()]
+    if contains:
+        return max(contains, key=len)
+    words = set(re.findall(r"[a-zäöü]{4,}", low))
+    scored = sorted(((len(words & set(re.findall(r"[a-zäöü]{4,}", o.lower()))), o) for o in real), reverse=True)
+    if scored and scored[0][0] > 0:
+        return scored[0][1]
+    if key == "how_did_you_hear":
+        return next((o for o in real if re.search(r"website|career|karriere|company|other|andere", o, re.I)), "")
+    return ""
+
+
+def claude_choose(question: str, options: list[str], job: dict, profile: dict) -> str:
+    """Optional: let Claude pick an option for a question we have no saved answer for."""
+    key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    real = [o for o in options if not PLACEHOLDER.match(o)]
+    if not key or not real or SENSITIVE.search(question):
+        return ""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        facts = {k: profile.get(k) for k in ("default_summary", "experience", "skills", "education",
+                                             "languages", "relocation", "answers")}
+        msg = client.messages.create(
+            model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
+            max_tokens=50,
+            system=("Pick the option that truthfully answers a job-application question for the candidate, "
+                    "using ONLY the candidate facts. Reply with the exact option text, or NONE if the facts "
+                    "do not clearly answer it."),
+            messages=[{"role": "user", "content":
+                       f"Question: {question}\nOptions:\n" + "\n".join(f"- {o}" for o in real) +
+                       f"\n\nJob: {job.get('title')} at {job.get('company')}\n"
+                       f"Candidate facts: {json.dumps(facts, ensure_ascii=False)[:6000]}"}],
+        )
+        answer = "".join(getattr(b, "text", "") for b in msg.content).strip().strip('"').lstrip("- ")
+        return next((o for o in real if o.strip() == answer), "")
+    except Exception as exc:
+        log.warning("Claude choice failed: %s", exc)
+        return ""
+
+
 SUBMIT_TEXT = re.compile(r"submit|apply|send|bewerb|absenden|senden", re.I)
 
 
@@ -67,6 +139,7 @@ def value_map(profile: dict, letter_text: str = "") -> dict[str, str]:
         "current_company": exp0.get("company", ""),
         "current_title": exp0.get("title", ""),
         "cover_letter_text": letter_text,
+        "country": me.get("country", "Germany"),
     }
     values.update({k: str(v) for k, v in answers.items() if v})
     return values
@@ -230,13 +303,67 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
             elif info["required"]:
                 report.needs_you.append(info["label"] or "(unlabelled required field)")
 
-        # Dropdowns, checkboxes and radio questions are left to you on purpose.
-        for sel in ("select", "input[type=checkbox][required]", "[role=radiogroup]", "[role=combobox]"):
-            loc = page.locator(sel)
-            for i in range(loc.count()):
-                info = loc.nth(i).evaluate(LABEL_JS)
-                if info["visible"] and (info["required"] or sel != "select"):
-                    report.needs_you.append(f"{info['label'] or sel} (choose yourself)")
+        # Dropdowns: saved answers first, then Claude (if a key is set); sensitive ones -> "prefer not to say".
+        selects = page.locator("select")
+        for i in range(selects.count()):
+            el = selects.nth(i)
+            info = el.evaluate(LABEL_JS)
+            if not info["visible"]:
+                continue
+            options = el.evaluate("e => [...e.options].map(o => o.text.trim())")
+            current = el.evaluate("e => e.selectedIndex >= 0 ? e.options[e.selectedIndex].text.trim() : ''")
+            if current and not PLACEHOLDER.match(current):
+                continue
+            choice = choose_option(info["label"], options, values) or claude_choose(info["label"], options, job, profile)
+            if choice:
+                el.select_option(label=choice)
+                report.filled.append(f"{info['label']} = {choice}")
+            elif info["required"]:
+                report.needs_you.append(f"{info['label']} (choose yourself)")
+
+        # Radio-button questions (Yes/No etc.), grouped by name.
+        groups = page.evaluate("""() => {
+          const out = {};
+          for (const r of document.querySelectorAll('input[type=radio]')) {
+            if (!r.name || !(r.offsetWidth || r.offsetHeight || r.getClientRects().length)) continue;
+            const g = out[r.name] || (out[r.name] = {question: '', options: [], ids: [], checked: false, required: false});
+            const lab = (r.id && document.querySelector(`label[for="${CSS.escape(r.id)}"]`)) || r.closest('label');
+            g.options.push(((lab && lab.innerText) || r.value || '').trim());
+            g.ids.push(r.id || '');
+            g.checked = g.checked || r.checked;
+            g.required = g.required || r.required;
+            if (!g.question) {
+              const box = r.closest('fieldset, [role=radiogroup], .application-question, [class*=question], [class*=field]');
+              const legend = box && box.querySelector('legend, label:not(:has(input)), [class*=label], h3, h4, p');
+              g.question = ((legend && legend.innerText) || (box && box.innerText.split('\\n')[0]) || r.name).trim();
+            }
+          }
+          return out;
+        }""")
+        for name, g in groups.items():
+            if g["checked"]:
+                continue
+            choice = choose_option(g["question"], g["options"], values) or \
+                claude_choose(g["question"], g["options"], job, profile)
+            if choice:
+                idx = g["options"].index(choice)
+                radio = page.locator(f'input[type=radio][name="{name}"]').nth(idx)
+                radio.check()
+                report.filled.append(f"{g['question'][:60]} = {choice}")
+            else:
+                report.needs_you.append(f"{g['question'][:60]} (choose yourself)")
+
+        # Required checkboxes are usually privacy / terms consent: that is your decision, so they stay for you.
+        boxes = page.locator("input[type=checkbox][required]")
+        for i in range(boxes.count()):
+            info = boxes.nth(i).evaluate(LABEL_JS)
+            if info["visible"]:
+                report.needs_you.append(f"{info['label'][:60]} (tick yourself)")
+        combos = page.locator("[role=combobox]")
+        for i in range(combos.count()):
+            info = combos.nth(i).evaluate(LABEL_JS)
+            if info["visible"] and info["required"] and not info["value"]:
+                report.needs_you.append(f"{info['label'][:60]} (choose yourself)")
 
         # Mark the submit button, never click it.
         page.evaluate(BANNER_JS)
