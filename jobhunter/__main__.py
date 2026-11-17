@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -246,7 +247,6 @@ def cmd_schedule(args, settings):
     schedule.every_minutes (e.g. 30): check for new jobs every N minutes.
     otherwise schedule.daily_at: once a day, or as soon as the computer is on after that time.
     """
-    from .pipeline import run
     cfg = settings.config.get("schedule", {})
     every = args.every or cfg.get("every_minutes")
     at = args.at or cfg.get("daily_at", "08:00")
@@ -258,11 +258,10 @@ def cmd_schedule(args, settings):
         last_run = marker.read_text().strip() if marker.exists() else ""
         now = datetime.now()
         if (due_interval(now, int(every), last_run) if every else due_today(now, at, last_run)):
-            try:
-                settings = load_settings()  # pick up config edits
-                log.info("Run finished: %s", run(settings))
-            except Exception as exc:  # keep the scheduler alive
-                log.exception("Run failed: %s", exc)
+            # A fresh process each time, so updated code and settings are used without restarting.
+            result = subprocess.run([sys.executable, "-m", "jobhunter", "run"], check=False)
+            if result.returncode:
+                log.warning("Run failed with exit code %s", result.returncode)
             marker.write_text(now.isoformat(timespec="minutes"))
         time.sleep(args.check_every * 60)
 
