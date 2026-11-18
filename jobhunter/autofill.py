@@ -403,6 +403,46 @@ def target_url(job: dict) -> str:
     return ad or apply
 
 
+def _open_browser(pw, headless: bool):
+    """Tests: a throwaway headless Chromium. You: your installed Google Chrome with its own lasting
+    profile (cookies and site sign-ins are kept), so "verify you are human" checks behave like in a
+    normal browser. You solve such checks yourself; Job Hunter never touches them."""
+    if headless:
+        browser = pw.chromium.launch(headless=True)
+        return browser, browser.new_page()
+    from .config import DATA_DIR
+    profile_dir = DATA_DIR / "browser-profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    for channel in ("chrome", "msedge", None):
+        try:
+            kwargs = {"channel": channel} if channel else {}
+            context = pw.chromium.launch_persistent_context(str(profile_dir), headless=False, no_viewport=True,
+                                                            **kwargs)
+            page = context.pages[0] if context.pages else context.new_page()
+            return context, page
+        except Exception as exc:
+            log.debug("Browser %s not available: %s", channel or "chromium", exc)
+    browser = pw.chromium.launch(headless=False)
+    return browser, browser.new_page()
+
+
+ANSWER_SHEET_KEYS = ["first_name", "last_name", "email", "phone", "city", "street", "postal_code", "country",
+                     "linkedin", "github", "salutation", "gender", "date_of_birth", "nationality",
+                     "earliest_start_date", "salary_expectation", "work_authorization", "requires_sponsorship",
+                     "residence_permit", "highest_degree", "university", "graduation_date", "german_level",
+                     "english_level", "years_experience", "relocation_answer", "work_model", "how_did_you_hear"]
+
+
+def answer_sheet(job: dict, profile: dict) -> str:
+    """Plain list of your answers, to copy by hand when a form can't be filled automatically."""
+    values = value_map(profile)
+    lines = [f"Answers for {job.get('company')} - {job.get('title')}", "=" * 60]
+    for key in ANSWER_SHEET_KEYS:
+        if values.get(key):
+            lines.append(f"{key.replace('_', ' ').capitalize():<24} {values[key]}")
+    return "\n".join(lines) + "\n"
+
+
 def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], headless: bool = False,
          inspect=None) -> FillReport:
     from playwright.sync_api import sync_playwright
@@ -415,8 +455,7 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
     report = FillReport()
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=headless)
-        page = browser.new_page()
+        browser, page = _open_browser(pw, headless)
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60_000)
         except Exception as exc:
