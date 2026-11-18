@@ -64,6 +64,38 @@ def parse_alert_html(html: str) -> list[Job]:
     return list(jobs.values())
 
 
+GLASSDOOR_LINK = re.compile(r"glassdoor\.[a-z.]+/(?:partner/jobListing\.htm|job-listing/)[^\s\"']*?[?&](?:jobListingId|jl)=(\d+)")
+GLASSDOOR_NOISE = re.compile(r"^(★|[\d.,]+\s*★|schnell bewerben|easy apply|einfach bewerben|neu|new|"
+                             r"\d+\s*(?:t|tg|std|h|d|m|min|tage?|tagen|stunden?)\.?|\d+\+?\s*(?:t|d)|"
+                             r".*[€$£].*|.*\(arbeitgeber.*|.*\(employer.*|.*schätz.*|.*est\.\)?)$", re.I)
+
+
+def parse_glassdoor_html(html: str) -> list[Job]:
+    """Glassdoor job-alert email: each job is one link holding company, title, location, salary, age."""
+    if not html or "glassdoor" not in html.lower():
+        return []
+    soup = BeautifulSoup(html, "html.parser")   # keeps tables inside links (lxml would split them)
+    jobs: dict[str, Job] = {}
+    for a in soup.find_all("a", href=True):
+        m = GLASSDOOR_LINK.search(a["href"])
+        if not m:
+            continue
+        parts = []
+        for text in a.stripped_strings:
+            text = re.sub(r"\s+[\d.,]+\s*★\s*$", "", text.replace("\ufeff", "")).strip(" |")
+            if text and not GLASSDOOR_NOISE.match(text) and text not in parts:
+                parts.append(text)
+        if len(parts) < 2:
+            continue
+        company, title = parts[0], parts[1]
+        location = parts[2] if len(parts) > 2 else ""
+        key = f"glassdoor:{m.group(1)}"
+        jobs.setdefault(key, Job(source="email", external_id=key, company=company[:120], title=title[:200],
+                                 url=f"https://www.glassdoor.de/job-listing/j?jl={m.group(1)}",
+                                 location=location[:120], extra={"site": "glassdoor", "needs_review": True}))
+    return list(jobs.values())
+
+
 URL_RE = re.compile(r"https?://\S+")
 JOB_HOSTS = re.compile(r"linkedin\.com/(?:comm/)?jobs/view/|click\.stepstone\.de/|stepstone\.de/stellenangebote|"
                        r"indeed\.[a-z.]+/(?:rc/clk|viewjob|pagead)|xing\.com/(?:jobs/|m/)", re.I)
@@ -169,7 +201,9 @@ def fetch(cfg: dict, address: str, app_password: str) -> list[Job]:
                 _, msg_data = imap.fetch(num, "(BODY.PEEK[])")
                 msg = email.message_from_bytes(msg_data[0][1])
                 subject = str(make_header(decode_header(msg.get("Subject", ""))))
-                found = parse_alert_text(_body_text(msg)) or parse_alert_html(_body_html(msg))
+                html_body = _body_html(msg)
+                found = parse_glassdoor_html(html_body) or parse_alert_text(_body_text(msg)) or \
+                    parse_alert_html(html_body)
                 for job in found:
                     job.extra["email_subject"] = subject
                     jobs.setdefault(job.external_id, job)
