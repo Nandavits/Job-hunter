@@ -208,3 +208,15 @@ def test_glassdoor_alert_email():
         ("Holtzbrinck Buchverlage GmbH", "(Senior) Data Analyst (m/w/d)", "Hamburg"),
         ("DYMATRIX", "Data Scientist (all genders)", "Berlin")]
     assert jobs[0].url == "https://www.glassdoor.de/job-listing/j?jl=1010324386036"
+
+
+def test_amazon_search_results():
+    from jobhunter.collectors import amazon
+    data = {"jobs": [{"id_icims": "301", "title": "Data Engineer, AWS", "company_name": "Amazon Web Services",
+                      "job_path": "/en/jobs/301/data-engineer", "normalized_location": "Berlin, BE, DEU",
+                      "description": "<p>Build pipelines with Python and SQL.</p>",
+                      "basic_qualifications": "- SQL", "posted_date": "November 17, 2026"}]}
+    job = amazon.parse(data)[0]
+    assert (job.company, job.title, job.url) == ("Amazon Web Services", "Data Engineer, AWS",
+                                                "https://www.amazon.jobs/en/jobs/301/data-engineer")
+    assert "Python and SQL" in job.description and "Berlin" in job.location

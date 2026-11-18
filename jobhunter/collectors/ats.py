@@ -175,11 +175,96 @@ def fetch_personio(session, company: dict) -> list[Job]:
     return []
 
 
+# --------------------------------------------------------------------------- SmartRecruiters
+# Public postings API used by many large companies (Bosch, Delivery Hero, ...). Only German jobs that
+# match the search words are read in full.
+def fetch_smartrecruiters(session, company: dict) -> list[Job]:
+    slug, jobs = company["slug"], []
+    base = f"https://api.smartrecruiters.com/v1/companies/{slug}/postings"
+    for query in company.get("queries") or ["data"]:
+        resp = get(session, base, params={"q": query, "country": "de", "limit": 100})
+        if resp is None:
+            log.warning("SmartRecruiters board not found: %s (%s)", company["name"], slug)
+            return []
+        for item in resp.json().get("content", []):
+            loc = item.get("location") or {}
+            location = ", ".join(x for x in (loc.get("city"), loc.get("country", "").upper()) if x)
+            jobs.append(Job(
+                source="smartrecruiters", external_id=str(item.get("id")), company=company["name"],
+                title=(item.get("name") or "").strip(),
+                url=f"https://jobs.smartrecruiters.com/{slug}/{item.get('id')}",
+                apply_url=f"https://jobs.smartrecruiters.com/{slug}/{item.get('id')}",
+                location=location.replace(", DE", ", Germany"), posted_at=(item.get("releasedDate") or "")[:10],
+                remote=bool(loc.get("remote")),
+            ))
+    unique = {j.external_id: j for j in jobs}
+    for job in list(unique.values())[: int(company.get("max_details", 30))]:
+        detail = get(session, f"{base}/{job.external_id}")
+        if detail is None:
+            continue
+        sections = (detail.json().get("jobAd") or {}).get("sections") or {}
+        job.description = "\n".join(html_to_text((sections.get(k) or {}).get("text"))
+                                    for k in ("jobDescription", "qualifications", "additionalInformation"))
+        job.apply_url = detail.json().get("applyUrl") or job.apply_url
+    return list(unique.values())
+
+
+# --------------------------------------------------------------------------- Workday
+# Workday career sites (many large employers) answer the same JSON calls their own pages make.
+# Config: {name, ats: workday, host: siemens.wd3.myworkdayjobs.com, tenant: siemens, site: Siemens_Careers}
+def fetch_workday(session, company: dict) -> list[Job]:
+    if not all(company.get(k) for k in ("host", "tenant", "site")):
+        log.warning("Workday entry for %s needs host, tenant and site", company.get("name"))
+        return []
+    host, tenant, site = company["host"], company["tenant"], company["site"]
+    api = f"https://{host}/wday/cxs/{tenant}/{site}"
+    jobs: dict[str, Job] = {}
+    for query in company.get("queries") or ["data"]:
+        for offset in range(0, int(company.get("max_results", 100)), 20):
+            try:
+                resp = session.post(f"{api}/jobs", json={"appliedFacets": {}, "limit": 20, "offset": offset,
+                                                         "searchText": query}, timeout=20)
+            except Exception as exc:
+                log.warning("Workday %s failed: %s", company["name"], exc)
+                return list(jobs.values())
+            if resp.status_code != 200:
+                log.warning("Workday board not found: %s (%s)", company["name"], host)
+                return list(jobs.values())
+            postings = resp.json().get("jobPostings") or []
+            for item in postings:
+                path = item.get("externalPath") or ""
+                if not path or path in jobs:
+                    continue
+                jobs[path] = Job(source="workday", external_id=path.rsplit("_", 1)[-1] or path,
+                                 company=company["name"], title=(item.get("title") or "").strip(),
+                                 url=f"https://{host}/{site}{path}", apply_url=f"https://{host}/{site}{path}",
+                                 location=item.get("locationsText") or "")
+            if len(postings) < 20:
+                break
+    country = re.compile(company.get("country_pattern", r"germany|deutschland|berlin|munich|münchen|hamburg|"
+                                                       r"frankfurt|cologne|köln|stuttgart|düsseldorf|ingolstadt|"
+                                                       r"remote|\blocations\b"), re.I)
+    wanted = [j for j in jobs.values() if country.search(j.location)]
+    for job in wanted[: int(company.get("max_details", 30))]:
+        path = job.url.split(site, 1)[-1]
+        detail = get(session, f"{api}{path}")
+        if detail is None:
+            continue
+        info = detail.json().get("jobPostingInfo") or {}
+        job.description = html_to_text(info.get("jobDescription"))
+        job.location = info.get("location") or job.location
+        job.posted_at = (info.get("startDate") or "")[:10]
+        job.apply_url = info.get("externalUrl") or job.apply_url
+    return wanted
+
+
 FETCHERS = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
     "ashby": fetch_ashby,
     "personio": fetch_personio,
+    "smartrecruiters": fetch_smartrecruiters,
+    "workday": fetch_workday,
 }
 
 

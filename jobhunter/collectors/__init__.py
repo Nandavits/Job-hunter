@@ -8,10 +8,10 @@ from typing import Callable
 from bs4 import BeautifulSoup
 
 from ..models import Job
-from . import arbeitnow, arbeitsagentur, ats, databerlin, email_alerts
+from . import amazon, arbeitnow, arbeitsagentur, ats, databerlin, email_alerts
 from .base import get, log, make_session
 
-PAGE_SOURCES = {"personio", "greenhouse", "lever", "ashby"}
+PAGE_SOURCES = {"personio", "greenhouse", "lever", "ashby"}   # Workday/SmartRecruiters read details themselves
 
 
 def description_from_page(html: str) -> str:
@@ -89,6 +89,13 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
             jobs.extend(found)
         except Exception as exc:
             log.warning("Arbeitnow failed: %s", exc)
+
+    amz = sources.get("amazon") or {}
+    if amz.get("enabled"):
+        try:
+            jobs.extend(amazon.fetch(session, amz))
+        except Exception as exc:
+            log.warning("Amazon failed: %s", exc)
 
     dbn = sources.get("databerlin") or {}
     if dbn.get("enabled"):
