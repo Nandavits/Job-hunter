@@ -187,6 +187,14 @@ def test_databerlin_list_and_detail():
     assert (first.title, first.company, first.url) == ("Data Engineer", "Talon.One",
                                                       "https://databerlin.net/jobs/data-engineer-at-talonone")
     assert "Berlin" in first.location and "London" in jobs[1].location and jobs[2].remote
-    text, apply = databerlin.parse_detail((fx / "databerlin_detail.html").read_text())
+    text, apply, company = databerlin.parse_detail((fx / "databerlin_detail.html").read_bytes())
     assert "Airflow, dbt and PostgreSQL" in text
     assert apply == "https://boards.greenhouse.io/embed/job_app?for=talonone&token=5035728101"
+    assert company == "Talon.One"
+    assert databerlin._company_from_slug("analytics-engineer-at-about-you-6") == "About You"
+    assert "München" in databerlin.parse_list("<a href='/jobs/x-at-y'>Data Engineer</a><span>München</span>".encode())[0].location
+
+
+def test_company_spelling_variants_are_the_same_job():
+    from jobhunter.dedupe import same_job
+    assert same_job("Talon.One", "Data Engineer", "Talonone", "Data Engineer")
