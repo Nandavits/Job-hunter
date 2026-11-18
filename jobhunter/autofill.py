@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .style import STYLE_RULES, tidy
+
 log = logging.getLogger("jobhunter")
 
 # (label regex, key in the value map). First match wins, so order matters.
@@ -233,15 +235,16 @@ def claude_answer(question: str, job: dict, profile: dict, letter_paragraphs: li
             model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
             max_tokens=400,
             system=("Answer one job-application question for the candidate, in the first person, in English, "
-                    "60-120 words, plain text. Use ONLY facts from the candidate profile and cover letter; "
-                    "never invent experience, numbers or tools. Be specific to the company and role."),
+                    "50-110 words, plain text. Use ONLY facts from the candidate profile and cover letter; "
+                    "never invent experience, numbers or tools. Be specific to the company and role.\n\n"
+                    + STYLE_RULES),
             messages=[{"role": "user", "content":
                        f"Question: {question}\n\nCompany: {job.get('company')}\nRole: {job.get('title')}\n"
                        f"Job ad (excerpt): {(job.get('description') or '')[:3000]}\n\n"
                        f"Cover letter: {' '.join(letter_paragraphs)}\n\n"
                        f"Candidate profile: {json.dumps(facts, ensure_ascii=False)[:8000]}"}],
         )
-        return "".join(getattr(b, "text", "") for b in msg.content).strip()
+        return tidy("".join(getattr(b, "text", "") for b in msg.content).strip())
     except Exception as exc:
         log.warning("Claude answer failed (%s); using the cover-letter draft", exc)
         return ""
