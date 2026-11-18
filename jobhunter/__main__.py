@@ -177,21 +177,31 @@ def cmd_fill(args, settings):
         print("Opening the job ad instead. If the form is on the company's careers page, find the job there,")
         print("copy that page's link, and run apply again with it as the 'Application link'.")
     print(f"\nOpening: {job['company']} - {job['title']}\n{target_url(job)}")
-    from .autofill import answer_sheet
+    from .autofill import answer_sheet, manual_only
     sheet = cv.parent / "form_answers.txt"
     sheet.write_text(answer_sheet(job, settings.profile), encoding="utf-8")
-    print(f"If a 'verify you are human' check appears, solve it in the window yourself. If it keeps failing,\n"
-          f"open the job in your normal browser and copy your answers from: {sheet}")
-    try:
-        report = fill(job, settings.profile, docs, letter, headless=args.headless)
-    except RuntimeError as exc:
-        print(f"\n{exc}\nPaste the company's application link next time at 'Application link'.")
-        return
-    except Exception as exc:                       # e.g. the browser window was closed early
-        if "closed" not in str(exc).lower():
-            raise
-        print("\nThe browser window closed before Job Hunter finished. If you applied anyway, answer y below.")
+    if manual_only(target_url(job)):
+        # Sites that refuse automated browsers: open the form in your normal browser instead.
+        import webbrowser
+        print("\nThis site does not allow automated form filling, so it opens in your normal browser.")
+        print(f"Upload these files:\n  CV:           {cv}\n  Cover letter: {letter_file}")
+        print("\nYour answers to copy:\n")
+        print(sheet.read_text(encoding="utf-8"))
+        webbrowser.open(target_url(job))
         report = None
+    else:
+        print(f"If a 'verify you are human' check appears, solve it in the window yourself. If it keeps failing,\n"
+              f"open the job in your normal browser and copy your answers from: {sheet}")
+        try:
+            report = fill(job, settings.profile, docs, letter, headless=args.headless)
+        except RuntimeError as exc:
+            print(f"\n{exc}\nPaste the company's application link next time at 'Application link'.")
+            return
+        except Exception as exc:                       # e.g. the browser window was closed early
+            if "closed" not in str(exc).lower():
+                raise
+            print("\nThe browser window closed before Job Hunter finished. If you applied anyway, answer y below.")
+            report = None
     if report is not None:
         print("\nFilled:", *report.filled, sep="\n  ")
         print("Uploaded:", *report.uploaded, sep="\n  ")
