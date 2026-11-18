@@ -380,6 +380,15 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
             if value:
                 el.fill(value)
                 report.filled.append(f"{info['label']} = {value[:60]}{'…' if len(value) > 60 else ''}")
+            elif not key and not question and info["label"] and os.environ.get("ANTHROPIC_API_KEY") and \
+                    (info["type"] == "textarea" or info["label"].rstrip(" *").endswith("?")):
+                # An open question we have no saved answer for: let Claude write one from your facts.
+                answer = claude_answer(info["label"], job, profile, letter_paragraphs)
+                if answer:
+                    el.fill(answer if info["type"] == "textarea" else answer[:250])
+                    report.drafted.append(f"{info['label']} = {answer[:70]}…")
+                elif info["required"]:
+                    report.needs_you.append(info["label"])
             elif question and (drafts.get(question) or os.environ.get("ANTHROPIC_API_KEY")):
                 answer = claude_answer(info["label"], job, profile, letter_paragraphs) or drafts.get(question, "")
                 if answer:
