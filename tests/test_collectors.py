@@ -174,3 +174,19 @@ def test_linkedin_alert_jobs_get_their_ad_text(monkeypatch):
     assert seen == ["https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4489745117"]
     assert "dbt and Airflow" in text
     assert col.LINKEDIN_JOB.search("https://www.linkedin.com/comm/jobs/view/data-engineer-at-x-4490612550?trk=1")
+
+
+def test_databerlin_list_and_detail():
+    from pathlib import Path
+    from jobhunter.collectors import databerlin
+    fx = Path(__file__).parent / "fixtures"
+    jobs = databerlin.parse_list((fx / "databerlin_list.html").read_text())
+    assert [j.external_id for j in jobs] == ["data-engineer-at-talonone", "senior-data-engineer-at-kpler",
+                                             "analytics-engineer-at-acme-gmbh"]
+    first = jobs[0]
+    assert (first.title, first.company, first.url) == ("Data Engineer", "Talon.One",
+                                                      "https://databerlin.net/jobs/data-engineer-at-talonone")
+    assert "Berlin" in first.location and "London" in jobs[1].location and jobs[2].remote
+    text, apply = databerlin.parse_detail((fx / "databerlin_detail.html").read_text())
+    assert "Airflow, dbt and PostgreSQL" in text
+    assert apply == "https://boards.greenhouse.io/embed/job_app?for=talonone&token=5035728101"
