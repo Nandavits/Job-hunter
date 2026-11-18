@@ -1,162 +1,159 @@
-# Job Hunter 🎯
+# Job Hunter
 
-**A personal job-search pipeline: it finds new data jobs every morning, filters out the ones I can't get, writes a tailored CV and cover letter for the best matches, and pre-fills the application form. I review everything and press Submit myself.**
+Job Hunter is my personal job-search pipeline for data roles in Germany. Every 30 minutes it collects new
+postings, drops the ones I can't get, scores the rest against my skills, writes a tailored CV and cover
+letter, and opens the application form already filled in. I read everything and click Submit myself.
 
-Built with Python, PostgreSQL, Docker, the Claude API and Playwright.
+Built with Python, PostgreSQL, Docker, GitHub Actions, the Claude API and Playwright.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    subgraph Sources["Collect (public APIs only)"]
-        GH[Greenhouse]
-        LV[Lever]
-        AB[Ashby]
-        PE[Personio]
-        BA[Bundesagentur für Arbeit]
-        AN[Arbeitnow]
-        EM[Job-alert emails<br/>LinkedIn · StepStone · Indeed · XING]
-    end
-    Sources --> F[Filter & score<br/>German level · seniority ·<br/>location · years · skills]
-    F --> DB[(PostgreSQL / SQLite<br/>jobs + tracker)]
-    DB --> T[Tailor with Claude<br/>facts from profile.yaml only]
-    T --> D[CV + cover letter<br/>.docx + PDF, one page]
-    DB --> N[Daily digest<br/>email · Telegram]
-    D --> A[Pre-fill application form<br/>Playwright, never submits]
-    A --> YOU((You review<br/>and click Submit))
+    S[1. Collect<br/>job boards, company pages,<br/>job-alert emails] --> F[2. Filter<br/>title, location,<br/>German level, years]
+    F --> SC[3. Score 0-100<br/>my skills vs. the ad]
+    SC --> DB[(4. Store<br/>PostgreSQL + Excel)]
+    DB --> T[5. Tailor<br/>CV + cover letter]
+    T --> A[6. Fill the form<br/>on the company site]
+    A --> ME((7. I review<br/>and click Submit))
 ```
 
-## Why it exists
+1. **Collect.** Reads public job feeds and the job-alert emails that LinkedIn, StepStone and XING send me.
+2. **Filter.** Drops jobs with the wrong title, outside Germany, needing B2/C1 German or 4+ years.
+   Every dropped job keeps its reason, so the filters can be checked.
+3. **Score.** Gives each remaining job a match score from 0 to 100 (see below).
+4. **Store.** Saves jobs in a database and in `data/applications.xlsx`. Reposts and the same job on two
+   sites are recognised, so I never apply twice.
+5. **Tailor.** For the best new matches it writes a one-page CV and a cover letter, using only facts
+   from my profile.
+6. **Fill the form.** `apply.bat` opens the company's application form with my details, CV, letter and
+   standard answers filled in.
+7. **Submit.** Always by me. The tool never clicks Submit.
 
-Applying in Germany without fluent German means most postings are dead ends, and every application needs a tailored CV and cover letter. Fully automated "auto-apply" bots break LinkedIn's rules, get accounts restricted, and send generic applications that don't get interviews. This project automates everything *except* the final click:
+## What it never does
 
-| Step | Automated | You |
+- It never submits an application.
+- It never logs in to LinkedIn, StepStone, XING or Indeed, and never clicks anything there. It only reads
+  their alert emails and public job pages, a few per run.
+- It never adds a skill or experience I don't have. Missing tools are named honestly in the letter.
+
+## Job sources
+
+| Source | What it gives | How it is read |
 |---|---|---|
-| Find new jobs from company career pages, the federal job board, Arbeitnow and your job-alert emails | ✅ | |
-| Drop jobs needing C1 German, senior roles, wrong city, too many years | ✅ | |
-| Rank by match score (0-100: tools you have out of the tools the job asks for, title, experience, language) | ✅ | |
-| Tailor CV + write cover letter (honest about gaps) | ✅ | Read once |
-| Fill name, email, phone, links, uploads, standard answers | ✅ | Answer the rest |
-| Submit | ❌ never | ✅ |
-| Track status (applied → interview → offer) | ✅ | One command |
+| Company career pages (Greenhouse, Lever, Ashby, Personio) | Jobs at companies I chose | Public job-board feeds |
+| Bundesagentur für Arbeit | Jobs from all of Germany (also what "Make it in Germany" shows) | Public job-search API |
+| Arbeitnow | English-speaking jobs in Germany | Public API |
+| Data Berlin (databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
+| LinkedIn, StepStone, XING, Indeed | Jobs from my saved job alerts | Alert emails in Gmail (read-only) |
 
-## Key design decisions
+For good matches from LinkedIn or StepStone, Job Hunter also looks for the same job on the company's own
+careers site, so I apply there instead of on the job board.
 
-- **Only official, public, read-only endpoints.** Greenhouse, Lever, Ashby and Personio expose the same JSON/XML feeds their own careers pages use; the Bundesagentur für Arbeit has a documented public API. LinkedIn, XING, StepStone and Indeed are **never** logged into or scraped: the tool only reads the alert emails they already send you (IMAP, read-only).
-- **No fabricated experience.** The model only reorders and rephrases facts from `config/profile.yaml`. Its JSON output is validated (unknown bullet indices or skill categories are dropped), and a test asserts that tools from the job ad that aren't in the profile never appear in the CV — only as honest "new to me" lines in the letter.
-- **Works without an API key.** A rule-based fallback tailors bullets/skills by keyword relevance and writes a template letter, so the pipeline never breaks.
-- **Never submits.** The form filler highlights the submit button and waits for a human. A test opens sample forms in headless Chromium and asserts they were not submitted.
-- **Idempotent daily runs.** Jobs are keyed by `sha1(source:company:id)`; re-runs only process new postings.
-- **Explainable filtering.** Every skipped job stores its reason (e.g. `needs German C1: "Fluent German and English are required"`), so filters can be tuned.
+## How a job is scored
 
-## Quick start
+| Part | Points | What it checks |
+|---|---|---|
+| Tools | 60 | How many of the tools in the ad I have. "Airflow, Dagster or similar" counts as a match if I have one. Nice-to-haves count half. |
+| Title | 15 | The title is one of my target roles |
+| Experience | 10 | The years asked for fit my level |
+| Language | 15 | English is the working language |
+
+Rough guide: 85+ apply first, 70-84 good, 55-69 worth a look. Jobs below `min_score` (55) are hidden.
+A `?` means the ad text could not be read yet, so the job is not scored.
+
+## Getting started (Windows)
+
+You need Docker Desktop and Python 3.11+.
+
+1. Get the code:
+   ```bash
+   git clone https://github.com/Nandavits/Job-hunter.git
+   cd Job-hunter
+   ```
+2. Copy the three example files and fill them in:
+   - `config/profile.example.yaml` → `config/profile.yaml`: your CV data and form answers
+   - `config/config.example.yaml` → `config/config.yaml`: job titles, skills, locations, companies
+   - `.env.example` → `.env`: your Claude API key and Gmail app password (both optional)
+3. Double-click **`start-jobhunter.bat`**. It starts the database and the scheduler, checks every job
+   source and runs the first search. From then on it runs every 30 minutes while the computer is on.
+4. In Docker Desktop, turn on *Settings → General → Start Docker Desktop when you sign in*.
+
+Without an API key everything still works. Letters then come from a simple template.
+
+## Applying to a job
+
+1. Close Excel.
+2. Double-click **`apply.bat`**. It shows your jobs, best first, and tests the Claude key.
+3. Type a job's ID and press Enter.
+   - Jobs marked `[company site found]`: just press Enter at the link question.
+   - Other job-board jobs: open the job, click Apply, and paste the company's link.
+4. A browser opens with the form filled in. Check it, tick the consent box and click **Submit**.
+5. In the black window, type **y**. The job moves to "applied" in Excel.
+
+Fields the tool could not answer are listed under "Needs your answer". Personal questions it has no
+answer for get "Prefer not to say".
+
+## The Excel tracker
+
+`data/applications.xlsx` is rewritten after every run, with three sheets: **Applications**, **Open jobs**
+and **All jobs** (with the reason each job was skipped). You can change a Status or Notes cell, for
+example to mark a job you applied to on LinkedIn, and the next run reads it back.
+
+## Running in the cloud (laptop off)
+
+A private copy of the settings can run on GitHub Actions every hour from about 06:00 to 22:00. It collects
+and scores jobs, prepares documents and emails a short list of new matches. Applying still happens on the
+laptop. Keys are stored as GitHub secrets, never in files.
+
+## Writing style
+
+Cover letters and form answers use short, plain sentences and concrete facts. About 50 typical AI phrases
+("excited", "leverage", "perfect fit" and similar) are banned. If one slips in, the letter is rewritten once.
+See `jobhunter/style.py`.
+
+## Commands
 
 ```bash
-git clone https://github.com/Nandavits/job-hunter.git
-cd job-hunter
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python -m playwright install chromium                   # for the form filler
-
-cp config/config.example.yaml config/config.yaml        # search settings + companies
-cp config/profile.example.yaml config/profile.yaml      # your CV data
-cp .env.example .env                                    # API keys (all optional)
-
-python -m jobhunter run                                 # first run
-```
-
-PDFs need LibreOffice (`soffice`) on your PATH; without it you get `.docx` files only.
-
-### Windows: one click
-
-With Docker Desktop running, double-click `start-jobhunter.bat`. It builds the containers, checks every job source (`logs/sources.txt`), runs a search (`logs/first-run.log`) and lists the results.
-
-### Windows: applying
-
-Double-click `apply.bat`. The first run installs Python packages and Chromium into `.venv` (3-5 minutes). It lists your jobs, asks for a job id (and, for LinkedIn/StepStone/XING/Indeed jobs, the company's application link), opens the form pre-filled with your details, CV and cover letter, and waits. **You review and click Submit**; then it asks whether you submitted and marks the job as applied.
-
-### Run it every morning with Docker
-
-```bash
-docker compose up -d --build        # PostgreSQL + scheduler (every 30 minutes; see schedule in config.yaml)
-docker compose logs -f jobhunter
-```
-
-It checks for new jobs every `schedule.every_minutes` (30) while the computer is on, and right after it wakes up. Remove `every_minutes` to run once a day at `daily_at` instead. Turn on *Docker Desktop → Settings → General → Start Docker Desktop when you sign in* so it starts by itself.
-
-The form filler opens a visible browser, so run `fill` on your own computer, not in Docker.
-
-## Daily use
-
-```bash
-python -m jobhunter list                      # new + prepared jobs, best first
-python -m jobhunter show 7972a7a9             # full description, why it matched
-python -m jobhunter fill 7972a7a9             # opens the form pre-filled; you submit
-python -m jobhunter mark 7972a7a9 interview --note "Call with Head of Data on Tue"
+python -m jobhunter run                 # one full search
+python -m jobhunter list                # open jobs, best first
+python -m jobhunter show <id>           # full ad and why it matched
+python -m jobhunter fill <id>           # open the pre-filled form (apply.bat does this)
+python -m jobhunter mark <id> interview --note "Call on Tuesday"
+python -m jobhunter add --url <link> --company Acme --title "Data Engineer" --description-file ad.txt
+python -m jobhunter discover <careers-page-url> --name Acme   # find a company's job board
+python -m jobhunter check-sources       # test every job source
+python -m jobhunter check-key --letters # test the Claude key with one sample letter
 python -m jobhunter stats
 ```
-
-Found a job on LinkedIn? Paste its description into a text file and add it:
-
-```bash
-python -m jobhunter add --url https://www.linkedin.com/jobs/view/123 --company Acme \
-       --title "Data Engineer" --description-file acme.txt
-python -m jobhunter prepare <id>
-```
-
-All commands: `run`, `list`, `show`, `prepare`, `fill`, `mark`, `add`, `export`, `stats`, `discover`, `check-sources`, `schedule`.
-
-## Application tracker (Excel) and reposts
-
-`data/applications.xlsx` is rewritten after every run and every apply, with three sheets: **Applications**
-(applied / interview / offer / rejected), **Open jobs** and **All jobs** (including why a job was skipped).
-Change a Status or Notes cell in Excel and save, and the next run reads it back. For example, mark a job you
-applied to on LinkedIn as `applied`. Only cells you changed are read, so an old copy of the file never undoes newer
-updates.
-
-Companies often repost the same role with a new posting id, and the same role arrives from the careers page
-and from a LinkedIn alert. Jobs are treated as the same when the company and the title match after removing
-"(m/w/d)", "(all genders)", locations and job-board suffixes (seniority must match: Junior ≠ Senior).
-A repost of a role you applied to in the last `reapply_after_days` (default 180) is skipped and listed in the
-digest; `apply` asks before filling a form for a role you already applied to.
-
-## Adding companies
-
-Open a company's careers page and run:
-
-```bash
-python -m jobhunter discover https://www.example.com/careers --name Example
-# - {name: Example, ats: greenhouse, slug: example}
-```
-
-Paste the line into `sources.companies` in `config/config.yaml`, then check all sources with `python -m jobhunter check-sources`.
-
-## Optional setup
-
-| Feature | What you need |
-|---|---|
-| AI tailoring | `ANTHROPIC_API_KEY` in `.env` |
-| Job-alert emails | Job alerts on LinkedIn/StepStone/Indeed/XING sent to Gmail; a Gmail [App Password](https://myaccount.google.com/apppasswords) created **in that same Gmail account**; `email_alerts.enabled: true`. The plain-text part of each alert is parsed (title / company / city / link); StepStone tracking links are de-duplicated by title + company. |
-| Email digest | Same Gmail address + App Password |
-| Telegram digest | A bot from @BotFather, your chat id, `digest.telegram: true` |
-| PostgreSQL | `DATABASE_URL=postgresql+psycopg://user:pass@host/db` (Docker Compose sets this) |
 
 ## Project structure
 
 ```
 jobhunter/
-  collectors/      greenhouse · lever · ashby · personio (ats.py), arbeitsagentur.py, arbeitnow.py, email_alerts.py
-  filters.py       German-level detection, seniority, location, years, skill scoring
-  storage.py       SQLAlchemy models, dedup, application tracker + CSV export
-  dedupe.py        same-role detection across reposts and job boards
-  excel.py         applications.xlsx export with two-way status sync
-  tailor.py        Claude prompt + output validation, rule-based fallback
-  documents.py     python-docx CV + cover letter, auto-shrinks to one page, PDF via LibreOffice
-  autofill.py      Playwright form filler (never submits)
-  notify.py        daily digest (email / Telegram)
-  pipeline.py      collect → filter → store → tailor → digest
-  __main__.py      CLI
-config/            config.example.yaml, profile.example.yaml (real ones are git-ignored)
-tests/             133 tests with recorded API fixtures and sample application forms
+  collectors/     one file per source: ats.py (Greenhouse, Lever, Ashby, Personio), arbeitsagentur.py,
+                  arbeitnow.py, databerlin.py, email_alerts.py
+  filters.py      title, location, German level, years, match score
+  dedupe.py       same job across reposts and job boards
+  career.py       finds the company's own application page for job-board matches
+  storage.py      database and status tracking
+  excel.py        applications.xlsx, read and written
+  tailor.py       CV and letter tailoring with Claude, template fallback
+  style.py        writing rules and banned phrases
+  documents.py    one-page CV and letter as .docx and PDF
+  autofill.py     fills application forms, never submits
+  notify.py       email digest
+  pipeline.py     runs the steps in order
+  __main__.py     command line
+config/           example settings (your real ones are git-ignored)
+tests/            138 tests with recorded API answers and sample forms
+start-jobhunter.bat, apply.bat   one-click start and apply on Windows
 ```
+
+## Updates
+
+Changes in `jobhunter/`, `config/` and `.env` are used from the next run. Only changes to
+`requirements.txt`, the `Dockerfile` or `docker-compose.yml` need `start-jobhunter.bat` again.
 
 ## Tests
 
@@ -164,26 +161,14 @@ tests/             133 tests with recorded API fixtures and sample application f
 pytest -q
 ```
 
-Covers every collector's parsing, the German-level detector (English and German phrasing, "nice to have" exceptions), the full pipeline on fixtures including de-duplication, the AI-output validator, and the "never submits" guarantee.
+They cover every source's parsing, the German-level check, scoring, duplicate detection, the form filler
+(including that it never submits), the writing-style check and a full run on recorded data.
 
 ## Privacy
 
-`config/profile.yaml`, `config/config.yaml`, `.env`, `data/` and `output/` are git-ignored: your CV data, keys, database and generated documents never leave your machine. Only you see the digest.
+`config/profile.yaml`, `config/config.yaml`, `.env`, `data/` and `output/` are git-ignored. Personal data,
+keys, the job database and generated documents stay on your computer.
 
 ## License
 
-MIT
-
-## Apply on the company's site, not on the job board
-
-For good matches from LinkedIn, StepStone, XING or Indeed alerts, Job Hunter looks for the employer's own
-application page (`jobhunter/career.py`): first the "apply on company website" link on LinkedIn's public
-job view, then the company's Greenhouse / Lever / Ashby / Personio board. Jobs where it found one are marked
-`[company site found]` in apply.bat, and the form opens straight away. Nothing is ever done inside your
-job-board accounts.
-
-## Updates
-
-Code changes in `jobhunter/` and settings in `config/` are used from the next run on: the scheduler
-starts every run as a fresh process. `.env` (keys, passwords) is read at every run too. Only a change to
-`requirements.txt`, the `Dockerfile` or `docker-compose.yml` needs `start-jobhunter.bat` again.
+MIT. You can use and change it for your own job search.
