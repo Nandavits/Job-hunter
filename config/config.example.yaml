@@ -91,7 +91,7 @@ sources:
   # employer's own application link. Job pages are read only for titles that fit your roles.
   databerlin:
     enabled: true
-    max_details: 40
+    max_details: 80
 
   # Bundesagentur für Arbeit (Germany's federal job board, public API, covers many boards).
   arbeitsagentur:

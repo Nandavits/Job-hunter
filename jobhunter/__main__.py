@@ -246,11 +246,11 @@ def cmd_check_sources(args, settings):
     if dbn.get("enabled"):
         from .collectors import databerlin
         resp = get(session, f"{databerlin.BASE}/jobs", headers={"Accept": "text/html"})
-        listed = databerlin.parse_list(resp.text) if resp is not None else []
-        detail = ("", "")
+        listed = databerlin.parse_list(resp.content) if resp is not None else []
+        detail = ("", "", "")
         if listed:
             page = get(session, listed[0].url, headers={"Accept": "text/html"})
-            detail = databerlin.parse_detail(page.text) if page is not None else ("", "")
+            detail = databerlin.parse_detail(page.content) if page is not None else ("", "", "")
         print(f"{'OK ' if listed else '---'} {'Data Berlin':<20} {'web':<10} {len(listed):>4} jobs listed, "
               f"sample job: {len(detail[0])} chars of text, apply link: {'yes' if detail[1] else 'no'}")
 

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import re
+import time
 import logging
 from datetime import date
 from pathlib import Path
@@ -19,7 +21,7 @@ from .tailor import tailor
 log = logging.getLogger("jobhunter")
 
 
-def backfill_descriptions(store: Store, limit: int = 30, session=None) -> int:
+def backfill_descriptions(store: Store, limit: int = 60, session=None) -> int:
     """Open jobs saved without ad text (e.g. from LinkedIn alerts): fetch it so they can be scored."""
     from .collectors import description_for
     from .collectors.base import make_session
@@ -30,12 +32,21 @@ def backfill_descriptions(store: Store, limit: int = 30, session=None) -> int:
     session = session or make_session()
     done = 0
     for row in rows:
+        extra = {}
         try:
-            text = description_for(session, row["url"])
+            if "databerlin.net/jobs/" in row["url"]:       # also gives the employer's apply link
+                from .collectors import databerlin
+                from .collectors.base import get
+                time.sleep(1)
+                page = get(session, row["url"], headers={"Accept": "text/html"})
+                text, apply, company = databerlin.parse_detail(page.content) if page is not None else ("", "", "")
+                extra = {k: v for k, v in (("apply_url", apply), ("company", company)) if v}
+            else:
+                text = description_for(session, row["url"])
         except Exception:
             continue
         if len(text) >= 100:
-            store.update(row["uid"], description=text)
+            store.update(row["uid"], description=text, **extra)
             done += 1
     log.info("Fetched the ad text for %d of %d jobs that had none", done, len(rows))
     return done
@@ -52,6 +63,28 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
         job = Job(source=row["source"], external_id=row["external_id"], company=row["company"] or "",
                   title=row["title"] or "", url=row["url"] or "", location=row["location"] or "",
                   description=row["description"] or "")
+        fixes = {}
+        for field in ("title", "company", "description"):       # repair text saved with the wrong encoding
+            value = row.get(field) or ""
+            if re.search(r"Ã.|â\x80", value):
+                try:
+                    fixes[field] = value.encode("cp1252", errors="strict").decode("utf-8")
+                except (UnicodeEncodeError, UnicodeDecodeError):
+                    try:
+                        fixes[field] = value.encode("latin-1").decode("utf-8")
+                    except (UnicodeEncodeError, UnicodeDecodeError):
+                        pass
+        if row["source"] == "databerlin" and re.search(r"\s\d+$", row["company"] or ""):
+            fixes["company"] = re.sub(r"(\s+\d+)+$", "", fixes.get("company", row["company"]))
+        if fixes:
+            store.update(row["uid"], **fixes)
+            row = {**row, **fixes}
+            job.title, job.company, job.description = row["title"], row["company"], row["description"] or ""
+        earlier = store.applied_versions(row)
+        if earlier:                                 # same role you already applied to (other site / name spelling)
+            store.update(row["uid"], status="skipped", excluded_reason=f"already applied (id {earlier[0]['uid'][:8]})")
+            changed += 1
+            continue
         where = location_matches(job, search)
         if not where and row["status"] == "new" and len(job.description) >= 100:
             where = evaluate(job, search).excluded_reason   # ad text may be new: German level, years

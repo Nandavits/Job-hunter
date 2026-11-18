@@ -27,11 +27,17 @@ EXTERNAL_APPLY = re.compile(r"greenhouse\.io|lever\.co|ashbyhq\.com|personio\.(d
 
 
 def _company_from_slug(slug: str) -> str:
-    return slug.rsplit("-at-", 1)[-1].replace("-", " ").title()
+    name = slug.rsplit("-at-", 1)[-1].replace("-", " ").title()
+    return re.sub(r"(\s+\d+)+$", "", name)          # "about-you-6" -> "About You"
 
 
-def parse_list(html: str) -> list[Job]:
-    soup = BeautifulSoup(html, "lxml")
+def _soup(content) -> BeautifulSoup:
+    """Parse from bytes so umlauts are decoded as UTF-8 (not guessed)."""
+    return BeautifulSoup(content, "lxml")
+
+
+def parse_list(html) -> list[Job]:
+    soup = _soup(html)
     jobs: dict[str, Job] = {}
     for a in soup.find_all("a", href=True):
         path = urlparse(a["href"]).path if a["href"].startswith("http") else a["href"].split("?")[0]
@@ -62,9 +68,13 @@ def parse_list(html: str) -> list[Job]:
     return list(jobs.values())
 
 
-def parse_detail(html: str) -> tuple[str, str]:
-    """(description, employer's application link) from a job page."""
-    soup = BeautifulSoup(html, "lxml")
+def parse_detail(html) -> tuple[str, str, str]:
+    """(description, employer's application link, company name) from a job page."""
+    soup = _soup(html)
+    company_link = soup.find("a", href=re.compile(r"/companies/[a-z0-9-]+/?$"))
+    company = company_link.get_text(" ", strip=True) if company_link else ""
+    if len(company) > 60 or company.lower().startswith(("view", "see", "all ")):
+        company = ""
     apply = ""
     for a in soup.find_all("a", href=True):
         href, text = a["href"], a.get_text(" ", strip=True).lower()
@@ -83,7 +93,7 @@ def parse_detail(html: str) -> tuple[str, str]:
     main = soup.find("main") or soup.find("article") or soup.body or soup
     text = re.sub(r"\s+", " ", main.get_text(" ", strip=True))[:20000]
     apply = re.sub(r"[?&]utm_[^&]+", "", apply).replace("?&", "?").rstrip("?&")
-    return text, apply
+    return text, apply, company
 
 
 def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None) -> list[Job]:
@@ -91,13 +101,14 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None) -> list
     if resp is None:
         log.warning("Data Berlin: job list not available")
         return []
-    jobs = parse_list(resp.text)
+    jobs = parse_list(resp.content)
     wanted = [j for j in jobs if keep is None or keep(j)]
-    for job in wanted[: int(cfg.get("max_details", 40))]:
+    for job in wanted[: int(cfg.get("max_details", 80))]:
         time.sleep(float(cfg.get("delay_seconds", 1.0)))
         page = get(session, job.url, headers={"Accept": "text/html"})
         if page is None:
             continue
-        job.description, job.apply_url = parse_detail(page.text)
-    log.info("%-20s %3d jobs (%d read in full)", "Data Berlin", len(jobs), min(len(wanted), int(cfg.get("max_details", 40))))
+        job.description, job.apply_url, company = parse_detail(page.content)
+        job.company = company or job.company
+    log.info("%-20s %3d jobs (%d read in full)", "Data Berlin", len(jobs), min(len(wanted), int(cfg.get("max_details", 80))))
     return jobs

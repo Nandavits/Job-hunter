@@ -55,6 +55,8 @@ def same_company(a: str, b: str) -> bool:
     na, nb = normalize_company(a), normalize_company(b)
     if not na or not nb:
         return False
+    if na.replace(" ", "") == nb.replace(" ", ""):        # "Talon.One" vs "Talonone"
+        return True
     return na == nb or na.startswith(nb + " ") or nb.startswith(na + " ")
 
 
