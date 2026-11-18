@@ -169,6 +169,22 @@ def cmd_export(args, settings):
     print(_store(settings).export_tracker(Path(args.path) if args.path else DATA_DIR / "tracker.csv"))
 
 
+def cmd_check_key(args, settings):
+    """One tiny request to see whether the Claude API key works (costs a fraction of a cent)."""
+    key = settings.env("ANTHROPIC_API_KEY")
+    if not key:
+        print("Claude API key: not set - letters and open questions use the simple templates.")
+        return
+    try:
+        import anthropic
+        anthropic.Anthropic(api_key=key).messages.create(
+            model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"), max_tokens=5,
+            messages=[{"role": "user", "content": "Reply with OK"}])
+        print("Claude API key: working - Claude writes your letters and answers open questions.")
+    except Exception as exc:
+        print(f"Claude API key: NOT working ({type(exc).__name__}: {str(exc)[:160]})")
+
+
 def cmd_stats(args, settings):
     print(json.dumps(_store(settings).stats(), indent=2))
 
@@ -280,6 +296,8 @@ def main(argv=None):
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
+    p = sub.add_parser("check-key", help="test the Claude API key")
+    p.set_defaults(func=cmd_check_key)
     p = sub.add_parser("run", help="collect jobs, prepare documents, send digest")
     p.add_argument("--no-digest", action="store_true")
     p.add_argument("--no-docs", action="store_true")

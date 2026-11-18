@@ -227,3 +227,15 @@ def test_bare_or_homepage_links_are_handled():
     job = {"apply_url": "www.allianzdeutschland.de", "url": "https://www.arbeitsagentur.de/jobsuche/jobdetail/1"}
     assert target_url(job).startswith("https://www.arbeitsagentur.de")
     assert target_url({"apply_url": "x.de/apply/7", "url": "https://a.de"}) == "https://x.de/apply/7"
+
+
+def test_unknown_open_questions_go_to_claude(monkeypatch, tmp_path, profile):
+    from jobhunter import autofill
+    html = tmp_path / "f.html"
+    html.write_text('<form><label for="q">What would your first 90 days look like?</label>'
+                    '<textarea id="q"></textarea><button type="submit">Submit</button></form>')
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setattr(autofill, "claude_answer", lambda *a, **k: "In my first 90 days I would ...")
+    r = autofill.fill({"url": html.as_uri(), "company": "X", "title": "DE"}, profile, {}, ["p1", "p2", "p3"],
+                      headless=True)
+    assert any("90 days" in d for d in r.drafted)
