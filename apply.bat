@@ -49,7 +49,7 @@ echo Setup finished.
 :ready
 rem keep packages up to date after Job Hunter updates (fast when nothing changed)
 ".venv\Scripts\python.exe" -m pip install -q -r requirements.txt >nul 2>&1
-".venv\Scripts\python.exe" -m jobhunter check-key
+".venv\Scripts\python.exe" -m jobhunter check-key --letters
 :menu
 echo.
 echo ================= Your jobs =================
