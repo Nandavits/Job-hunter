@@ -63,7 +63,10 @@ def cmd_list(args, settings):
         reason = f"  ({r['excluded_reason'][:60]})" if r["excluded_reason"] else ""
         unscored = r["status"] in ("new", "prepared") and len(r.get("description") or "") < 100
         score = "  ?" if unscored else f"{r['score']:>3}"
-        print(f"{r['uid'][:8]}  {r['status']:<9} {score}  {r['company'][:22]:<22} {r['title'][:55]}{reason}")
+        from .career import is_job_board
+        direct = " [company site found]" if r.get("apply_url") and is_job_board(r.get("url") or "") \
+            and not is_job_board(r["apply_url"]) else ""
+        print(f"{r['uid'][:8]}  {r['status']:<9} {score}  {r['company'][:22]:<22} {r['title'][:55]}{direct}{reason}")
 
 
 def cmd_show(args, settings):

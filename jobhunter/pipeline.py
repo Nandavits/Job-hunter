@@ -120,6 +120,12 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     except Exception as exc:
         log.warning("Could not fetch missing ad texts: %s", exc)
     rescore_open_jobs(store, search)
+    try:   # LinkedIn/StepStone/XING/Indeed matches: find the employer's own application page
+        from .career import add_career_links
+        from .collectors.base import make_session
+        add_career_links(store, session or make_session(), int(search.get("min_score", 55)))
+    except Exception as exc:
+        log.warning("Could not look up company career pages: %s", exc)
 
     raw = collect_all(settings, keep=quick_keep(search), session=session)
     kept, dropped = filter_jobs(raw, search)
