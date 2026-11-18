@@ -43,7 +43,7 @@ def backfill_descriptions(store: Store, limit: int = 30, session=None) -> int:
 
 def rescore_open_jobs(store: Store, search: dict) -> int:
     """Recompute the match score of jobs you have not applied to yet (scoring can improve over time)."""
-    from .filters import location_matches, score_job
+    from .filters import evaluate, location_matches, score_job
     from .models import Job
     changed = 0
     for row in store.list(limit=100_000):
@@ -53,7 +53,9 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
                   title=row["title"] or "", url=row["url"] or "", location=row["location"] or "",
                   description=row["description"] or "")
         where = location_matches(job, search)
-        if where:                                  # location rules got stricter: drop jobs abroad
+        if not where and row["status"] == "new" and len(job.description) >= 100:
+            where = evaluate(job, search).excluded_reason   # ad text may be new: German level, years
+        if where:
             store.update(row["uid"], status="skipped", excluded_reason=where)
             changed += 1
             continue
