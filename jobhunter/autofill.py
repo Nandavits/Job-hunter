@@ -418,7 +418,13 @@ def _open_browser(pw, headless: bool):
             kwargs = {"channel": channel} if channel else {}
             context = pw.chromium.launch_persistent_context(str(profile_dir), headless=False, no_viewport=True,
                                                             **kwargs)
-            page = context.pages[0] if context.pages else context.new_page()
+            page = context.new_page()                  # a fresh tab; Chrome may close its own start tab
+            for extra in context.pages:
+                if extra is not page and extra.url in ("about:blank", "chrome://newtab/", ""):
+                    try:
+                        extra.close()
+                    except Exception:
+                        pass
             return context, page
         except Exception as exc:
             log.debug("Browser %s not available: %s", channel or "chromium", exc)
