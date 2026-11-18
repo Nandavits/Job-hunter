@@ -230,7 +230,7 @@ def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
         "ad_skills_you_have_all_on_cv": t.skill_priority,
         "ad_skills_you_lack_not_added": (job.get("extra") or {}).get("missing_skills", []),
     }, indent=2), encoding="utf-8")
-    if settings.config.get("tailoring", {}).get("linkedin_outreach", True):
+    if settings.config.get("tailoring", {}).get("linkedin_outreach", False):
         from .outreach import as_text, draft
         o = draft(settings.profile, job, t.letter_paragraphs, t.skill_priority,
                   api_key=settings.env("ANTHROPIC_API_KEY"), model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))

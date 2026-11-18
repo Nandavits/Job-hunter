@@ -91,8 +91,11 @@ Without an API key everything still works. Letters then come from a simple templ
    - Other job-board jobs: open the job, click Apply, and paste the company's link.
 4. A browser opens with the form filled in. Check it, tick the consent box and click **Submit**.
 5. In the black window, type **y**. The job moves to "applied" in Excel.
-6. The window then shows a LinkedIn people-search link and a short connection note and message for the
-   hiring team (also saved as `linkedin_message.txt` in the job's folder). You send it yourself.
+6. Optional (`tailoring.linkedin_outreach: true`): the window then shows a LinkedIn people-search link and a
+   short note and message for the hiring team. You send it yourself.
+
+Applied jobs disappear from the list. Sites that block automated browsers (SmartRecruiters one-click,
+Workday, job boards) open in your normal browser, with your answers and file paths shown to copy.
 
 Fields the tool could not answer are listed under "Needs your answer". Personal questions it has no
 answer for get "Prefer not to say".
