@@ -26,6 +26,7 @@ services:
       - ./jobhunter:/app/jobhunter   # code changes apply without a rebuild
       - ./data:/app/data
       - ./output:/app/output
+      - ./.env:/app/.env:ro            # keys/passwords: changes apply at the next run, no restart
     depends_on:
       db:
         condition: service_healthy

@@ -14,11 +14,20 @@ OUTPUT_DIR = Path(os.environ.get("JOBHUNTER_OUTPUT_DIR", ROOT / "output"))
 
 
 def _load_dotenv() -> None:
+    """Read .env on every run, so a new key or password works without restarting anything.
+    Values in .env win, except DATABASE_URL when it is already set (Docker and apply.bat set their own)."""
     try:
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values
     except ImportError:  # optional dependency
         return
-    load_dotenv(ROOT / ".env")
+    path = ROOT / ".env"
+    if not path.is_file():
+        return
+    for key, value in dotenv_values(path).items():
+        if value is None or (key == "DATABASE_URL" and os.environ.get(key)):
+            continue
+        if value.strip() or key not in os.environ:
+            os.environ[key] = value
 
 
 def _read_yaml(name: str) -> dict:
