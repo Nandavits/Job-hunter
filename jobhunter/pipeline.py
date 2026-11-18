@@ -98,6 +98,11 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
                         fixes[field] = value.encode("latin-1").decode("utf-8")
                     except (UnicodeEncodeError, UnicodeDecodeError):
                         pass
+        if row["source"] == "databerlin" or "databerlin.net" in (row["url"] or ""):
+            from .collectors.databerlin import main_ad_text
+            trimmed = main_ad_text(fixes.get("description", row["description"] or ""))
+            if trimmed != (row["description"] or ""):
+                fixes["description"] = trimmed
         if row["source"] == "databerlin" and re.search(r"\s\d+$", row["company"] or ""):
             fixes["company"] = re.sub(r"(\s+\d+)+$", "", fixes.get("company", row["company"]))
         if fixes:
@@ -110,7 +115,7 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
             changed += 1
             continue
         where = location_matches(job, search)
-        if not where and row["status"] == "new" and len(job.description) >= 100:
+        if not where and row["status"] in ("new", "prepared") and len(job.description) >= 100:
             where = evaluate(job, search).excluded_reason   # ad text may be new: German level, years
         if where:
             store.update(row["uid"], status="skipped", excluded_reason=where)

@@ -68,6 +68,18 @@ def parse_list(html) -> list[Job]:
     return list(jobs.values())
 
 
+PAGE_CHROME = re.compile(r"\s(?:Apply Now|Jetzt (?:online )?bewerben|☆ Tailor my CV|Tailor my CV to this job|"
+                         r"Report an issue|Salary and Benefits|Skill DNA|You vs this role|Related roles)\b")
+
+
+def main_ad_text(text: str) -> str:
+    """Only the employer's ad: drop Data Berlin's own page parts (skills panel, related roles ...),
+    which are in English and would hide that an ad is written in German."""
+    text = re.sub(r"^\W*All jobs\s+", "", text or "")
+    m = PAGE_CHROME.search(text)
+    return text[: m.start()].strip() if m and m.start() > 200 else text
+
+
 def parse_detail(html) -> tuple[str, str, str]:
     """(description, employer's application link, company name) from a job page."""
     soup = _soup(html)
@@ -91,7 +103,7 @@ def parse_detail(html) -> tuple[str, str, str]:
     for tag in soup(["script", "style", "noscript", "svg", "header", "footer", "nav", "form"]):
         tag.decompose()
     main = soup.find("main") or soup.find("article") or soup.body or soup
-    text = re.sub(r"\s+", " ", main.get_text(" ", strip=True))[:20000]
+    text = main_ad_text(re.sub(r"\s+", " ", main.get_text(" ", strip=True)))[:20000]
     apply = re.sub(r"[?&]utm_[^&]+", "", apply).replace("?&", "?").rstrip("?&")
     return text, apply, company
 

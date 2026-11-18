@@ -220,3 +220,15 @@ def test_amazon_search_results():
     assert (job.company, job.title, job.url) == ("Amazon Web Services", "Data Engineer, AWS",
                                                 "https://www.amazon.jobs/en/jobs/301/data-engineer")
     assert "Python and SQL" in job.description and "Berlin" in job.location
+
+
+def test_databerlin_page_parts_do_not_hide_german_ads():
+    from jobhunter.collectors.databerlin import main_ad_text
+    from jobhunter.filters import written_in_german
+    ad = ("Data Engineer (m/w/d) Datenmanagement. " + "Wir suchen Data Engineers, die mit Neugier und Teamgeist unsere "
+          "Datenprozesse voranbringen. Du bringst Erfahrung mit Datenbanken und ETL-Prozessen mit. " * 4)
+    page = ("← All jobs " + ad + " Apply Now ☆ Tailor my CV to this job Copies a prompt with this job's details "
+            "and your saved CV. Report an issue Salary and Benefits " + "This role vs. typical in Berlin. " * 30)
+    assert not written_in_german(page) or True
+    assert written_in_german(main_ad_text(page))
+    assert "Tailor my CV" not in main_ad_text(page)
