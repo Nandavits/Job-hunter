@@ -67,3 +67,11 @@ def test_ad_text_is_copied_from_the_same_job_on_another_site(tmp_path):
     assert copy_descriptions_from_twins(store) == 1
     row = store.get(glassdoor.uid)
     assert "dbt models" in row["description"] and row["apply_url"].startswith("https://statista")
+
+
+def test_jobs_that_still_need_the_employer_link():
+    from jobhunter.pipeline import needs_employer_link
+    assert needs_employer_link({"url": "https://databerlin.net/jobs/x-at-y", "apply_url": ""})
+    assert needs_employer_link({"url": "https://www.linkedin.com/jobs/view/1/", "apply_url": "https://www.linkedin.com/jobs/view/1/"})
+    assert not needs_employer_link({"url": "https://databerlin.net/jobs/x-at-y", "apply_url": "https://y.jobs.personio.de/job/1"})
+    assert not needs_employer_link({"url": "https://jobs.ashbyhq.com/moss/1", "apply_url": ""})

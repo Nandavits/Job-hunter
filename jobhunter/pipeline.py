@@ -148,6 +148,50 @@ def skip_known_jobs(store: Store, jobs: list[dict], reapply_after_days: int = 18
     return fresh, reposts, duplicates
 
 
+DOC_VERSION = 2      # raise when CV/letter output improves; older documents are re-made before applying
+
+
+def employer_link(session, job: dict) -> str:
+    """The company's own application page for a job seen on Data Berlin or a job board ("" if unknown)."""
+    from .career import find_career_link, is_job_board
+    url = job.get("url") or ""
+    if "databerlin.net/jobs/" in url:
+        from .collectors import databerlin
+        from .collectors.base import get
+        page = get(session, url, headers={"Accept": "text/html"})
+        return databerlin.parse_detail(page.content)[1] if page is not None else ""
+    if is_job_board(url):
+        return find_career_link(session, job)[0]
+    return ""
+
+
+def needs_employer_link(job: dict) -> bool:
+    from .career import is_job_board
+    apply = job.get("apply_url") or ""
+    url = job.get("url") or ""
+    return ("databerlin.net" in url or is_job_board(url)) and (not apply or "databerlin.net" in apply
+                                                               or is_job_board(apply))
+
+
+def add_databerlin_links(store: Store, session, limit: int = 40) -> int:
+    """Data Berlin jobs saved before their employer link was read: read it now."""
+    rows = [r for r in store.list(limit=100_000)
+            if r["status"] in ("new", "prepared") and "databerlin.net/jobs/" in (r["url"] or "")
+            and needs_employer_link(r)][:limit]
+    done = 0
+    for row in rows:
+        try:
+            link = employer_link(session, row)
+        except Exception:
+            continue
+        if link:
+            store.update(row["uid"], apply_url=link)
+            done += 1
+    if rows:
+        log.info("Found the employer's application link for %d of %d Data Berlin jobs", done, len(rows))
+    return done
+
+
 def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
     """Tailor CV + letter for one stored job and mark it 'prepared'."""
     if not settings.env("ANTHROPIC_API_KEY"):
@@ -158,7 +202,7 @@ def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
                           make_pdf=settings.config.get("tailoring", {}).get("make_pdf", True))
     Path(docs["folder"], "tailoring.json").write_text(json.dumps({
         "title": t.title, "summary": t.summary, "letter": t.letter_paragraphs,
-        "fit_notes": t.fit_notes, "gaps": t.gaps, "engine": t.engine,
+        "fit_notes": t.fit_notes, "gaps": t.gaps, "engine": t.engine, "doc_version": DOC_VERSION,
         "ad_skills_you_have_all_on_cv": t.skill_priority,
         "ad_skills_you_lack_not_added": (job.get("extra") or {}).get("missing_skills", []),
     }, indent=2), encoding="utf-8")
@@ -185,6 +229,11 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     except Exception as exc:
         log.warning("Could not fetch missing ad texts: %s", exc)
     rescore_open_jobs(store, search)
+    try:
+        from .collectors.base import make_session as _make_session
+        add_databerlin_links(store, session or _make_session())
+    except Exception as exc:
+        log.warning("Could not read Data Berlin application links: %s", exc)
     try:   # LinkedIn/StepStone/XING/Indeed matches: find the employer's own application page
         from .career import add_career_links
         from .collectors.base import make_session
