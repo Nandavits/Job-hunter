@@ -229,6 +229,5 @@ def test_databerlin_page_parts_do_not_hide_german_ads():
           "Datenprozesse voranbringen. Du bringst Erfahrung mit Datenbanken und ETL-Prozessen mit. " * 4)
     page = ("← All jobs " + ad + " Apply Now ☆ Tailor my CV to this job Copies a prompt with this job's details "
             "and your saved CV. Report an issue Salary and Benefits " + "This role vs. typical in Berlin. " * 30)
-    assert not written_in_german(page) or True
     assert written_in_german(main_ad_text(page))
     assert "Tailor my CV" not in main_ad_text(page)
