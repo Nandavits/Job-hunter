@@ -60,7 +60,8 @@ set "JOBID="
 set /p JOBID=Type the id of the job to apply to (or just press Enter to quit): 
 if not defined JOBID exit /b 0
 echo.
-echo For LinkedIn / StepStone / XING / Indeed jobs, open the job, click Apply, and copy the
+echo Jobs marked [company site found]: just press Enter - the company's own form opens.
+echo Other LinkedIn / StepStone / XING / Indeed jobs: open the job, click Apply, and paste the
 echo company's application page link. For company career pages, just press Enter.
 set "LINK="
 set /p LINK=Application link (or press Enter): 

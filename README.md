@@ -155,7 +155,7 @@ jobhunter/
   pipeline.py      collect → filter → store → tailor → digest
   __main__.py      CLI
 config/            config.example.yaml, profile.example.yaml (real ones are git-ignored)
-tests/             124 tests with recorded API fixtures and sample application forms
+tests/             133 tests with recorded API fixtures and sample application forms
 ```
 
 ## Tests
@@ -173,3 +173,11 @@ Covers every collector's parsing, the German-level detector (English and German 
 ## License
 
 MIT
+
+## Apply on the company's site, not on the job board
+
+For good matches from LinkedIn, StepStone, XING or Indeed alerts, Job Hunter looks for the employer's own
+application page (`jobhunter/career.py`): first the "apply on company website" link on LinkedIn's public
+job view, then the company's Greenhouse / Lever / Ashby / Personio board. Jobs where it found one are marked
+`[company site found]` in apply.bat, and the form opens straight away. Nothing is ever done inside your
+job-board accounts.
