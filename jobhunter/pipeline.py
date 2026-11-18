@@ -93,6 +93,8 @@ def skip_known_jobs(store: Store, jobs: list[dict], reapply_after_days: int = 18
 
 def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
     """Tailor CV + letter for one stored job and mark it 'prepared'."""
+    if not settings.env("ANTHROPIC_API_KEY"):
+        log.info("No Claude API key here: %s gets the template cover letter", job.get("company"))
     t = tailor(settings.profile, job, api_key=settings.env("ANTHROPIC_API_KEY"),
                model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
     docs = make_documents(settings.profile, t, job, OUTPUT_DIR,

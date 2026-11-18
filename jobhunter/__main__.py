@@ -191,9 +191,17 @@ def cmd_check_key(args, settings):
         anthropic.Anthropic(api_key=key).messages.create(
             model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"), max_tokens=5,
             messages=[{"role": "user", "content": "Reply with OK"}])
-        print("Claude API key: working - Claude writes your letters and answers open questions.")
+        print("Claude API key: working - Claude answers open questions on forms.")
     except Exception as exc:
         print(f"Claude API key: NOT working ({type(exc).__name__}: {str(exc)[:160]})")
+        return
+    if getattr(args, "letters", False):
+        from .tailor import tailor
+        t = tailor(settings.profile, {"company": "Example GmbH", "title": "Data Engineer", "location": "Berlin",
+                                      "description": "We build pipelines with Python, SQL, dbt and Airflow."},
+                   api_key=key, model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
+        print("Cover letters: written by Claude" if t.engine == "claude"
+              else "Cover letters: Claude did not answer correctly - using the template (see messages above)")
 
 
 def cmd_stats(args, settings):
@@ -320,6 +328,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("check-key", help="test the Claude API key")
+    p.add_argument("--letters", action="store_true", help="also write one test cover letter (about 3 cents)")
     p.set_defaults(func=cmd_check_key)
     p = sub.add_parser("run", help="collect jobs, prepare documents, send digest")
     p.add_argument("--no-digest", action="store_true")
