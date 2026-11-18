@@ -229,6 +229,7 @@ def test_bare_or_homepage_links_are_handled():
     assert target_url({"apply_url": "x.de/apply/7", "url": "https://a.de"}) == "https://x.de/apply/7"
 
 
+@pytest.mark.skipif(not _chromium_available(), reason="Playwright Chromium not installed")
 def test_unknown_open_questions_go_to_claude(monkeypatch, tmp_path, profile):
     from jobhunter import autofill
     html = tmp_path / "f.html"
