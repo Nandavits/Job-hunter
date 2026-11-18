@@ -92,7 +92,7 @@ def draft(profile: dict, job: dict, letter_paragraphs: list[str], matched: list[
             client = anthropic.Anthropic(api_key=key)
         facts = {k: profile.get(k) for k in ("personal", "experience", "skills", "projects")}
         facts["personal"] = {k: (facts.get("personal") or {}).get(k) for k in ("first_name", "last_name", "city")}
-        msg = client.messages.create(model=model, max_tokens=600, system=PROMPT, messages=[{
+        msg = client.messages.create(model=model, max_tokens=2000, system=PROMPT, messages=[{
             "role": "user", "content":
             f"Company: {job.get('company')}\nRole: {job.get('title')}\n"
             f"Job ad (excerpt): {(job.get('description') or '')[:2500]}\n\n"
@@ -111,6 +111,10 @@ def draft(profile: dict, job: dict, letter_paragraphs: list[str], matched: list[
         return Outreach(_short(note, NOTE_LIMIT), message, base.search_url, engine="claude")
     except Exception as exc:
         log.warning("LinkedIn message draft failed (%s); using the template", str(exc)[:120])
+        try:
+            log.warning("Claude answered: %r", "".join(getattr(b, "text", "") for b in msg.content)[:200])
+        except Exception:
+            pass
         return base
 
 
