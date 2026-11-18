@@ -228,7 +228,7 @@ def fetch_workday(session, company: dict) -> list[Job]:
                 log.warning("Workday %s failed: %s", company["name"], exc)
                 return list(jobs.values())
             if resp.status_code != 200:
-                log.warning("Workday board not found: %s (%s)", company["name"], host)
+                log.warning("Workday board not found: %s (%s, HTTP %s)", company["name"], host, resp.status_code)
                 return list(jobs.values())
             postings = resp.json().get("jobPostings") or []
             for item in postings:

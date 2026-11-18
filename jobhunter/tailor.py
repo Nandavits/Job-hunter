@@ -269,17 +269,24 @@ def tailor(profile: dict, job: dict, api_key: str = "", model: str = "claude-son
                      f"<candidate_profile>\n{json.dumps(_profile_for_prompt(profile), ensure_ascii=False, indent=1)}"
                      f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}]
         result = None
-        for attempt in range(2):             # one rewrite if typical AI phrases slipped in
+        for attempt in range(3):             # retry if no result came back, or AI phrases slipped in
             msg = client.messages.create(model=model, max_tokens=2500, system=SYSTEM_PROMPT,
                                          tools=[TAILORING_TOOL],
                                          tool_choice={"type": "auto"},   # forcing a tool is not supported by every model
                                          messages=messages)
             data = next((dict(b.input) for b in msg.content if getattr(b, "type", "") == "tool_use"), None)
             if data is None:
-                data = _extract_json("".join(getattr(b, "text", "") for b in msg.content))
+                try:
+                    data = _extract_json("".join(getattr(b, "text", "") for b in msg.content))
+                except ValueError:
+                    if attempt == 2:
+                        raise
+                    messages = messages + [{"role": "assistant", "content": msg.content},
+                                           {"role": "user", "content": "Call the save_tailoring tool with the result now."}]
+                    continue
             result = _validate(data, profile, base)
             found = problems(" ".join([result.summary, *result.letter_paragraphs]))
-            if not found or attempt == 1:
+            if not found or attempt == 2:
                 break
             log.info("Rewriting letter for %s without: %s", job.get("company"), ", ".join(found))
             messages = messages + [
