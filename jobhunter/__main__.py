@@ -44,7 +44,11 @@ def _need(store: Store, uid: str) -> dict:
 
 
 def cmd_run(args, settings):
+    from .config import DATA_DIR
     from .pipeline import run
+    handler = logging.FileHandler(DATA_DIR / "last-run.log", mode="w", encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%H:%M:%S"))
+    logging.getLogger().addHandler(handler)          # data/last-run.log: what the latest run did
     result = run(settings, send_digest=not args.no_digest, make_docs=not args.no_docs)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
