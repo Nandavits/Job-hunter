@@ -266,7 +266,7 @@ def tailor(profile: dict, job: dict, api_key: str = "", model: str = "claude-son
             max_tokens=2500,
             system=SYSTEM_PROMPT,
             tools=[TAILORING_TOOL],
-            tool_choice={"type": "tool", "name": "save_tailoring"},
+            tool_choice={"type": "auto"},          # forcing a tool is not supported by every model
             messages=[{"role": "user", "content":
                        f"<candidate_profile>\n{json.dumps(_profile_for_prompt(profile), ensure_ascii=False, indent=1)}"
                        f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}],
