@@ -181,3 +181,9 @@ application page (`jobhunter/career.py`): first the "apply on company website" l
 job view, then the company's Greenhouse / Lever / Ashby / Personio board. Jobs where it found one are marked
 `[company site found]` in apply.bat, and the form opens straight away. Nothing is ever done inside your
 job-board accounts.
+
+## Updates
+
+Code changes in `jobhunter/` and settings in `config/` are used from the next run on: the scheduler
+starts every run as a fresh process. `.env` (keys, passwords) is read at every run too. Only a change to
+`requirements.txt`, the `Dockerfile` or `docker-compose.yml` needs `start-jobhunter.bat` again.
