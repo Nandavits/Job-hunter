@@ -21,7 +21,7 @@ log = logging.getLogger("jobhunter")
 
 def rescore_open_jobs(store: Store, search: dict) -> int:
     """Recompute the match score of jobs you have not applied to yet (scoring can improve over time)."""
-    from .filters import score_job
+    from .filters import location_matches, score_job
     from .models import Job
     changed = 0
     for row in store.list(limit=100_000):
@@ -30,6 +30,11 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
         job = Job(source=row["source"], external_id=row["external_id"], company=row["company"] or "",
                   title=row["title"] or "", url=row["url"] or "", location=row["location"] or "",
                   description=row["description"] or "")
+        where = location_matches(job, search)
+        if where:                                  # location rules got stricter: drop jobs abroad
+            store.update(row["uid"], status="skipped", excluded_reason=where)
+            changed += 1
+            continue
         score = score_job(job, search)
         if score != row["score"]:
             store.update(row["uid"], score=score, matched_skills=",".join(job.matched_skills))
