@@ -39,6 +39,7 @@ def description_for(session, url: str) -> str:
         resp = get(session, f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{m.group(1)}",
                    headers={"Accept": "text/html"})
         if resp is None:
+            log.info("LinkedIn ad %s: page not available", m.group(1))
             return ""
         soup = BeautifulSoup(resp.text, "lxml")
         block = soup.select_one(".show-more-less-html__markup, .description__text, [class*='description']")
