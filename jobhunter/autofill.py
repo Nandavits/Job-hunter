@@ -379,7 +379,8 @@ def _choose_in_widget(page, el, label: str, values: dict) -> str:
         return ""
 
 
-MANUAL_ONLY = re.compile(r"smartrecruiters\.com/oneclick-ui|myworkdayjobs\.com|successfactors|"
+MANUAL_ONLY = re.compile(r"smartrecruiters\.com/oneclick-ui|myworkdayjobs\.com|successfactors|recruitee\.com|"
+                         r"/o/[^/]+/c/new|"
                          r"linkedin\.com|indeed\.|stepstone\.|xing\.com", re.I)
 
 
