@@ -192,7 +192,8 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     if send_digest and new_jobs:
         cfg = settings.config.get("digest", {})
         if cfg.get("email", True):
-            files = [d.get(k) for d in prepared.values() for k in ("cv_pdf", "letter_pdf") if d.get(k)]
+            files = [d.get(k) for d in prepared.values() for k in ("cv_pdf", "letter_pdf") if d.get(k)] \
+                if cfg.get("attach_documents", False) else []        # off by default: just the job list
             sent["email"] = notify.send_email(settings.env("GMAIL_ADDRESS"), settings.env("GMAIL_APP_PASSWORD"),
                                               f"Job Hunter: {len(new_jobs)} new jobs", md, page, files)
         if cfg.get("telegram"):

@@ -157,6 +157,7 @@ tailoring:
 
 digest:
   email: true        # send the daily digest to GMAIL_ADDRESS
+  attach_documents: false   # true = attach the tailored CVs and cover letters to the email
   telegram: false
 
 schedule:
