@@ -253,3 +253,28 @@ def test_gender_location_and_office_questions():
     assert choose_option("Are you able to work from our Berlin office 3 days a week?", ["Yes", "No"], values) == "Yes"
     assert choose_option("Are you open to a hybrid work model?", ["Yes", "No"], values) == "Yes"
     assert choose_option("Ethnicity", ["Asian", "White", "Prefer not to say"], values) == "Prefer not to say"
+
+
+def test_name_split_into_first_and_last_boxes():
+    from jobhunter.autofill import name_part, start_date_for
+    assert name_part("First first_name", "Name*") == "first_name"
+    assert name_part("Last last_name", "Name*") == "last_name"
+    assert name_part("email", "Email*") == ""
+    assert start_date_for("Immediately", "text", "Available from") == "Immediately"
+    assert start_date_for("Immediately", "text", "TT.MM.JJJJ").count(".") == 2
+    assert start_date_for("Immediately", "date", "")[4] == "-"
+
+
+@pytest.mark.skipif(not _chromium_available(), reason="Playwright Chromium not installed")
+def test_personio_style_name_boxes(profile):
+    from pathlib import Path
+    from jobhunter.autofill import fill
+    page_file = Path(__file__).parent / "fixtures" / "forms" / "personio_like.html"
+    seen = {}
+    def inspect(page):
+        seen["first"] = page.input_value("#first_name")
+        seen["last"] = page.input_value("#last_name")
+        seen["avail"] = page.input_value("#available_from")
+    fill({"url": page_file.as_uri(), "company": "X", "title": "DE"}, profile, {}, ["p"], headless=True, inspect=inspect)
+    assert seen["first"] == profile["personal"]["first_name"] and seen["last"] == profile["personal"]["last_name"]
+    assert seen["avail"]

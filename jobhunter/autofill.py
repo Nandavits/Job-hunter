@@ -39,7 +39,8 @@ FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k i
     (r"job ?title|position title|current (title|position|role)|aktuelle position|jobtitel", "current_title"),
     (r"current (company|employer)|aktueller arbeitgeber", "current_company"),
     (r"salary|gehalt|compensation expectation", "salary_expectation"),
-    (r"start date|notice period|kündigungsfrist|eintritt|earliest|availability|verfügbar", "earliest_start_date"),
+    (r"start date|notice period|kündigungsfrist|eintritt|earliest|availability|available (from|to start)|"
+     r"verfügbar|starttermin|when can you start", "earliest_start_date"),
     (r"residence permit|residence title|aufenthalt|visa (status|type)|immigration status|permit type", "residence_permit"),
     (r"sponsor|visa", "requires_sponsorship"),
     (r"authori[sz]ed|work permit|right to work|eligible to work|arbeitserlaubnis|arbeitsgenehmigung", "work_authorization"),
@@ -265,6 +266,33 @@ def match_field(label: str, values: dict[str, str]) -> tuple[str, str]:
     return "", ""
 
 
+def name_part(hint: str, label: str) -> str:
+    """first_name / last_name from a box's placeholder, name or autocomplete ("First", "family-name" ...)."""
+    short_label = label if len(label) <= 25 else ""          # never a long question ("your first 90 days")
+    text = f"{hint} {short_label}".lower()
+    if re.search(r"\b(first|given[- ]?name|firstname|first_name|vorname|fname)\b", text):
+        return "first_name"
+    if re.search(r"\b(last|family[- ]?name|lastname|last_name|surname|nachname|lname)\b", text):
+        return "last_name"
+    return ""
+
+
+def start_date_for(value: str, input_type: str, hint: str) -> str:
+    """'Immediately' does not fit a date box: use two weeks from today in the box's own format."""
+    from datetime import date, timedelta
+    if re.search(r"\d", value or "") and not re.search(r"immediately|sofort", value or "", re.I):
+        return value
+    looks_like_date = input_type == "date" or re.search(r"dd|tt|mm|yyyy|jjjj|date|datum", hint, re.I)
+    if not looks_like_date:
+        return value or "Immediately"
+    day = date.today() + timedelta(days=14)
+    if input_type == "date" or re.search(r"yyyy-mm|jjjj-mm", hint, re.I):
+        return day.isoformat()
+    if re.search(r"mm/dd", hint, re.I):
+        return day.strftime("%m/%d/%Y")
+    return day.strftime("%d.%m.%Y")
+
+
 def fit_to_input(value: str, input_type: str) -> str:
     """Adapt a saved answer to the input type: numbers for number fields, YYYY-MM-DD for date fields."""
     if input_type == "number":
@@ -304,7 +332,8 @@ LABEL_JS = """el => {
   const text = (byFor && byFor.innerText) || (el.labels && el.labels[0] && el.labels[0].innerText)
              || el.getAttribute('aria-label') || el.placeholder
              || (wrap && wrap.innerText.split('\\n')[0]) || el.name || el.id || '';
-  return {label: text.trim().slice(0, 160), type: (el.type || el.tagName).toLowerCase(),
+  const hint = [el.placeholder, el.name, el.id, el.getAttribute('autocomplete')].filter(Boolean).join(' ');
+  return {label: text.trim().slice(0, 160), hint: hint.slice(0, 160), type: (el.type || el.tagName).toLowerCase(),
           required: el.required || el.getAttribute('aria-required') === 'true',
           value: el.value || '', visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)};
 }"""
@@ -424,6 +453,11 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
             if not info["visible"] or info["value"]:
                 continue
             key, value = match_field(info["label"], values)
+            part = name_part(info.get("hint", ""), info["label"])
+            if part and key in ("", "full_name", "first_name", "last_name"):
+                key, value = part, values.get(part, "")      # "Name*" with separate First / Last boxes
+            if key == "earliest_start_date":
+                value = start_date_for(value, info["type"], info.get("hint", ""))
             value = fit_to_input(value, info["type"]) if value else value
             question = "" if key else match_question(info["label"])
             if value:
