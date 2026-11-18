@@ -38,3 +38,10 @@ def test_claude_draft_with_ai_phrases_falls_back(profile):
 
 def test_people_search_for_analyst_roles():
     assert "Analytics" in people_search_url("Acme", "Data Analyst")
+
+
+def test_claude_plain_text_format(profile):
+    text = ("NOTE: Hi, I applied for the Junior Data Engineer role at Acme. I build dbt models on PostgreSQL.\n"
+            "MESSAGE:\nHi, thanks for connecting.\n\nI build dbt models and Airflow DAGs at Curagita.\n\nBest regards,\nNanda")
+    o = draft(profile, JOB, ["p"], ["dbt"], client=FakeClient(text))
+    assert o.engine == "claude" and "Airflow DAGs" in o.message and o.message.endswith("Nanda")

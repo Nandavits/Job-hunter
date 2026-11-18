@@ -74,7 +74,10 @@ candidate profile and the cover letter. Never invent experience, numbers or tool
 
 """ + STYLE_RULES + """
 
-Reply with JSON only: {"note": str, "message": str}"""
+Reply in exactly this plain-text format, nothing else:
+NOTE: <the connection note>
+MESSAGE:
+<the message>"""
 
 
 def draft(profile: dict, job: dict, letter_paragraphs: list[str], matched: list[str],
@@ -94,14 +97,20 @@ def draft(profile: dict, job: dict, letter_paragraphs: list[str], matched: list[
             f"Company: {job.get('company')}\nRole: {job.get('title')}\n"
             f"Job ad (excerpt): {(job.get('description') or '')[:2500]}\n\n"
             f"Cover letter: {' '.join(letter_paragraphs)}\n\nCandidate: {json.dumps(facts, ensure_ascii=False)[:6000]}"}])
-        text = "".join(getattr(b, "text", "") for b in msg.content)
-        data = json.loads(text[text.find("{"): text.rfind("}") + 1])
-        note, message = tidy(str(data.get("note", ""))), tidy(str(data.get("message", "")))
+        text = "".join(getattr(b, "text", "") for b in msg.content).strip()
+        m = re.search(r"NOTE:\s*(.+?)\s*MESSAGE:\s*(.+)", text, re.S | re.I)
+        if m:
+            note, message = m.group(1), m.group(2)
+        else:                                  # also accept JSON, in case the model answers that way
+            data = json.loads(text[text.find("{"): text.rfind("}") + 1])
+            note, message = str(data.get("note", "")), str(data.get("message", ""))
+        note = tidy(note.strip().strip('"'))
+        message = "\n".join(tidy(line) if line.strip() else "" for line in message.strip().strip('"').split("\n"))
         if not note or not message or problems(note + " " + message):
             return base
         return Outreach(_short(note, NOTE_LIMIT), message, base.search_url, engine="claude")
     except Exception as exc:
-        log.warning("LinkedIn message draft failed (%s); using the template", exc)
+        log.warning("LinkedIn message draft failed (%s); using the template", str(exc)[:120])
         return base
 
 
