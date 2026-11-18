@@ -138,9 +138,33 @@ def cmd_fill(args, settings):
     if args.url:
         job["apply_url"] = args.url
         store.update(job["uid"], apply_url=args.url)
+    else:
+        from .pipeline import employer_link, needs_employer_link
+        if needs_employer_link(job):
+            print("Looking for the company's own application page...")
+            try:
+                from .collectors.base import make_session
+                link = employer_link(make_session(), job)
+            except Exception:
+                link = ""
+            if link:
+                job["apply_url"] = link
+                store.update(job["uid"], apply_url=link)
+                print(f"Found it: {link}")
+            else:
+                print("Not found: the job board page opens. Click Apply there, then run apply again with that link.")
     cv, letter_file = local_path(job.get("cv_path")), local_path(job.get("letter_path"))
-    if not cv.is_file() or not letter_file.is_file():
-        print("No documents yet - preparing CV and cover letter first...")
+    from .pipeline import DOC_VERSION
+    old_docs = False
+    if cv.is_file() and (cv.parent / "tailoring.json").is_file():
+        meta = json.loads((cv.parent / "tailoring.json").read_text(encoding="utf-8"))
+        old_docs = meta.get("doc_version", 1) < DOC_VERSION or (
+            meta.get("engine") == "fallback" and settings.env("ANTHROPIC_API_KEY"))
+    if old_docs:
+        print("Updating your CV and cover letter to the latest version (cleaner for ATS, written by Claude)...")
+    if not cv.is_file() or not letter_file.is_file() or old_docs:
+        if not old_docs:
+            print("No documents yet - preparing CV and cover letter first...")
         prepare_job(settings, store, job)
         job.update(store.get(job["uid"]))
         cv, letter_file = local_path(job["cv_path"]), local_path(job["letter_path"])
