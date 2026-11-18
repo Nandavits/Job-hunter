@@ -41,7 +41,8 @@ flowchart LR
 
 | Source | What it gives | How it is read |
 |---|---|---|
-| Company career pages (Greenhouse, Lever, Ashby, Personio) | Jobs at companies I chose | Public job-board feeds |
+| Company career pages (Greenhouse, Lever, Ashby, Personio, SmartRecruiters, Workday) | Jobs at companies I chose, from startups to Bosch and Delivery Hero | Public job-board feeds |
+| Amazon (amazon.jobs) | Amazon and AWS jobs in Germany | Amazon's public job search |
 | Bundesagentur für Arbeit | Jobs from all of Germany (also what "Make it in Germany" shows) | Public job-search API |
 | Arbeitnow | English-speaking jobs in Germany | Public API |
 | Data Berlin (databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
@@ -131,8 +132,8 @@ python -m jobhunter stats
 
 ```
 jobhunter/
-  collectors/     one file per source: ats.py (Greenhouse, Lever, Ashby, Personio), arbeitsagentur.py,
-                  arbeitnow.py, databerlin.py, email_alerts.py
+  collectors/     one file per source: ats.py (Greenhouse, Lever, Ashby, Personio, SmartRecruiters,
+                  Workday), amazon.py, arbeitsagentur.py, arbeitnow.py, databerlin.py, email_alerts.py
   filters.py      title, location, German level, years, match score
   dedupe.py       same job across reposts and job boards
   career.py       finds the company's own application page for job-board matches
@@ -146,7 +147,7 @@ jobhunter/
   pipeline.py     runs the steps in order
   __main__.py     command line
 config/           example settings (your real ones are git-ignored)
-tests/            139 tests with recorded API answers and sample forms
+tests/            140 tests with recorded API answers and sample forms
 start-jobhunter.bat, apply.bat   one-click start and apply on Windows
 ```
 

@@ -89,6 +89,10 @@ sources:
 
   # Data Berlin (databerlin.net): ~1,000 Berlin data & AI jobs from company career pages, with the
   # employer's own application link. Job pages are read only for titles that fit your roles.
+  # Amazon (amazon.jobs): jobs in Germany from Amazon's own careers search.
+  amazon:
+    enabled: true
+
   databerlin:
     enabled: true
     max_details: 80
@@ -114,6 +118,8 @@ sources:
   # Find a company's ATS + slug with:  python -m jobhunter discover <careers-page-url>
   # The entries below are examples — run `python -m jobhunter check-sources` to verify them.
   companies:
+    # Also supported: {name: Bosch, ats: smartrecruiters, slug: BoschGroup} and
+    # {name: X, ats: workday, host: x.wd3.myworkdayjobs.com, tenant: x, site: X_Careers}
     - {name: Talon.One, ats: greenhouse, slug: linkedinjobs}
     - {name: Contentful, ats: greenhouse, slug: contentful}
     - {name: HelloFresh, ats: greenhouse, slug: hellofresh}
