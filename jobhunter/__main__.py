@@ -153,6 +153,11 @@ def cmd_fill(args, settings):
         print("Opening the job ad instead. If the form is on the company's careers page, find the job there,")
         print("copy that page's link, and run apply again with it as the 'Application link'.")
     print(f"\nOpening: {job['company']} - {job['title']}\n{target_url(job)}")
+    from .autofill import answer_sheet
+    sheet = cv.parent / "form_answers.txt"
+    sheet.write_text(answer_sheet(job, settings.profile), encoding="utf-8")
+    print(f"If a 'verify you are human' check appears, solve it in the window yourself. If it keeps failing,\n"
+          f"open the job in your normal browser and copy your answers from: {sheet}")
     try:
         report = fill(job, settings.profile, docs, letter, headless=args.headless)
     except RuntimeError as exc:
