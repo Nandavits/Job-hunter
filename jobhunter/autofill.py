@@ -379,6 +379,15 @@ def _choose_in_widget(page, el, label: str, values: dict) -> str:
         return ""
 
 
+MANUAL_ONLY = re.compile(r"smartrecruiters\.com/oneclick-ui|myworkdayjobs\.com|successfactors|"
+                         r"linkedin\.com|indeed\.|stepstone\.|xing\.com", re.I)
+
+
+def manual_only(url: str) -> bool:
+    """Application sites that block automated browsers: these open in your normal browser instead."""
+    return bool(MANUAL_ONLY.search(url or ""))
+
+
 def normalize_url(url: str) -> str:
     """'www.firma.de/jobs' -> 'https://www.firma.de/jobs'; strips spaces and markdown-style brackets."""
     url = (url or "").strip().strip("<>[]()")
