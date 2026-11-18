@@ -11,6 +11,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 
+from .style import STYLE_RULES, problems, tidy
+
 log = logging.getLogger("jobhunter")
 
 # Tools that often appear in data job ads; used to name honest gaps in the fallback letter.
@@ -142,17 +144,17 @@ def fallback(profile: dict, job: dict) -> Tailoring:
 
     paragraphs = [
         f"I am applying for the {title} position at {company}. The role's focus on "
-        f"{_join(matched)} matches the work I do every day, which is why it immediately caught my attention.",
+        f"{_join(matched)} is the work I do every day at my current job.",
         f"In my role as {exp0['title']} at {exp0['company']}, I {sentence(top[0]).rstrip('.')}. "
         f"In this role I {sentence(top[1]).rstrip('.')}." + (
             f" I also {sentence(top[2]).rstrip('.')}." if len(top) > 2 else ""),
-        "I bring hands-on experience with " + _join(matched) + ", together with a strong habit of "
-        "validating data before it reaches stakeholders." + (
+        "I work hands-on with " + _join(matched) + ". I check data against its sources before it "
+        "reaches stakeholders." + (
             f" {_join(gaps[:3])} would be new to me, "
             "but the concepts carry over directly from my current work and I pick up new tools quickly."
             if gaps else ""),
         f"I am based in {city}{', ' + _lower_first(profile['relocation'].rstrip('.')) + ',' if profile.get('relocation') else ''} "
-        f"and work fully in English. I would welcome the opportunity to discuss how I can contribute to your team.",
+        f"and work fully in English. I would be glad to talk about the role in an interview.",
     ]
     return Tailoring(
         title=_pick_title(job.get("title", ""), profile.get("default_title", "")),
@@ -180,9 +182,11 @@ Hard rules:
 - Cover letter: exactly 4 paragraphs, 230-320 words total, in English, no greeting or sign-off lines.
   Paragraph 1: why this role/company (specific to the ad). Paragraph 2: strongest matching evidence
   from the profile. Paragraph 3: further fit + honest note on the main gap, if any. Paragraph 4: based
-  in the candidate's city, works in English, wants to discuss. No clichés like "I am writing to apply".
+  in the candidate's city, works in English, wants to discuss.
 - bullet_order: for each experience index, the bullet indices from most to least relevant. Include every index.
 - skills_order: every skills category name, most relevant first.
+
+""" + STYLE_RULES + """
 
 Return the result by calling the save_tailoring tool."""
 
@@ -261,21 +265,35 @@ def tailor(profile: dict, job: dict, api_key: str = "", model: str = "claude-son
             client = anthropic.Anthropic(api_key=api_key)
         ad = f"Company: {job.get('company')}\nTitle: {job.get('title')}\nLocation: {job.get('location')}\n\n" \
              f"{(job.get('description') or '')[:9000]}"
-        msg = client.messages.create(
-            model=model,
-            max_tokens=2500,
-            system=SYSTEM_PROMPT,
-            tools=[TAILORING_TOOL],
-            tool_choice={"type": "auto"},          # forcing a tool is not supported by every model
-            messages=[{"role": "user", "content":
-                       f"<candidate_profile>\n{json.dumps(_profile_for_prompt(profile), ensure_ascii=False, indent=1)}"
-                       f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}],
-        )
-        for block in msg.content:
-            if getattr(block, "type", "") == "tool_use":
-                return _validate(dict(block.input), profile, base)
-        text = "".join(getattr(block, "text", "") for block in msg.content)
-        return _validate(_extract_json(text), profile, base)
+        messages = [{"role": "user", "content":
+                     f"<candidate_profile>\n{json.dumps(_profile_for_prompt(profile), ensure_ascii=False, indent=1)}"
+                     f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}]
+        result = None
+        for attempt in range(2):             # one rewrite if typical AI phrases slipped in
+            msg = client.messages.create(model=model, max_tokens=2500, system=SYSTEM_PROMPT,
+                                         tools=[TAILORING_TOOL],
+                                         tool_choice={"type": "auto"},   # forcing a tool is not supported by every model
+                                         messages=messages)
+            data = next((dict(b.input) for b in msg.content if getattr(b, "type", "") == "tool_use"), None)
+            if data is None:
+                data = _extract_json("".join(getattr(b, "text", "") for b in msg.content))
+            result = _validate(data, profile, base)
+            found = problems(" ".join([result.summary, *result.letter_paragraphs]))
+            if not found or attempt == 1:
+                break
+            log.info("Rewriting letter for %s without: %s", job.get("company"), ", ".join(found))
+            messages = messages + [
+                {"role": "assistant", "content": msg.content},
+                *([{"role": "user", "content": [{"type": "tool_result", "tool_use_id": b.id,
+                                                 "content": "Rejected: banned phrases " + ", ".join(found) +
+                                                 ". Rewrite everything plainly with facts only and call the tool again."}
+                                                for b in msg.content if getattr(b, "type", "") == "tool_use"]}]
+                  if any(getattr(b, "type", "") == "tool_use" for b in msg.content) else
+                  [{"role": "user", "content": "Rewrite without these phrases: " + ", ".join(found)}]),
+            ]
+        result.summary = tidy(result.summary)
+        result.letter_paragraphs = [tidy(p) for p in result.letter_paragraphs]
+        return result
     except Exception as exc:
         log.warning("AI tailoring failed (%s); using rule-based version", exc)
         return base

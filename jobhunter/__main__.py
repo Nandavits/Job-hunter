@@ -202,6 +202,10 @@ def cmd_check_key(args, settings):
                    api_key=key, model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
         print("Cover letters: written by Claude" if t.engine == "claude"
               else "Cover letters: Claude did not answer correctly - using the template (see messages above)")
+        if getattr(args, "show", False):
+            from .style import problems
+            print("\n".join(t.letter_paragraphs))
+            print("Style check:", ", ".join(problems(" ".join(t.letter_paragraphs))) or "no AI phrases found")
 
 
 def cmd_stats(args, settings):
@@ -329,6 +333,7 @@ def main(argv=None):
 
     p = sub.add_parser("check-key", help="test the Claude API key")
     p.add_argument("--letters", action="store_true", help="also write one test cover letter (about 3 cents)")
+    p.add_argument("--show", action="store_true", help="print the test letter")
     p.set_defaults(func=cmd_check_key)
     p = sub.add_parser("run", help="collect jobs, prepare documents, send digest")
     p.add_argument("--no-digest", action="store_true")
