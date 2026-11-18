@@ -54,7 +54,12 @@ def cmd_run(args, settings):
 
 
 def cmd_list(args, settings):
-    rows = _store(settings).list(status=args.status, limit=args.limit, include_skipped=args.all)
+    if args.status or args.all:
+        rows = _store(settings).list(status=args.status, limit=args.limit, include_skipped=args.all)
+    else:   # default: only jobs you can still apply to, best first (applied and skipped jobs are hidden)
+        rows = [r for r in _store(settings).list(limit=100_000) if r["status"] in ("new", "prepared")]
+        rows.sort(key=lambda r: (len(r.get("description") or "") < 100, -(r["score"] or 0)))
+        rows = rows[: args.limit]
     if not rows:
         print("No jobs yet. Run: python -m jobhunter run")
     elif any(len(r.get("description") or "") < 100 for r in rows):
@@ -212,7 +217,8 @@ def cmd_fill(args, settings):
     if input("\nDid you submit the application? [y/N] ").strip().lower() == "y":
         retired = store.mark_applied(job["uid"])
         print("Marked as applied." + (f" Also hid {retired} copy/copies of this job from other sources." if retired else ""))
-        _show_outreach(settings, store.get(job["uid"]), cv.parent)
+        if settings.config.get("tailoring", {}).get("linkedin_outreach", False):
+            _show_outreach(settings, store.get(job["uid"]), cv.parent)
     _export(store)
 
 
@@ -436,7 +442,7 @@ def main(argv=None):
     p = sub.add_parser("list", help="list stored jobs")
     p.add_argument("--status", choices=STATUSES)
     p.add_argument("--limit", type=int, default=40)
-    p.add_argument("--all", action="store_true", help="include skipped jobs")
+    p.add_argument("--all", action="store_true", help="include applied and skipped jobs")
     p.set_defaults(func=cmd_list)
 
     for name, func, helptext in [("show", cmd_show, "show one job"),
