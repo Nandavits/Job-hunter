@@ -27,6 +27,7 @@ FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k i
     (r"xing", "xing"),
     (r"website|portfolio|personal (site|url)", "github"),
     (r"salutation|anrede|^\s*title\s*\*?\s*$", "salutation"),
+    (r"\bgender\b|geschlecht", "gender"),
     (r"date of birth|birth ?date|birthday|geburtsdatum", "date_of_birth"),
     (r"nationality|citizenship|staatsangehörigkeit|staatsangehoerigkeit", "nationality"),
     (r"postal|zip|postleitzahl|\bplz\b", "postal_code"),
@@ -45,6 +46,8 @@ FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k i
     (r"\breferr|know (anyone|someone)|empfohlen|empfehlung", "referred"),
     (r"non-?compete|wettbewerbsverbot|restrictive covenant", "non_compete"),
     (r"relocat|umzug|umziehen", "relocation_answer"),
+    (r"(work|be|come|commute) (from|in|at|into|to) (the |our |an )?(\w+ )?office|in[- ]office|in[- ]person|"
+     r"days? (a|per|each|every) week|\bbüro\b|vor ort|präsenz", "office_days"),
     (r"remote|hybrid|on-?site|work(ing)? model|arbeitsmodell|home ?office", "work_model"),
     (r"full[- ]?time|part[- ]?time|vollzeit|teilzeit|employment type|working hours|wochenstunden", "employment_type"),
     (r"contract type|vertragsart|befrist|permanent|fixed[- ]term|freelance", "contract_type"),
@@ -55,7 +58,8 @@ FIELD_RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.I), k) for p, k i
     (r"university|universität|hochschule|school|institution", "university"),
     (r"german|deutsch", "german_level"),
     (r"english|englisch", "english_level"),
-    (r"\bcity\b|\blocation\b|where are you (based|located)|wohnort|\bort\b", "city"),
+    (r"\bcity\b|wohnort|\bort\b", "city"),
+    (r"\blocation\b|where (are you|do you) (based|located|live)|current residence|standort", "location"),
     (r"cover letter|anschreiben|motivation", "cover_letter_text"),
 ]]
 
@@ -80,6 +84,8 @@ SENSITIVE = re.compile(r"gender|geschlecht|pronoun|race|ethnic|disab|behinder|ve
                        r"religio|marital|age\b|date of birth|geburtsdatum|nationality|citizenship|staatsangeh", re.I)
 PREFER_NOT = re.compile(r"prefer not|decline|don.t wish|do not wish|not to (say|answer|disclose)|keine angabe|"
                         r"möchte (ich )?nicht", re.I)
+AFFIRMATIVE = {"work_model", "office_days", "relocation_answer", "travel", "employment_type", "contract_type",
+               "work_authorization", "english_level"}
 YES = re.compile(r"^\s*(yes|ja|y)\b", re.I)
 NO = re.compile(r"^\s*(no|nein|n)\b", re.I)
 PLACEHOLDER = re.compile(r"^\s*(select|choose|please|bitte|--|—|-|\.\.\.)|^\s*$", re.I)
@@ -91,7 +97,7 @@ def choose_option(label: str, options: list[str], values: dict[str, str]) -> str
     if not real:
         return ""
     key, value = match_field(label, values)
-    shared = key in ("nationality", "date_of_birth", "salutation") and value  # the person chose to share these
+    shared = key in ("nationality", "date_of_birth", "salutation", "gender") and value  # the person chose to share these
     if SENSITIVE.search(label) and not shared:
         return next((o for o in real if PREFER_NOT.search(o)), "")
     if not value:
@@ -101,6 +107,13 @@ def choose_option(label: str, options: list[str], values: dict[str, str]) -> str
             value = values.get("how_did_you_hear", "")
     if not value:
         return ""
+    if key == "gender":
+        male = re.match(r"\s*(male|man|m)\b", value, re.I)
+        want = r"^\s*(male|man|männlich|maennlich|mann|m)\b" if male else r"^\s*(female|woman|weiblich|frau|w|f)\b"
+        return next((o for o in real if re.match(want, o, re.I)), "")
+    yes_no = all(YES.match(o) or NO.match(o) for o in real)
+    if yes_no and not (YES.match(value) or NO.match(value)) and key in AFFIRMATIVE:
+        value = "Yes"                       # "Open to hybrid or on-site" answers a Yes/No question with Yes
     if YES.match(value) or NO.match(value):
         pattern = YES if YES.match(value) else NO
         return next((o for o in real if pattern.match(o)), "")
@@ -165,6 +178,7 @@ def value_map(profile: dict, letter_text: str = "") -> dict[str, str]:
         "linkedin": me.get("linkedin", ""),
         "github": me.get("github", ""),
         "city": me.get("city", ""),
+        "location": ", ".join(x for x in (me.get("city", ""), me.get("country", "Germany")) if x),
         "current_company": exp0.get("company", ""),
         "current_title": exp0.get("title", ""),
         "cover_letter_text": letter_text,
@@ -301,6 +315,38 @@ BANNER_JS = """() => {
 }"""
 
 
+def _pick_suggestion(page, el, value: str) -> None:
+    """Typed into an autocomplete field: choose the first suggestion that matches."""
+    try:
+        page.wait_for_timeout(1200)
+        first = value.split(",")[0].strip()
+        option = page.get_by_role("option", name=re.compile(re.escape(first), re.I)).first
+        if option.count():
+            option.click()
+        else:
+            el.press("ArrowDown")
+            el.press("Enter")
+    except Exception:
+        pass
+
+
+def _choose_in_widget(page, el, label: str, values: dict) -> str:
+    """Custom dropdowns (role=combobox, e.g. Ashby, Workable): open, read the options, click the right one."""
+    try:
+        el.click()
+        page.wait_for_timeout(700)
+        options = page.get_by_role("option")
+        texts = [t.strip() for t in options.all_inner_texts()]
+        choice = choose_option(label, texts, values) if texts else ""
+        if not choice:
+            page.keyboard.press("Escape")
+            return ""
+        options.nth(texts.index(choice)).click()
+        return choice
+    except Exception:
+        return ""
+
+
 def normalize_url(url: str) -> str:
     """'www.firma.de/jobs' -> 'https://www.firma.de/jobs'; strips spaces and markdown-style brackets."""
     url = (url or "").strip().strip("<>[]()")
@@ -379,6 +425,8 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
             question = "" if key else match_question(info["label"])
             if value:
                 el.fill(value)
+                if el.evaluate("e => e.getAttribute('role') === 'combobox' || !!e.getAttribute('aria-autocomplete')"):
+                    _pick_suggestion(page, el, value)        # e.g. location fields that need a list choice
                 report.filled.append(f"{info['label']} = {value[:60]}{'…' if len(value) > 60 else ''}")
             elif not key and not question and info["label"] and os.environ.get("ANTHROPIC_API_KEY") and \
                     (info["type"] == "textarea" or info["label"].rstrip(" *").endswith("?")):
@@ -453,10 +501,16 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
             info = boxes.nth(i).evaluate(LABEL_JS)
             if info["visible"]:
                 report.needs_you.append(f"{info['label'][:60]} (tick yourself)")
-        combos = page.locator("[role=combobox]")
+        combos = page.locator("[role=combobox]:not(input)")
         for i in range(combos.count()):
-            info = combos.nth(i).evaluate(LABEL_JS)
-            if info["visible"] and info["required"] and not info["value"]:
+            el = combos.nth(i)
+            info = el.evaluate(LABEL_JS)
+            if not info["visible"] or info["value"]:
+                continue
+            choice = _choose_in_widget(page, el, info["label"], values) if info["label"] else ""
+            if choice:
+                report.filled.append(f"{info['label'][:60]} = {choice[:40]}")
+            elif info["required"]:
                 report.needs_you.append(f"{info['label'][:60]} (choose yourself)")
 
         # Mark the submit button, never click it.

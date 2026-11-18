@@ -240,3 +240,16 @@ def test_unknown_open_questions_go_to_claude(monkeypatch, tmp_path, profile):
     r = autofill.fill({"url": html.as_uri(), "company": "X", "title": "DE"}, profile, {}, ["p1", "p2", "p3"],
                       headless=True)
     assert any("90 days" in d for d in r.drafted)
+
+
+def test_gender_location_and_office_questions():
+    from jobhunter.autofill import choose_option, match_field
+    values = {"gender": "Male", "city": "Berlin", "location": "Berlin, Germany", "office_days": "Yes",
+              "work_model": "Open to remote, hybrid or on-site"}
+    assert choose_option("Gender", ["Select...", "Female", "Male", "Non-binary", "Prefer not to say"], values) == "Male"
+    assert choose_option("Geschlecht", ["weiblich", "männlich", "divers"], values) == "männlich"
+    assert match_field("Location", values) == ("location", "Berlin, Germany")
+    assert match_field("City", values)[1] == "Berlin"
+    assert choose_option("Are you able to work from our Berlin office 3 days a week?", ["Yes", "No"], values) == "Yes"
+    assert choose_option("Are you open to a hybrid work model?", ["Yes", "No"], values) == "Yes"
+    assert choose_option("Ethnicity", ["Asian", "White", "Prefer not to say"], values) == "Prefer not to say"
