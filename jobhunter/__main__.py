@@ -110,8 +110,17 @@ def cmd_fill(args, settings):
     docs = {"cv_pdf" if cv.suffix == ".pdf" else "cv_docx": str(cv),
             "letter_pdf" if letter_file.suffix == ".pdf" else "letter_docx": str(letter_file)}
     letter = json.loads((cv.parent / "tailoring.json").read_text(encoding="utf-8"))["letter"]
-    print(f"\nOpening: {job['company']} - {job['title']}\n{job.get('apply_url') or job.get('url')}")
-    report = fill(job, settings.profile, docs, letter, headless=args.headless)
+    from .autofill import is_homepage, normalize_url, target_url
+    if job.get("apply_url") and is_homepage(job["apply_url"]) and not args.url:
+        print(f"\nThis job only links to the company homepage ({normalize_url(job['apply_url'])}).")
+        print("Opening the job ad instead. If the form is on the company's careers page, find the job there,")
+        print("copy that page's link, and run apply again with it as the 'Application link'.")
+    print(f"\nOpening: {job['company']} - {job['title']}\n{target_url(job)}")
+    try:
+        report = fill(job, settings.profile, docs, letter, headless=args.headless)
+    except RuntimeError as exc:
+        print(f"\n{exc}\nPaste the company's application link next time at 'Application link'.")
+        return
     print("\nFilled:", *report.filled, sep="\n  ")
     print("Uploaded:", *report.uploaded, sep="\n  ")
     if report.drafted:

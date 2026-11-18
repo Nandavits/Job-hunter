@@ -301,11 +301,35 @@ BANNER_JS = """() => {
 }"""
 
 
+def normalize_url(url: str) -> str:
+    """'www.firma.de/jobs' -> 'https://www.firma.de/jobs'; strips spaces and markdown-style brackets."""
+    url = (url or "").strip().strip("<>[]()")
+    if url and not re.match(r"^(https?|file)://", url, re.I):
+        url = "https://" + url.lstrip("/")
+    return url
+
+
+def is_homepage(url: str) -> bool:
+    """True for links that only point at a company's front page (no specific job)."""
+    from urllib.parse import urlparse
+    parts = urlparse(normalize_url(url))
+    return bool(parts.netloc) and parts.path.strip("/") == "" and not parts.query
+
+
+def target_url(job: dict) -> str:
+    """The page to open: the application link, unless it is just a homepage; then the job ad."""
+    apply = normalize_url(job.get("apply_url") or "")
+    ad = normalize_url(job.get("url") or "")
+    if apply and not (is_homepage(apply) and ad):
+        return apply
+    return ad or apply
+
+
 def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], headless: bool = False,
          inspect=None) -> FillReport:
     from playwright.sync_api import sync_playwright
 
-    url = job.get("apply_url") or job.get("url")
+    url = target_url(job)
     values = value_map(profile, letter_plain_text(job, profile, letter_paragraphs))
     drafts = draft_answers(profile, letter_paragraphs)
     cv_file = docs.get("cv_pdf") or docs.get("cv_docx")
@@ -315,7 +339,11 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=headless)
         page = browser.new_page()
-        page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+        except Exception as exc:
+            browser.close()
+            raise RuntimeError(f"Could not open {url} ({str(exc).splitlines()[0]})") from None
         page.wait_for_timeout(2500)
 
         # Some boards show the form only after clicking "Apply" (this opens the form; it does not submit).
