@@ -163,12 +163,18 @@ def cmd_fill(args, settings):
     except RuntimeError as exc:
         print(f"\n{exc}\nPaste the company's application link next time at 'Application link'.")
         return
-    print("\nFilled:", *report.filled, sep="\n  ")
-    print("Uploaded:", *report.uploaded, sep="\n  ")
-    if report.drafted:
-        print("Drafted answers - read and adjust before submitting:", *report.drafted, sep="\n  ")
-    if report.needs_you:
-        print("Needs your answer:", *report.needs_you, sep="\n  ")
+    except Exception as exc:                       # e.g. the browser window was closed early
+        if "closed" not in str(exc).lower():
+            raise
+        print("\nThe browser window closed before Job Hunter finished. If you applied anyway, answer y below.")
+        report = None
+    if report is not None:
+        print("\nFilled:", *report.filled, sep="\n  ")
+        print("Uploaded:", *report.uploaded, sep="\n  ")
+        if report.drafted:
+            print("Drafted answers - read and adjust before submitting:", *report.drafted, sep="\n  ")
+        if report.needs_you:
+            print("Needs your answer:", *report.needs_you, sep="\n  ")
     if input("\nDid you submit the application? [y/N] ").strip().lower() == "y":
         retired = store.mark_applied(job["uid"])
         print("Marked as applied." + (f" Also hid {retired} copy/copies of this job from other sources." if retired else ""))
