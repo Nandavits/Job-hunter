@@ -246,6 +246,12 @@ def cmd_check_sources(args, settings):
         jobs = arbeitnow.fetch(session, dict(an, max_pages=1))
         print(f"{'OK ' if jobs else '---'} {'Arbeitnow':<20} {'api':<10} {len(jobs):>4} jobs on page 1")
 
+    amz = settings.sources.get("amazon") or {}
+    if amz.get("enabled"):
+        from .collectors import amazon
+        jobs = amazon.fetch(session, dict(amz, queries=(amz.get("queries") or ["data engineer"])[:1]))
+        print(f"{'OK ' if jobs else '---'} {'Amazon':<20} {'web':<10} {len(jobs):>4} jobs")
+
     dbn = settings.sources.get("databerlin") or {}
     if dbn.get("enabled"):
         from .collectors import databerlin
