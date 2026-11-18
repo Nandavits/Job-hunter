@@ -160,3 +160,17 @@ def test_arbeitnow_parse_and_paging(session):
     assert job.url.startswith("https://www.arbeitnow.com/")      # link back to Arbeitnow, as they ask
     assert "dbt" in job.description and job.posted_at.startswith("2025-")
     assert sum("arbeitnow" in u for u, _ in session.calls) == 2   # followed links.next once, then stopped
+
+
+def test_linkedin_alert_jobs_get_their_ad_text(monkeypatch):
+    import jobhunter.collectors as col
+    seen = []
+    class Resp:
+        text = ('<html><body><div class="show-more-less-html__markup">We build pipelines with Python, '
+                'SQL, dbt and Airflow on PostgreSQL. English is our working language. ' + 'x ' * 40 + '</div></body></html>')
+    monkeypatch.setattr(col, "get", lambda session, url, **kw: seen.append(url) or Resp())
+    monkeypatch.setattr(col.time, "sleep", lambda s: None)
+    text = col.description_for(None, "https://www.linkedin.com/jobs/view/4489745117/")
+    assert seen == ["https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4489745117"]
+    assert "dbt and Airflow" in text
+    assert col.LINKEDIN_JOB.search("https://www.linkedin.com/comm/jobs/view/data-engineer-at-x-4490612550?trk=1")
