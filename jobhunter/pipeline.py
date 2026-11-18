@@ -21,12 +21,36 @@ from .tailor import tailor
 log = logging.getLogger("jobhunter")
 
 
+def copy_descriptions_from_twins(store: Store) -> int:
+    """A job without ad text often also came from another site that had it (e.g. Glassdoor + Data Berlin)."""
+    from .dedupe import same_job
+    rows = store.list(limit=100_000, include_skipped=True)
+    with_text = [r for r in rows if len(r["description"] or "") >= 100]
+    copied = 0
+    for row in rows:
+        if row["status"] not in ("new", "prepared") or len(row["description"] or "") >= 100:
+            continue
+        twin = next((t for t in with_text if t["uid"] != row["uid"]
+                     and same_job(row["company"], row["title"], t["company"], t["title"])), None)
+        if twin:
+            update = {"description": twin["description"]}
+            if twin.get("apply_url") and not row.get("apply_url"):
+                update["apply_url"] = twin["apply_url"]
+            store.update(row["uid"], **update)
+            copied += 1
+    if copied:
+        log.info("Copied the ad text from another site for %d jobs", copied)
+    return copied
+
+
 def backfill_descriptions(store: Store, limit: int = 60, session=None) -> int:
     """Open jobs saved without ad text (e.g. from LinkedIn alerts): fetch it so they can be scored."""
     from .collectors import description_for
     from .collectors.base import make_session
+    copy_descriptions_from_twins(store)
     rows = [r for r in store.list(limit=100_000)
-            if r["status"] in ("new", "prepared") and len(r["description"] or "") < 100 and r["url"]][:limit]
+            if r["status"] in ("new", "prepared") and len(r["description"] or "") < 100 and r["url"]
+            and "glassdoor." not in r["url"]][:limit]       # Glassdoor pages can't be read; career.py handles them
     if not rows:
         return 0
     session = session or make_session()
@@ -164,7 +188,8 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     try:   # LinkedIn/StepStone/XING/Indeed matches: find the employer's own application page
         from .career import add_career_links
         from .collectors.base import make_session
-        add_career_links(store, session or make_session(), int(search.get("min_score", 55)))
+        if add_career_links(store, session or make_session(), int(search.get("min_score", 55))):
+            rescore_open_jobs(store, search)        # jobs that just got their ad text get a score now
     except Exception as exc:
         log.warning("Could not look up company career pages: %s", exc)
 

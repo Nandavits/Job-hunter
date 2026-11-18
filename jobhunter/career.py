@@ -65,7 +65,8 @@ def slug_guesses(company: str) -> list[str]:
     return [g for g in dict.fromkeys(guesses) if len(g) >= 3]
 
 
-def find_on_company_boards(session, company: str, title: str) -> str:
+def find_on_company_boards(session, company: str, title: str) -> tuple[str, str]:
+    """(application link, ad text) of the same job on the company's own job board, if found."""
     quiet = logging.getLogger(base_log_name)
     level = quiet.level
     quiet.setLevel(logging.ERROR)            # most guesses do not exist; that is expected, not a warning
@@ -75,7 +76,7 @@ def find_on_company_boards(session, company: str, title: str) -> str:
         quiet.setLevel(level)
 
 
-def _search_boards(session, company: str, title: str) -> str:
+def _search_boards(session, company: str, title: str) -> tuple[str, str]:
     for slug in slug_guesses(company):
         for system in ("greenhouse", "lever", "ashby", "personio"):
             try:
@@ -84,11 +85,12 @@ def _search_boards(session, company: str, title: str) -> str:
                 continue
             for job in jobs:
                 if same_title(job.title, title):
-                    return job.apply_url or job.url
-    return ""
+                    return job.apply_url or job.url, job.description
+    return "", ""
 
 
-def find_career_link(session, job: dict) -> str:
+def find_career_link(session, job: dict) -> tuple[str, str]:
+    """(employer's application link, ad text) for a job seen on a job board."""
     url = job.get("url") or ""
     m = LINKEDIN_JOB.search(url)
     if m:
@@ -98,26 +100,38 @@ def find_career_link(session, job: dict) -> str:
         if resp is not None:
             link = linkedin_offsite_link(resp.text)
             if link:
-                return link
+                text = ""
+                try:
+                    from .collectors import description_for
+                    text = description_for(session, link)
+                except Exception:
+                    pass
+                return link, text
     return find_on_company_boards(session, job.get("company") or "", job.get("title") or "")
 
 
-def add_career_links(store, session, min_score: int, limit: int = 10) -> int:
+def add_career_links(store, session, min_score: int, limit: int = 25) -> int:
     """For good job-board matches without a company link yet, look for the employer's own page."""
+    def unscored(r):
+        return len(r.get("description") or "") < 100
+
     rows = [r for r in store.list(limit=100_000)
-            if r["status"] in ("new", "prepared") and (r["score"] or 0) >= min_score
+            if r["status"] in ("new", "prepared") and ((r["score"] or 0) >= min_score or unscored(r))
             and is_job_board(r["url"]) and not (r.get("apply_url") and not is_job_board(r["apply_url"]))
             and NOT_FOUND_NOTE not in (r.get("notes") or "")]
-    rows.sort(key=lambda r: -(r["score"] or 0))
+    rows.sort(key=lambda r: (not unscored(r), -(r["score"] or 0)))     # unscored first: they need the ad text
     found = 0
     for row in rows[:limit]:
         try:
-            link = find_career_link(session, row)
+            link, text = find_career_link(session, row)
         except Exception as exc:
             log.debug("Career link lookup failed for %s: %s", row["company"], exc)
             continue
         if link:
-            store.update(row["uid"], apply_url=link)
+            update = {"apply_url": link}
+            if len(text or "") >= 100 and unscored(row):
+                update["description"] = text            # now the job can be scored
+            store.update(row["uid"], **update)
             found += 1
             log.info("Company link for %s - %s: %s", row["company"], row["title"], link)
         else:

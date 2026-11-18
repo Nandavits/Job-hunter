@@ -22,7 +22,7 @@ def test_company_board_match(monkeypatch):
     monkeypatch.setattr(career.ats, "fetch_company", fake_fetch)
     link = career.find_career_link(None, {"url": "https://www.stepstone.de/stellenangebote--x.html",
                                           "company": "CKM Group", "title": "Junior Data Engineer (m/w/d)"})
-    assert link.endswith("#apply")
+    assert link[0].endswith("#apply")
 
 
 def test_job_board_detection():

@@ -52,3 +52,18 @@ def test_cv_contains_only_profile_facts(settings, session):
     letter = "\n".join(p.text for p in Document(job["letter_path"].replace(".pdf", ".docx")).paragraphs)
     assert "Dear Gamma Hiring Team" in letter
     assert "BigQuery" in letter and "would be new to me" in letter  # honest gap, not a claim
+
+
+def test_ad_text_is_copied_from_the_same_job_on_another_site(tmp_path):
+    from jobhunter.models import Job
+    from jobhunter.pipeline import copy_descriptions_from_twins
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    glassdoor = Job("email", "glassdoor:1", "Statista", "Analytics Engineer (m/f/d)", "https://www.glassdoor.de/job-listing/j?jl=1")
+    databerlin = Job("databerlin", "analytics-engineer-at-statista", "Statista", "Analytics Engineer",
+                     "https://databerlin.net/jobs/analytics-engineer-at-statista",
+                     description="We build dbt models on BigQuery. SQL and Python. " * 5,
+                     apply_url="https://statista.jobs.personio.de/job/1")
+    store.save([glassdoor, databerlin])
+    assert copy_descriptions_from_twins(store) == 1
+    row = store.get(glassdoor.uid)
+    assert "dbt models" in row["description"] and row["apply_url"].startswith("https://statista")
