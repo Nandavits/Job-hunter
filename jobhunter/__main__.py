@@ -238,6 +238,13 @@ def cmd_check_key(args, settings):
                                          "description": "Python, SQL, dbt and Airflow."}, t.letter_paragraphs,
                       t.skill_priority, api_key=key, model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
             print(f"\nLinkedIn note ({o.engine}, {len(o.note)} chars): {o.note}\n\nLinkedIn message:\n{o.message}")
+            from .autofill import claude_answer, claude_choose
+            job = {"company": "Example GmbH", "title": "Data Engineer", "description": "Python, SQL, dbt and Airflow."}
+            print("\nForm answer test:", claude_answer("Why do you want to work with us?", job, settings.profile,
+                                                       t.letter_paragraphs) or "(no answer)")
+            print("Dropdown test:", claude_choose("How many years of SQL experience do you have?",
+                                                  ["Less than 1 year", "1-2 years", "3-5 years", "More than 5 years"],
+                                                  job, settings.profile) or "(no answer)")
 
 
 def cmd_stats(args, settings):

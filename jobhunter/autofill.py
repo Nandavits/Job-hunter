@@ -148,7 +148,7 @@ def claude_choose(question: str, options: list[str], job: dict, profile: dict) -
                                              "languages", "relocation", "answers")}
         msg = client.messages.create(
             model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
-            max_tokens=50,
+            max_tokens=1000,             # room for the model to think before the short answer
             system=("Pick the option that truthfully answers a job-application question for the candidate, "
                     "using ONLY the candidate facts. Reply with the exact option text, or NONE if the facts "
                     "do not clearly answer it."),
@@ -233,7 +233,7 @@ def claude_answer(question: str, job: dict, profile: dict, letter_paragraphs: li
                                              "education", "languages", "relocation")}
         msg = client.messages.create(
             model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
-            max_tokens=400,
+            max_tokens=1500,
             system=("Answer one job-application question for the candidate, in the first person, in English, "
                     "50-110 words, plain text. Use ONLY facts from the candidate profile and cover letter; "
                     "never invent experience, numbers or tools. Be specific to the company and role.\n\n"
