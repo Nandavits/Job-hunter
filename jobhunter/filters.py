@@ -52,7 +52,16 @@ FOREIGN = re.compile(
     r"london|ireland|dublin|netherlands|amsterdam|rotterdam|belgium|brussels|brüssel|france|paris|spain|madrid|"
     r"barcelona|portugal|lisbon|lissabon|italy|milan|mailand|austria|österreich|vienna|wien|switzerland|schweiz|"
     r"zurich|zürich|poland|polen|warsaw|warschau|czech|prague|prag|denmark|copenhagen|sweden|stockholm|"
-    r"norway|oslo|finland|helsinki|luxembourg|luxemburg|new york|san francisco|toronto)\b", re.I)
+    r"norway|oslo|finland|helsinki|luxembourg|luxemburg|new york|san francisco|toronto|"
+    r"nederland|holland|friesland|drachten|utrecht|eindhoven|groningen|den haag|the hague|frankreich|"
+    r"bordeaux|lyon|marseille|toulouse|nantes|lille|nice|montpellier|strasbourg|straßburg|españa|valencia|"
+    r"italia|rome|rom|turin|porto|polska|krakow|kraków|wroclaw|wrocław|gdansk|budapest|hungary|ungarn|"
+    r"romania|rumänien|bucharest|bulgaria|sofia|greece|athens|estonia|tallinn|latvia|riga|lithuania|vilnius|"
+    r"belgië|belgique|antwerp|antwerpen|ghent|gent|salzburg|graz|linz|innsbruck|basel|bern|geneva|genf|"
+    r"lausanne|danmark|aarhus|sverige|gothenburg|göteborg|malmö|norge|suomi|ukraine|kyiv|serbia|belgrade|"
+    r"croatia|zagreb|slovenia|ljubljana|slovakia|bratislava|turkey|istanbul|israel|tel aviv|dubai|uae|"
+    r"pakistan|egypt|cairo|nigeria|south africa|philippines|vietnam|indonesia|malaysia|japan|tokyo|china|"
+    r"hong kong|korea|seoul|argentina|chile|colombia|bangalore|bengaluru|hyderabad|pune|chennai|mumbai|delhi)\b", re.I)
 IN_GERMANY = re.compile(r"\b(?:germany|deutschland|bundesweit)\b", re.I)
 
 FAR_AWAY = re.compile(r"\b(?:united states|usa|u\.s\.|canada|india|brazil|mexico|singapore|australia|"

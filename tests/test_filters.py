@@ -155,3 +155,11 @@ def test_alternatives_and_nice_to_haves_are_not_full_gaps(config):
     assert "dagster" not in job.extra["missing_skills"]          # alternative to Airflow, which you have
     assert "kafka" in job.extra["missing_skills"]                # optional, but still listed as a gap
     assert job.score >= 80
+
+
+def test_european_cities_outside_germany_are_dropped(config):
+    cfg = dict(config["search"], anywhere_in_germany=True)
+    for loc in ("Bordeaux", "Drachten, Friesland, Nederland", "Graz", "Kraków"):
+        assert evaluate(_job("Data Engineer", "SQL Python", location=loc), cfg).excluded_reason, loc
+    for loc in ("Cologne", "Berlin", "Freiburg im Breisgau", "Germany"):
+        assert not evaluate(_job("Data Engineer", "SQL Python", location=loc), cfg).excluded_reason, loc
