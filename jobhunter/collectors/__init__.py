@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Callable
 
 from bs4 import BeautifulSoup
@@ -27,12 +28,38 @@ def description_from_page(html: str) -> str:
     return "\n".join(texts)[:20000]
 
 
+LINKEDIN_JOB = re.compile(r"linkedin\.com/(?:comm/)?jobs/view/(?:[^/?#]*-)?(\d{6,})", re.I)
+
+
+def description_for(session, url: str) -> str:
+    """Read the full ad text from a job's public page. LinkedIn: its public (logged-out) job view."""
+    m = LINKEDIN_JOB.search(url or "")
+    if m:
+        time.sleep(1.5)                                    # be gentle: a few pages per run only
+        resp = get(session, f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{m.group(1)}",
+                   headers={"Accept": "text/html"})
+        if resp is None:
+            return ""
+        soup = BeautifulSoup(resp.text, "lxml")
+        block = soup.select_one(".show-more-less-html__markup, .description__text, [class*='description']")
+        return re.sub(r"\s+", " ", block.get_text(" ", strip=True))[:20000] if block else ""
+    if not url:
+        return ""
+    resp = get(session, url, headers={"Accept": "text/html"})
+    return description_from_page(resp.text) if resp is not None else ""
+
+
 def fill_missing_descriptions(session, jobs: list[Job], limit: int = 40) -> None:
-    """Some companies publish feeds with empty descriptions; read the job page instead."""
-    for job in [j for j in jobs if j.source in PAGE_SOURCES and len(j.description) < 100][:limit]:
-        resp = get(session, job.url, headers={"Accept": "text/html"})
-        if resp is not None:
-            job.description = description_from_page(resp.text)
+    """Some feeds (company boards, job-alert emails) have no ad text; read the job page instead."""
+    for job in [j for j in jobs if (j.source in PAGE_SOURCES or j.source == "email")
+                and len(j.description) < 100][:limit]:
+        try:
+            text = description_for(session, job.url)
+        except Exception as exc:
+            log.debug("No description for %s: %s", job.url, exc)
+            continue
+        if len(text) > len(job.description):
+            job.description = text
 
 
 def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=None) -> list[Job]:
@@ -74,8 +101,10 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
     mail = sources.get("email_alerts") or {}
     if mail.get("enabled"):
         try:
-            jobs.extend(email_alerts.fetch(mail, settings.env("GMAIL_ADDRESS"),
-                                           settings.env("GMAIL_APP_PASSWORD")))
+            found = email_alerts.fetch(mail, settings.env("GMAIL_ADDRESS"), settings.env("GMAIL_APP_PASSWORD"))
+            if keep:
+                fill_missing_descriptions(session, [j for j in found if keep(j)])
+            jobs.extend(found)
         except Exception as exc:
             log.warning("Email alerts failed: %s", exc)
 

@@ -19,6 +19,28 @@ from .tailor import tailor
 log = logging.getLogger("jobhunter")
 
 
+def backfill_descriptions(store: Store, limit: int = 30, session=None) -> int:
+    """Open jobs saved without ad text (e.g. from LinkedIn alerts): fetch it so they can be scored."""
+    from .collectors import description_for
+    from .collectors.base import make_session
+    rows = [r for r in store.list(limit=100_000)
+            if r["status"] in ("new", "prepared") and len(r["description"] or "") < 100 and r["url"]][:limit]
+    if not rows:
+        return 0
+    session = session or make_session()
+    done = 0
+    for row in rows:
+        try:
+            text = description_for(session, row["url"])
+        except Exception:
+            continue
+        if len(text) >= 100:
+            store.update(row["uid"], description=text)
+            done += 1
+    log.info("Fetched the ad text for %d of %d jobs that had none", done, len(rows))
+    return done
+
+
 def rescore_open_jobs(store: Store, search: dict) -> int:
     """Recompute the match score of jobs you have not applied to yet (scoring can improve over time)."""
     from .filters import location_matches, score_job
@@ -91,6 +113,10 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     search = settings.search
     excel_path = DATA_DIR / "applications.xlsx"
     sync_from_excel(store, excel_path)   # statuses you changed in Excel (e.g. applied on LinkedIn)
+    try:
+        backfill_descriptions(store, session=session)
+    except Exception as exc:
+        log.warning("Could not fetch missing ad texts: %s", exc)
     rescore_open_jobs(store, search)
 
     raw = collect_all(settings, keep=quick_keep(search), session=session)

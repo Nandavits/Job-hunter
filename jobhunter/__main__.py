@@ -53,9 +53,13 @@ def cmd_list(args, settings):
     rows = _store(settings).list(status=args.status, limit=args.limit, include_skipped=args.all)
     if not rows:
         print("No jobs yet. Run: python -m jobhunter run")
+    elif any(len(r.get("description") or "") < 100 for r in rows):
+        print("  ? = not scored yet: the ad text could not be read (often LinkedIn alerts). Open the link to judge.")
     for r in rows:
         reason = f"  ({r['excluded_reason'][:60]})" if r["excluded_reason"] else ""
-        print(f"{r['uid'][:8]}  {r['status']:<9} {r['score']:>3}  {r['company'][:22]:<22} {r['title'][:55]}{reason}")
+        unscored = r["status"] in ("new", "prepared") and len(r.get("description") or "") < 100
+        score = "  ?" if unscored else f"{r['score']:>3}"
+        print(f"{r['uid'][:8]}  {r['status']:<9} {score}  {r['company'][:22]:<22} {r['title'][:55]}{reason}")
 
 
 def cmd_show(args, settings):
