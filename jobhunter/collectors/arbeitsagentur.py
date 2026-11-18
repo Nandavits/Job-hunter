@@ -59,7 +59,7 @@ def parse_search(data: dict) -> list[Job]:
             company=_first(item, "arbeitgeber", "arbeitgeberName", "firma"),
             title=_first(item, "titel", "stellenangebotsTitel", "stellentitel", "beruf"),
             url=f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
-            apply_url=item.get("externeUrl") or "",
+            apply_url=_specific(item.get("externeUrl") or ""),
             location=_location(item.get("arbeitsort") or (item.get("arbeitsorte") or [None])[0]),
             posted_at=_first(item, "aktuelleVeroeffentlichungsdatum", "veroeffentlichungsdatum",
                              "eintrittsdatum")[:10],
@@ -128,3 +128,10 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_det
         if not job.apply_url:
             job.apply_url = detail.get("allianzpartnerUrl") or detail.get("externeUrl") or ""
     return jobs
+
+
+def _specific(url: str) -> str:
+    """Keep an employer link only if it points at a specific page, not just the homepage."""
+    from ..autofill import is_homepage, normalize_url
+    url = normalize_url(url)
+    return "" if not url or is_homepage(url) else url

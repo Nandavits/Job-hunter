@@ -218,3 +218,12 @@ def test_asked_for_skills_go_first_and_nothing_is_invented(profile):
     assert "Docker" in " ".join(t.skill_priority)
     assert not any("kubernetes" in s.lower() for s in t.skill_priority)   # you don't have it: never added
     assert "Kubernetes" in t.gaps
+
+
+def test_bare_or_homepage_links_are_handled():
+    from jobhunter.autofill import normalize_url, is_homepage, target_url
+    assert normalize_url("www.allianzdeutschland.de") == "https://www.allianzdeutschland.de"
+    assert is_homepage("www.allianzdeutschland.de") and not is_homepage("https://x.de/jobs/123")
+    job = {"apply_url": "www.allianzdeutschland.de", "url": "https://www.arbeitsagentur.de/jobsuche/jobdetail/1"}
+    assert target_url(job).startswith("https://www.arbeitsagentur.de")
+    assert target_url({"apply_url": "x.de/apply/7", "url": "https://a.de"}) == "https://x.de/apply/7"
