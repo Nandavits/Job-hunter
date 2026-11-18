@@ -91,6 +91,8 @@ Without an API key everything still works. Letters then come from a simple templ
    - Other job-board jobs: open the job, click Apply, and paste the company's link.
 4. A browser opens with the form filled in. Check it, tick the consent box and click **Submit**.
 5. In the black window, type **y**. The job moves to "applied" in Excel.
+6. The window then shows a LinkedIn people-search link and a short connection note and message for the
+   hiring team (also saved as `linkedin_message.txt` in the job's folder). You send it yourself.
 
 Fields the tool could not answer are listed under "Needs your answer". Personal questions it has no
 answer for get "Prefer not to say".
@@ -124,6 +126,7 @@ python -m jobhunter mark <id> interview --note "Call on Tuesday"
 python -m jobhunter add --url <link> --company Acme --title "Data Engineer" --description-file ad.txt
 python -m jobhunter discover <careers-page-url> --name Acme   # find a company's job board
 python -m jobhunter check-sources       # test every job source
+python -m jobhunter outreach <id>        # LinkedIn note + message for a job
 python -m jobhunter check-key --letters # test the Claude key with one sample letter
 python -m jobhunter stats
 ```
@@ -141,13 +144,14 @@ jobhunter/
   excel.py        applications.xlsx, read and written
   tailor.py       CV and letter tailoring with Claude, template fallback
   style.py        writing rules and banned phrases
+  outreach.py     LinkedIn note and message drafts (never sent automatically)
   documents.py    one-page CV and letter as .docx and PDF
   autofill.py     fills application forms, never submits
   notify.py       email digest
   pipeline.py     runs the steps in order
   __main__.py     command line
 config/           example settings (your real ones are git-ignored)
-tests/            140 tests with recorded API answers and sample forms
+tests/            144 tests with recorded API answers and sample forms
 start-jobhunter.bat, apply.bat   one-click start and apply on Windows
 ```
 
