@@ -45,7 +45,7 @@ flowchart LR
 | Bundesagentur für Arbeit | Jobs from all of Germany (also what "Make it in Germany" shows) | Public job-search API |
 | Arbeitnow | English-speaking jobs in Germany | Public API |
 | Data Berlin (databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
-| LinkedIn, StepStone, XING, Indeed | Jobs from my saved job alerts | Alert emails in Gmail (read-only) |
+| LinkedIn, StepStone, XING, Indeed, Glassdoor | Jobs from my saved job alerts | Alert emails in Gmail (read-only) |
 
 For good matches from LinkedIn or StepStone, Job Hunter also looks for the same job on the company's own
 careers site, so I apply there instead of on the job board.
@@ -146,7 +146,7 @@ jobhunter/
   pipeline.py     runs the steps in order
   __main__.py     command line
 config/           example settings (your real ones are git-ignored)
-tests/            138 tests with recorded API answers and sample forms
+tests/            139 tests with recorded API answers and sample forms
 start-jobhunter.bat, apply.bat   one-click start and apply on Windows
 ```
 

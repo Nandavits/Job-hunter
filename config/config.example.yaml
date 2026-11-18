@@ -148,6 +148,7 @@ sources:
       - jobagent.stepstone.de
       - indeed
       - mail.xing.com
+      - glassdoor.com
 
 tailoring:
   # How many top new jobs get a tailored CV + cover letter each run.

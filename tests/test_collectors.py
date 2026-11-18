@@ -198,3 +198,13 @@ def test_databerlin_list_and_detail():
 def test_company_spelling_variants_are_the_same_job():
     from jobhunter.dedupe import same_job
     assert same_job("Talon.One", "Data Engineer", "Talonone", "Data Engineer")
+
+
+def test_glassdoor_alert_email():
+    from pathlib import Path
+    from jobhunter.collectors.email_alerts import parse_glassdoor_html
+    jobs = parse_glassdoor_html((Path(__file__).parent / "fixtures" / "glassdoor_alert.html").read_text())
+    assert [(j.company, j.title, j.location) for j in jobs] == [
+        ("Holtzbrinck Buchverlage GmbH", "(Senior) Data Analyst (m/w/d)", "Hamburg"),
+        ("DYMATRIX", "Data Scientist (all genders)", "Berlin")]
+    assert jobs[0].url == "https://www.glassdoor.de/job-listing/j?jl=1010324386036"
