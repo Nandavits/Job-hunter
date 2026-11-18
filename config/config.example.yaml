@@ -87,6 +87,12 @@ sources:
     enabled: true
     max_pages: 5
 
+  # Data Berlin (databerlin.net): ~1,000 Berlin data & AI jobs from company career pages, with the
+  # employer's own application link. Job pages are read only for titles that fit your roles.
+  databerlin:
+    enabled: true
+    max_details: 40
+
   # Bundesagentur für Arbeit (Germany's federal job board, public API, covers many boards).
   arbeitsagentur:
     enabled: true

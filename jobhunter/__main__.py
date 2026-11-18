@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .collectors import ats
-from .collectors.base import make_session
+from .collectors.base import get, make_session
 from .config import DATA_DIR, OUTPUT_DIR, load_settings
 from .filters import evaluate
 from .models import Job, html_to_text
@@ -233,6 +233,18 @@ def cmd_check_sources(args, settings):
         from .collectors import arbeitnow
         jobs = arbeitnow.fetch(session, dict(an, max_pages=1))
         print(f"{'OK ' if jobs else '---'} {'Arbeitnow':<20} {'api':<10} {len(jobs):>4} jobs on page 1")
+
+    dbn = settings.sources.get("databerlin") or {}
+    if dbn.get("enabled"):
+        from .collectors import databerlin
+        resp = get(session, f"{databerlin.BASE}/jobs", headers={"Accept": "text/html"})
+        listed = databerlin.parse_list(resp.text) if resp is not None else []
+        detail = ("", "")
+        if listed:
+            page = get(session, listed[0].url, headers={"Accept": "text/html"})
+            detail = databerlin.parse_detail(page.text) if page is not None else ("", "")
+        print(f"{'OK ' if listed else '---'} {'Data Berlin':<20} {'web':<10} {len(listed):>4} jobs listed, "
+              f"sample job: {len(detail[0])} chars of text, apply link: {'yes' if detail[1] else 'no'}")
 
     ba = dict(settings.sources.get("arbeitsagentur") or {}, include_remote=False)
     if ba.get("enabled"):
