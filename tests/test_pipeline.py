@@ -75,3 +75,17 @@ def test_jobs_that_still_need_the_employer_link():
     assert needs_employer_link({"url": "https://www.linkedin.com/jobs/view/1/", "apply_url": "https://www.linkedin.com/jobs/view/1/"})
     assert not needs_employer_link({"url": "https://databerlin.net/jobs/x-at-y", "apply_url": "https://y.jobs.personio.de/job/1"})
     assert not needs_employer_link({"url": "https://jobs.ashbyhq.com/moss/1", "apply_url": ""})
+
+
+def test_jobs_no_longer_listed_are_closed(tmp_path):
+    from jobhunter.models import Job
+    from jobhunter.pipeline import mark_closed_jobs
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    gone = Job("ashby", "1", "Statista", "Analytics Engineer", "https://jobs.ashbyhq.com/statista/1")
+    still = Job("ashby", "2", "Statista", "Data Engineer", "https://jobs.ashbyhq.com/statista/2")
+    other = Job("ashby", "9", "Moss", "Data Engineer", "https://jobs.ashbyhq.com/moss/9")
+    email = Job("email", "x", "Acme", "Data Engineer", "https://www.linkedin.com/jobs/view/1/")
+    store.save([gone, still, other, email])
+    assert mark_closed_jobs(store, [still]) == 1          # Moss board not read, email not a full list
+    assert store.get(gone.uid)["status"] == "skipped"
+    assert store.get(other.uid)["status"] == "new" and store.get(email.uid)["status"] == "new"
