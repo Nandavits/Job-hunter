@@ -40,6 +40,7 @@ class _Writer:
         style.element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
         fmt = style.paragraph_format
         fmt.space_before = fmt.space_after = Pt(0)
+        self._plain_bullets()
         fmt.line_spacing = 1.0
 
     def para(self, runs, *, before=0.0, after=0.0, align=None, keep_next=False):
@@ -72,6 +73,18 @@ class _Writer:
     def heading(self, text: str):
         p = self.para([(text, {"bold": True, "size": self.body_pt + 1.5})], before=5, after=2, keep_next=True)
         self.rule_below(p)
+
+    def _plain_bullets(self) -> None:
+        """Word's default bullet is a Symbol-font character that becomes a private-use glyph in the PDF.
+        Applicant tracking systems read that as junk, so use a normal "•" in the body font instead."""
+        numbering = self.doc.part.numbering_part.element
+        for lvl_text in numbering.iter(qn("w:lvlText")):
+            if lvl_text.get(qn("w:val")) in ("\uf0b7", "\uf0a7", "o", "\uf0d8"):
+                lvl_text.set(qn("w:val"), "•")
+        for fonts in numbering.iter(qn("w:rFonts")):
+            for attr in ("w:ascii", "w:hAnsi", "w:cs"):
+                if fonts.get(qn(attr)) in ("Symbol", "Wingdings", "Courier New"):
+                    fonts.set(qn(attr), FONT)
 
     def bullet(self, text: str):
         p = self.doc.add_paragraph(style="List Bullet")
