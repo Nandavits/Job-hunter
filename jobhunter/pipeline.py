@@ -151,6 +151,30 @@ def skip_known_jobs(store: Store, jobs: list[dict], reapply_after_days: int = 18
 DOC_VERSION = 2      # raise when CV/letter output improves; older documents are re-made before applying
 
 
+FULL_LIST_SOURCES = {"greenhouse", "lever", "ashby", "personio", "smartrecruiters", "workday", "databerlin"}
+
+
+def mark_closed_jobs(store: Store, raw: list) -> int:
+    """Open jobs from sources that list every job each run (company boards, Data Berlin): if a job is no
+    longer listed, the company has closed it, so it leaves your list instead of leading to a dead link."""
+    seen_urls = {j.url for j in raw}
+    seen_sources = {j.source for j in raw}
+    seen_boards = {(j.source, (j.company or "").lower()) for j in raw}
+    closed = 0
+    for row in store.list(limit=100_000):
+        source = row["source"]
+        if row["status"] not in ("new", "prepared") or source not in FULL_LIST_SOURCES or source not in seen_sources:
+            continue
+        if source != "databerlin" and (source, (row["company"] or "").lower()) not in seen_boards:
+            continue                       # that company's board was not read this run: can't tell
+        if row["url"] not in seen_urls:
+            store.update(row["uid"], status="skipped", excluded_reason="job closed (no longer listed)")
+            closed += 1
+    if closed:
+        log.info("%d jobs were closed by the companies and removed from your open list", closed)
+    return closed
+
+
 def employer_link(session, job: dict) -> str:
     """The company's own application page for a job seen on Data Berlin or a job board ("" if unknown)."""
     from .career import find_career_link, is_job_board
@@ -243,6 +267,10 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
         log.warning("Could not look up company career pages: %s", exc)
 
     raw = collect_all(settings, keep=quick_keep(search), session=session)
+    try:
+        mark_closed_jobs(store, raw)
+    except Exception as exc:
+        log.warning("Could not check for closed jobs: %s", exc)
     kept, dropped = filter_jobs(raw, search)
     # Only remember skipped jobs that were relevant roles (so you can see why they were skipped);
     # the hundreds of unrelated jobs on big career pages are not stored.
