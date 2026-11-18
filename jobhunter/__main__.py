@@ -94,6 +94,32 @@ def local_path(path: str) -> Path:
     return p
 
 
+def _show_outreach(settings, job: dict, folder) -> None:
+    """After applying: show the LinkedIn note and message (made now if the job has none yet)."""
+    from pathlib import Path
+    path = Path(folder) / "linkedin_message.txt"
+    if not path.is_file():
+        from .outreach import as_text, draft
+        letter = []
+        if (Path(folder) / "tailoring.json").is_file():
+            letter = json.loads((Path(folder) / "tailoring.json").read_text(encoding="utf-8")).get("letter", [])
+        o = draft(settings.profile, job, letter, (job.get("matched_skills") or "").split(","),
+                  api_key=settings.env("ANTHROPIC_API_KEY"), model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
+        path.write_text(as_text(o, job), encoding="utf-8")
+    print("\n" + path.read_text(encoding="utf-8"))
+    print(f"(Saved in {path})")
+
+
+def cmd_outreach(args, settings):
+    store = _store(settings)
+    job = _need(store, args.id)
+    folder = local_path(job.get("cv_path")).parent if job.get("cv_path") else None
+    if folder is None or not folder.is_dir():
+        print("No documents for this job yet. Run: python -m jobhunter prepare " + args.id)
+        return
+    _show_outreach(settings, job, folder)
+
+
 def cmd_fill(args, settings):
     from .autofill import fill
     from .pipeline import prepare_job
@@ -141,6 +167,7 @@ def cmd_fill(args, settings):
     if input("\nDid you submit the application? [y/N] ").strip().lower() == "y":
         retired = store.mark_applied(job["uid"])
         print("Marked as applied." + (f" Also hid {retired} copy/copies of this job from other sources." if retired else ""))
+        _show_outreach(settings, store.get(job["uid"]), cv.parent)
     _export(store)
 
 
@@ -206,6 +233,11 @@ def cmd_check_key(args, settings):
             from .style import problems
             print("\n".join(t.letter_paragraphs))
             print("Style check:", ", ".join(problems(" ".join(t.letter_paragraphs))) or "no AI phrases found")
+            from .outreach import draft
+            o = draft(settings.profile, {"company": "Example GmbH", "title": "Data Engineer",
+                                         "description": "Python, SQL, dbt and Airflow."}, t.letter_paragraphs,
+                      t.skill_priority, api_key=key, model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
+            print(f"\nLinkedIn note ({o.engine}, {len(o.note)} chars): {o.note}\n\nLinkedIn message:\n{o.message}")
 
 
 def cmd_stats(args, settings):
@@ -337,6 +369,9 @@ def main(argv=None):
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
+    p = sub.add_parser("outreach", help="show the LinkedIn note and message for a job")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_outreach)
     p = sub.add_parser("check-key", help="test the Claude API key")
     p.add_argument("--letters", action="store_true", help="also write one test cover letter (about 3 cents)")
     p.add_argument("--show", action="store_true", help="print the test letter")
