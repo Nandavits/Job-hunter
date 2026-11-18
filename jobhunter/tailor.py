@@ -184,9 +184,27 @@ Hard rules:
 - bullet_order: for each experience index, the bullet indices from most to least relevant. Include every index.
 - skills_order: every skills category name, most relevant first.
 
-Reply with JSON only, no prose, matching:
-{"title": str, "summary": str, "bullet_order": {"0": [int], "1": [int]}, "skills_order": [str],
- "cover_letter": [str, str, str, str], "fit_notes": [str], "gaps": [str]}"""
+Return the result by calling the save_tailoring tool."""
+
+# A tool schema makes Claude return well-formed JSON (no broken quotes inside the letter).
+TAILORING_TOOL = {
+    "name": "save_tailoring",
+    "description": "Save the tailored CV settings and cover letter.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "bullet_order": {"type": "object", "description": 'experience index -> bullet indices, e.g. {"0": [2,0,1]}',
+                             "additionalProperties": {"type": "array", "items": {"type": "integer"}}},
+            "skills_order": {"type": "array", "items": {"type": "string"}},
+            "cover_letter": {"type": "array", "items": {"type": "string"}, "minItems": 4, "maxItems": 4},
+            "fit_notes": {"type": "array", "items": {"type": "string"}},
+            "gaps": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["title", "summary", "bullet_order", "skills_order", "cover_letter", "fit_notes", "gaps"],
+    },
+}
 
 
 def _profile_for_prompt(profile: dict) -> dict:
@@ -247,10 +265,15 @@ def tailor(profile: dict, job: dict, api_key: str = "", model: str = "claude-son
             model=model,
             max_tokens=2500,
             system=SYSTEM_PROMPT,
+            tools=[TAILORING_TOOL],
+            tool_choice={"type": "tool", "name": "save_tailoring"},
             messages=[{"role": "user", "content":
                        f"<candidate_profile>\n{json.dumps(_profile_for_prompt(profile), ensure_ascii=False, indent=1)}"
                        f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}],
         )
+        for block in msg.content:
+            if getattr(block, "type", "") == "tool_use":
+                return _validate(dict(block.input), profile, base)
         text = "".join(getattr(block, "text", "") for block in msg.content)
         return _validate(_extract_json(text), profile, base)
     except Exception as exc:
