@@ -28,7 +28,7 @@ def main() -> None:
 
     import uvicorn
     from .server import create_app
-    uvicorn.run(create_app(brain), host="0.0.0.0", port=8765, log_level="warning")  # nosec B104 - Docker maps to 127.0.0.1
+    uvicorn.run(create_app(brain), host="0.0.0.0", port=8765, log_level="warning")  # nosec B104
 
 
 if __name__ == "__main__":
