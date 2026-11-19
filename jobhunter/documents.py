@@ -171,7 +171,7 @@ def build_letter(profile: dict, t: Tailoring, job: dict, path: Path) -> Path:
     for text in t.letter_paragraphs:
         p = w.para([text], after=8, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
         p.paragraph_format.line_spacing = 1.15
-    w.para(["Kind regards,"], before=4, after=20)
+    w.para(["Kind regards,"], before=4, after=0)
     w.para([name])
 
     path.parent.mkdir(parents=True, exist_ok=True)
