@@ -1,0 +1,5 @@
+fastapi>=0.110
+uvicorn>=0.29
+icalendar>=5.0
+recurring-ical-events>=2.2
+faster-whisper>=1.0

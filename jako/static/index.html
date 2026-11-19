@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jako</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --text:#e9ecf1; --muted:#8a93a3; --accent:#5b8cff; --ok:#33c481; --warn:#f5a524; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text);
+         display:flex; flex-direction:column; align-items:center; min-height:100vh; }
+  header { width:100%; max-width:760px; padding:28px 20px 8px; display:flex; justify-content:space-between; align-items:center; }
+  h1 { margin:0; font-size:28px; letter-spacing:.5px; }
+  #lang { background:var(--panel); color:var(--text); border:1px solid #2a2f3a; border-radius:8px; padding:6px 8px; }
+  #orb { width:150px; height:150px; border-radius:50%; margin:26px 0 10px; background:radial-gradient(circle at 35% 35%, #7aa2ff, #2b4dbf);
+         box-shadow:0 0 0 0 rgba(91,140,255,.0); transition:transform .2s; cursor:pointer; border:none; }
+  #orb.idle { opacity:.55; }
+  #orb.listening { animation:pulse 1.4s infinite; opacity:1; }
+  #orb.thinking { animation:spin 1s linear infinite; background:conic-gradient(#5b8cff, #33c481, #5b8cff); }
+  #orb.speaking { background:radial-gradient(circle at 35% 35%, #6fe3ae, #1f8a5b); animation:pulse 0.9s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(91,140,255,.45)} 100%{box-shadow:0 0 0 28px rgba(91,140,255,0)} }
+  @keyframes spin { to { transform:rotate(360deg) } }
+  #status { color:var(--muted); min-height:22px; text-align:center; padding:0 20px; }
+  #log { width:100%; max-width:760px; padding:16px 20px 120px; display:flex; flex-direction:column; gap:10px; }
+  .msg { padding:12px 14px; border-radius:12px; max-width:85%; line-height:1.45; white-space:pre-wrap; }
+  .me { align-self:flex-end; background:#243154; }
+  .jako { align-self:flex-start; background:var(--panel); border:1px solid #232835; }
+  form { position:fixed; bottom:0; width:100%; max-width:760px; padding:14px 20px 20px; background:linear-gradient(transparent, var(--bg) 30%);
+         display:flex; gap:8px; }
+  input { flex:1; background:var(--panel); color:var(--text); border:1px solid #2a2f3a; border-radius:10px; padding:12px 14px; font-size:15px; }
+  button.send { background:var(--accent); color:white; border:none; border-radius:10px; padding:0 18px; font-size:15px; cursor:pointer; }
+  .hint { color:var(--muted); font-size:13px; text-align:center; margin-top:2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Jako</h1>
+  <select id="lang" title="Language Jako listens for">
+    <option value="en-US">English</option>
+    <option value="de-DE">Deutsch</option>
+  </select>
+</header>
+<button id="orb" class="idle" title="Click to start listening"></button>
+<div id="status">Click the circle once to start. Then just say “Hey Jako …”.</div>
+<div class="hint">Works in Chrome or Edge. Your microphone is only used while this page is open.</div>
+<div id="log"></div>
+<form id="form"><input id="text" placeholder="Or type to Jako…" autocomplete="off"><button class="send">Send</button></form>
+
+<script>
+const WAKE = /\b(hey|hi|hallo|okay|ok)[\s,]+(jako|jacko|jakko|yako|jaco|jacob|jaku|jago)\b[\s,.!?]*/i;
+const orb = document.getElementById('orb'), statusEl = document.getElementById('status');
+const logEl = document.getElementById('log'), langSel = document.getElementById('lang');
+let rec = null, running = false, awake = false, awakeTimer = null, busy = false, speaking = false;
+
+try { langSel.value = localStorage.getItem('jako-lang') || 'en-US'; } catch (e) {}
+langSel.onchange = () => { try { localStorage.setItem('jako-lang', langSel.value); } catch (e) {} restart(); };
+
+function setState(s, text) { orb.className = s; if (text !== undefined) statusEl.textContent = text; }
+function add(who, text) {
+  const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text;
+  logEl.appendChild(d); window.scrollTo(0, document.body.scrollHeight);
+}
+
+function speak(text) {
+  return new Promise(resolve => {
+    if (!('speechSynthesis' in window)) return resolve();
+    speaking = true; setState('speaking', '');
+    stopRec();
+    const u = new SpeechSynthesisUtterance(text.replace(/[*_#`]/g, ''));
+    u.lang = langSel.value; u.rate = 1.03;
+    const voice = speechSynthesis.getVoices().find(v => v.lang === langSel.value && /Google|Natural|Online/.test(v.name))
+               || speechSynthesis.getVoices().find(v => v.lang === langSel.value);
+    if (voice) u.voice = voice;
+    u.onend = u.onerror = () => { speaking = false; resolve(); startRec(); };
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  });
+}
+
+async function ask(text) {
+  if (!text.trim() || busy) return;
+  busy = true; add('me', text); setState('thinking', 'Thinking…');
+  try {
+    const r = await fetch('/api/ask', { method:'POST', headers:{'Content-Type':'application/json'},
+                                        body: JSON.stringify({ text }) });
+    const data = await r.json();
+    add('jako', data.reply); await speak(data.reply);
+  } catch (e) {
+    add('jako', 'I could not reach my brain. Is Jako running?');
+  } finally { busy = false; if (!speaking) setState(running ? 'listening' : 'idle', running ? 'Say “Hey Jako …”' : ''); }
+}
+
+function goAwake() {
+  awake = true; setState('listening', 'Listening… what can I do for you?');
+  clearTimeout(awakeTimer); awakeTimer = setTimeout(() => { awake = false; if (!busy && !speaking) setState('listening', 'Say “Hey Jako …”'); }, 8000);
+}
+
+function handleFinal(text) {
+  text = text.trim();
+  if (!text) return;
+  const m = text.match(WAKE);
+  if (m) {
+    const rest = text.slice(m.index + m[0].length).trim();
+    if (rest.split(/\s+/).length >= 2) { awake = false; ask(rest); } else { goAwake(); }
+  } else if (awake) {
+    awake = false; clearTimeout(awakeTimer); ask(text);
+  }
+}
+
+function startRec() {
+  if (!running || speaking || busy) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { setState('idle', 'Voice needs Chrome or Edge. You can still type below.'); return; }
+  rec = new SR(); rec.lang = langSel.value; rec.continuous = true; rec.interimResults = true;
+  rec.onresult = e => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) handleFinal(t);
+      else if (WAKE.test(t) && !awake) setState('listening', 'Yes?');
+    }
+  };
+  rec.onerror = e => { if (e.error === 'not-allowed') { running = false; setState('idle', 'Please allow the microphone, then click the circle.'); } };
+  rec.onend = () => { if (running && !speaking && !busy) setTimeout(startRec, 300); };
+  try { rec.start(); setState('listening', awake ? 'Listening…' : 'Say “Hey Jako …”'); } catch (e) {}
+}
+function stopRec() { if (rec) { rec.onend = null; try { rec.stop(); } catch (e) {} rec = null; } }
+function restart() { stopRec(); startRec(); }
+
+orb.onclick = () => {
+  if (running) { running = false; stopRec(); setState('idle', 'Paused. Click the circle to listen again.'); }
+  else { running = true; startRec(); }
+};
+document.getElementById('form').onsubmit = e => {
+  e.preventDefault(); const i = document.getElementById('text'); const t = i.value; i.value = ''; ask(t);
+};
+
+// Reminders and the morning greeting are spoken here when this page is open.
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/outbox'); const items = (await r.json()).items || [];
+    for (const t of items) { add('jako', t); await speak(t); }
+  } catch (e) {}
+}, 20000);
+speechSynthesis && speechSynthesis.getVoices();
+</script>
+</body>
+</html>
