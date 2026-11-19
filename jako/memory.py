@@ -101,6 +101,6 @@ class Memory:
 
     def take_outbox(self) -> list[str]:
         rows = self._q("select id, text from outbox where spoken = 0 order by id")
-        if rows:
-            self._q(f"update outbox set spoken = 1 where id in ({','.join(str(r['id']) for r in rows)})")
+        for r in rows:
+            self._q("update outbox set spoken = 1 where id = ?", (r["id"],))
         return [r["text"] for r in rows]
