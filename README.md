@@ -186,3 +186,20 @@ keys, the job database and generated documents stay on your computer.
 ## License
 
 MIT. You can use and change it for your own job search.
+
+## Jako – personal assistant
+
+Jako is a voice and Telegram assistant that runs next to Job Hunter. It uses Claude.
+
+What it can do:
+- Answer general questions (it can search the web)
+- Tell you the weather and give a morning briefing at 08:00
+- Set reminders and keep a to-do list, and remember facts you tell it
+- Show and update your Job Hunter jobs ("mark Flink as applied")
+- Read your Gmail and Google Calendar. It only reads them: it never sends, deletes or applies.
+
+Start it: double-click `start-jako.bat`, open http://localhost:8765 in Chrome, click the orb, allow the microphone and say "Hey Jako, …".
+
+Phone: create a bot with @BotFather in Telegram, put `TELEGRAM_BOT_TOKEN` in `.env`, restart, send the bot a message and put the chat id it gives you in `TELEGRAM_CHAT_ID`. The bot only answers that chat. The phone works while the laptop and Docker are running.
+
+Calendar (optional): Google Calendar → Settings → your calendar → "Secret address in iCal format" → `GOOGLE_CALENDAR_ICS_URL` in `.env`.
