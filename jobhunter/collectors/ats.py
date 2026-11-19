@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from xml.etree import ElementTree
+try:                                    # hardened XML parser for feeds from the internet
+    from defusedxml import ElementTree
+except ImportError:                     # older installs: stdlib (never resolves external entities)
+    from xml.etree import ElementTree  # nosec B405
 
 from ..models import Job, html_to_text
 from .base import get, log
@@ -135,7 +138,7 @@ def _text(node, tag: str) -> str:
 
 def parse_personio(xml: str | bytes, company: str, slug: str) -> list[Job]:
     """Pass bytes when possible: the XML declares its own encoding (usually UTF-8)."""
-    root = ElementTree.fromstring(xml)
+    root = ElementTree.fromstring(xml)  # nosec B314 - defusedxml when installed
     jobs = []
     for pos in root.iter("position"):
         pid = _text(pos, "id")
