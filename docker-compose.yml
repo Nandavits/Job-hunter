@@ -32,5 +32,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+
+  jako:
+    build:
+      context: .
+      dockerfile: Dockerfile.jako
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://jobhunter:jobhunter@db:5432/jobhunter
+      TZ: Europe/Berlin
+    ports:
+      - "127.0.0.1:8765:8765"        # Jako's page: only this computer
+    volumes:
+      - ./jako:/app/jako
+      - ./jobhunter:/app/jobhunter
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:
