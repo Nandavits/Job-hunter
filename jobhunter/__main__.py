@@ -258,6 +258,12 @@ def cmd_export(args, settings):
     print(_store(settings).export_tracker(Path(args.path) if args.path else DATA_DIR / "tracker.csv"))
 
 
+def cmd_check_links(args, settings):
+    from .collectors.base import make_session
+    from .linkcheck import close_dead_links
+    close_dead_links(_store(settings), make_session(), dry_run=True)
+
+
 def cmd_check_key(args, settings):
     """One tiny request to see whether the Claude API key works (costs a fraction of a cent)."""
     key = settings.env("ANTHROPIC_API_KEY")
@@ -430,6 +436,8 @@ def main(argv=None):
     p = sub.add_parser("outreach", help="show the LinkedIn note and message for a job")
     p.add_argument("id")
     p.set_defaults(func=cmd_outreach)
+    p = sub.add_parser("check-links", help="list open jobs whose application page is closed (changes nothing)")
+    p.set_defaults(func=cmd_check_links)
     p = sub.add_parser("check-key", help="test the Claude API key")
     p.add_argument("--letters", action="store_true", help="also write one test cover letter (about 3 cents)")
     p.add_argument("--show", action="store_true", help="print the test letter")
