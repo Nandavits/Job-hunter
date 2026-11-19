@@ -56,9 +56,14 @@ echo ================= Your jobs =================
 ".venv\Scripts\python.exe" -m jobhunter list
 echo =============================================
 echo.
+echo Type T to go through your top 10 jobs one after another (fastest).
 set "JOBID="
-set /p JOBID=Type the id of the job to apply to (or just press Enter to quit): 
+set /p JOBID=Or type the id of one job (or just press Enter to quit): 
 if not defined JOBID exit /b 0
+if /i "!JOBID!"=="T" (
+  ".venv\Scripts\python.exe" -m jobhunter queue
+  goto menu
+)
 echo.
 echo Jobs marked [company site found]: just press Enter - the company's own form opens.
 echo Other LinkedIn / StepStone / XING / Indeed jobs: open the job, click Apply, and paste the

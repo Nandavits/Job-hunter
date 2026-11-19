@@ -84,6 +84,11 @@ Without an API key everything still works. Letters then come from a simple templ
 
 ## Applying to a job
 
+Fastest: in `apply.bat` type **T**. Your top 10 jobs (score 75+) open one after another. For each, press
+Enter to open the filled-in form, or **s** to skip a job you don't want (it won't come back).
+
+One job at a time:
+
 1. Close Excel.
 2. Double-click **`apply.bat`**. It shows your jobs, best first, and tests the Claude key.
 3. Type a job's ID and press Enter.
@@ -125,6 +130,7 @@ python -m jobhunter run                 # one full search
 python -m jobhunter list                # open jobs, best first
 python -m jobhunter show <id>           # full ad and why it matched
 python -m jobhunter fill <id>           # open the pre-filled form (apply.bat does this)
+python -m jobhunter queue               # top 10 jobs one after another (apply.bat: T)
 python -m jobhunter mark <id> interview --note "Call on Tuesday"
 python -m jobhunter add --url <link> --company Acme --title "Data Engineer" --description-file ad.txt
 python -m jobhunter discover <careers-page-url> --name Acme   # find a company's job board
