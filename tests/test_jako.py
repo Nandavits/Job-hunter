@@ -137,11 +137,11 @@ def test_telegram_setup_shows_chat_id(cfg, mem):
 
 
 def test_due_reminder_is_announced_once(cfg, mem):
-    mem.add_reminder("drink water", datetime.now(cfg.tz) - timedelta(minutes=1))
+    noon = datetime.now(cfg.tz).replace(hour=13, minute=0, second=0, microsecond=0)
+    mem.add_reminder("drink water", noon - timedelta(minutes=1))
     sent = []
     tg = SimpleNamespace(send=lambda t: sent.append(t))
     brain = SimpleNamespace(cfg=cfg, mem=mem, briefing=lambda: "brief")
-    noon = datetime.now(cfg.tz).replace(hour=13, minute=0)
     tick(brain, tg, now=noon)
     tick(brain, tg, now=noon)
     assert sent == ["⏰ Reminder: drink water"]

@@ -143,18 +143,18 @@ def fallback(profile: dict, job: dict) -> Tailoring:
         return text[0].lower() + text[1:] if text else text
 
     paragraphs = [
-        f"I am applying for the {title} position at {company}. The role's focus on "
-        f"{_join(matched)} is the work I do every day at my current job.",
-        f"In my role as {exp0['title']} at {exp0['company']}, I {sentence(top[0]).rstrip('.')}. "
-        f"In this role I {sentence(top[1]).rstrip('.')}." + (
-            f" I also {sentence(top[2]).rstrip('.')}." if len(top) > 2 else ""),
-        "I work hands-on with " + _join(matched) + ". I check data against its sources before it "
-        "reaches stakeholders." + (
+        f"I am applying for the {title} position at {company}. My daily work is close to what "
+        f"this role needs: {_join(matched)}.",
+        f"In my current job at {exp0['company']} ({exp0['title']}), I {sentence(top[0]).rstrip('.')}. "
+        f"I also {sentence(top[1]).rstrip('.')}." + (
+            f" In addition, I {sentence(top[2]).rstrip('.')}." if len(top) > 2 else ""),
+        "I check data against its sources before it reaches stakeholders, and I explain results "
+        "in plain language to the people who use them." + (
             f" {_join(gaps[:3])} would be new to me, "
             "but the concepts carry over directly from my current work and I pick up new tools quickly."
             if gaps else ""),
         f"I am based in {city}{', ' + _lower_first(profile['relocation'].rstrip('.')) + ',' if profile.get('relocation') else ''} "
-        f"and work fully in English. I would be glad to talk about the role in an interview.",
+        f"and I work in English. I would be glad to talk about the role in an interview.",
     ]
     return Tailoring(
         title=_pick_title(job.get("title", ""), profile.get("default_title", "")),
@@ -249,7 +249,7 @@ def _validate(data: dict, profile: dict, base: Tailoring) -> Tailoring:
         letter_paragraphs=letter if len(letter) >= 3 else base.letter_paragraphs,
         fit_notes=[str(x) for x in data.get("fit_notes", [])][:6],
         gaps=[str(x) for x in data.get("gaps", [])][:6],
-        engine="claude",
+        engine="claude" if len(letter) >= 3 else "claude (template letter)",
         skill_priority=base.skill_priority,
     )
 
@@ -286,6 +286,8 @@ def tailor(profile: dict, job: dict, api_key: str = "", model: str = "claude-son
                     continue
             result = _validate(data, profile, base)
             found = problems(" ".join([result.summary, *result.letter_paragraphs]))
+            if result.engine != "claude":
+                found = found + ["(the cover_letter field was missing: return all 4 paragraphs)"]
             if not found or attempt == 2:
                 break
             log.info("Rewriting letter for %s without: %s", job.get("company"), ", ".join(found))

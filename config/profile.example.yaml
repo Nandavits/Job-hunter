@@ -55,7 +55,7 @@ experience:
     - bi
     - data quality
     - governance
-  - text: Uncovered a three-year data gap spanning 14 consecutive quarters by profiling pipeline coverage in SQL, tracing
+  - text: Uncovered a data gap spanning 14 consecutive quarters (three and a half years) by profiling pipeline coverage in SQL, tracing
       the root cause through the Python PDF-parsing codebase to a silent fallback that wrote unattributable records.
     tags:
     - sql
