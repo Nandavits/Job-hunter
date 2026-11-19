@@ -222,6 +222,32 @@ def cmd_fill(args, settings):
     _export(store)
 
 
+def cmd_queue(args, settings):
+    """Go through your best open jobs one after another: each form opens filled in, you check and submit."""
+    import argparse
+    store = _store(settings)
+    rows = [r for r in store.list(limit=100_000) if r["status"] in ("new", "prepared")
+            and len(r.get("description") or "") >= 100 and (r["score"] or 0) >= args.min_score]
+    rows.sort(key=lambda r: -(r["score"] or 0))
+    rows = rows[: args.count]
+    if not rows:
+        print(f"No open jobs with a score of {args.min_score} or more right now.")
+        return
+    print(f"\nYour top {len(rows)} jobs (score {args.min_score}+), best first.")
+    for n, row in enumerate(rows, 1):
+        print(f"\n[{n}/{len(rows)}] {row['company']} - {row['title']}  (score {row['score']}, {row['location']})")
+        choice = input("Enter = open the form,  s = skip (not interested),  q = stop: ").strip().lower()
+        if choice == "q":
+            break
+        if choice == "s":
+            store.update(row["uid"], status="skipped", excluded_reason="not interested (you skipped it)")
+            print("Skipped - it won't be shown again.")
+            continue
+        cmd_fill(argparse.Namespace(id=row["uid"], url=None, headless=False), settings)
+    _export(store)
+    print("\nDone for now. Run it again any time for the next jobs.")
+
+
 def cmd_mark(args, settings):
     store = _store(settings)
     job = _need(store, args.id)
@@ -462,6 +488,11 @@ def main(argv=None):
             p.add_argument("--headless", action="store_true", help="for testing only")
             p.add_argument("--url", help="use this application link (e.g. the company page for a LinkedIn job)")
         p.set_defaults(func=func)
+
+    p = sub.add_parser("queue", help="apply to your best open jobs one after another (you submit each)")
+    p.add_argument("--count", type=int, default=10)
+    p.add_argument("--min-score", type=int, default=75)
+    p.set_defaults(func=cmd_queue)
 
     p = sub.add_parser("mark", help="update application status")
     p.add_argument("id")

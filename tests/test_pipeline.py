@@ -89,3 +89,22 @@ def test_jobs_no_longer_listed_are_closed(tmp_path):
     assert mark_closed_jobs(store, [still]) == 1          # Moss board not read, email not a full list
     assert store.get(gone.uid)["status"] == "skipped"
     assert store.get(other.uid)["status"] == "new" and store.get(email.uid)["status"] == "new"
+
+
+def test_queue_goes_through_best_jobs_and_skips(tmp_path, monkeypatch):
+    import argparse
+    from jobhunter import __main__ as cli
+    from jobhunter.models import Job
+    store = Store(f"sqlite:///{tmp_path / 'q.db'}")
+    a = Job("ashby", "1", "A", "Data Engineer", "https://a", description="x" * 200); a.score = 90
+    b = Job("ashby", "2", "B", "Data Analyst", "https://b", description="x" * 200); b.score = 80
+    c = Job("ashby", "3", "C", "Data Analyst", "https://c", description="x" * 200); c.score = 50
+    store.save([a, b, c])
+    opened, answers = [], iter(["", "s"])
+    monkeypatch.setattr(cli, "_store", lambda s: store)
+    monkeypatch.setattr(cli, "_export", lambda s: None)
+    monkeypatch.setattr(cli, "cmd_fill", lambda args, s: opened.append(args.id))
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    cli.cmd_queue(argparse.Namespace(count=10, min_score=75), None)
+    assert opened == [a.uid]                                  # best first, C is below 75
+    assert store.get(b.uid)["status"] == "skipped"
