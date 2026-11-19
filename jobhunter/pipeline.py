@@ -259,6 +259,12 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
         log.warning("Could not fetch missing ad texts: %s", exc)
     rescore_open_jobs(store, search)
     try:
+        from .linkcheck import close_dead_links
+        from .collectors.base import make_session as _ms
+        close_dead_links(store, session or _ms())
+    except Exception as exc:
+        log.warning("Could not check application links: %s", exc)
+    try:
         from .collectors.base import make_session as _make_session
         add_databerlin_links(store, session or _make_session())
     except Exception as exc:
