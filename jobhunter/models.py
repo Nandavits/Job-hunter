@@ -45,7 +45,7 @@ class Job:
     @property
     def uid(self) -> str:
         key = f"{self.source}:{self.company}:{self.external_id}".lower()
-        return hashlib.sha1(key.encode()).hexdigest()[:16]
+        return hashlib.sha1(key.encode(), usedforsecurity=False).hexdigest()[:16]   # an ID, not security
 
     @property
     def application_url(self) -> str:
