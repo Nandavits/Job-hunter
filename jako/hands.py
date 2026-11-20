@@ -620,13 +620,31 @@ def hardware_health() -> str:
     return out
 
 
+def whatsapp_message(contact: str, text: str) -> str:
+    """Send a WhatsApp message (no yes needed: Nanda asked for it; only an exact single chat match is used)."""
+    from .whatsapp import WhatsAppError, send_message
+    try:
+        return send_message(contact, text)
+    except WhatsAppError as exc:
+        return str(exc)
+
+
+def whatsapp_call(contact: str, video: bool = False) -> str:
+    from .whatsapp import WhatsAppError, call
+    try:
+        return call(contact, bool(video))
+    except WhatsAppError as exc:
+        return str(exc)
+
+
 RISKY = {"run_command": _do_run_command, "write_file": _do_write_file, "move": _do_move,
-         "delete": _do_delete, "close_app": _do_close_app, "open_program": _do_open_program,
+         "delete": _do_delete, "open_program": _do_open_program,
          "clean_temp": _do_clean_temp, "empty_recycle_bin": _do_empty_recycle_bin}
 SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "find_files": find_files,
         "list_folder": list_folder, "read_file": read_file, "screenshot": screenshot, "volume": volume,
         "system_info": system_info, "lock_screen": lock_screen, "top_processes": top_processes,
-        "disk_report": disk_report, "old_files": old_files, "hardware_health": hardware_health}
+        "disk_report": disk_report, "old_files": old_files, "hardware_health": hardware_health,
+        "close_app": _do_close_app, "whatsapp_message": whatsapp_message, "whatsapp_call": whatsapp_call}
 
 
 def describe(action: str, args: dict) -> str:
@@ -846,6 +864,19 @@ def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None) 
     return True
 
 
+def _inspect_whatsapp_if_asked() -> None:
+    flag = ROOT / "data" / "whatsapp-inspect.flag"
+    if not flag.exists():
+        return
+    try:
+        flag.unlink()
+        from .whatsapp import inspect
+        inspect(ROOT / "logs" / "whatsapp-ui.txt")
+        print(time.strftime("%H:%M:%S"), "WhatsApp controls written to logs/whatsapp-ui.txt", flush=True)
+    except Exception as exc:                                  # noqa: BLE001
+        (ROOT / "logs" / "whatsapp-ui.txt").write_text(f"inspect failed: {exc!r}", encoding="utf-8")
+
+
 def main() -> None:
     if sys.stdout is None or sys.stderr is None:      # started hidden (pythonw): no console to write to
         (ROOT / "logs").mkdir(exist_ok=True)
@@ -879,6 +910,8 @@ def main() -> None:
     if sys.platform == "win32":
         threading.Thread(target=watchdog, daemon=True).start()
     print(time.strftime("%H:%M:%S"), f"Jako laptop link started on {computer}, talking to {base}", flush=True)
+    if sys.platform == "win32":
+        _inspect_whatsapp_if_asked()
     while True:
         try:
             serve_once(hands, base, token, computer)

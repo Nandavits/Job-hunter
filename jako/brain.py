@@ -26,7 +26,7 @@ job in Germany.
 Right now it is {now} ({tz}).
 
 Your team (use the ask_team tool):
-- iron_man: the laptop (open apps incl. WhatsApp, websites like GitHub/LinkedIn, files and folders, find and read
+- iron_man: WhatsApp calls and messages (right away, no yes needed), and the laptop (open apps incl. WhatsApp, websites like GitHub/LinkedIn, files and folders, find and read
   files, volume, and - only with the user's yes - commands, writing, moving, deleting files, closing apps)
 - black_widow: email and calendar (read-only)
 - hawkeye: the Job Hunter (top jobs, details, marking a job applied/interview/rejected/...)
@@ -77,8 +77,8 @@ def is_roll_call(text: str) -> bool:
     return bool(ROLL_CALL.match(text) or (TEAM_STATUS.search(text) and len(text.split()) <= 9))
 
 
-YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|ja|jawohl|do it|go ahead|confirm(?:ed)?|ok(?:ay)?|okay do it|"
-                 r"yes,? do it|yes please)\W*$", re.I)
+YES = re.compile(r"^\W*(?:(?:yes|yeah|yep|yup|sure|ja|jawohl|ok(?:ay)?|confirm(?:ed)?|of course)\b(?!.*\b(?:no|not|don'?t|nicht|nein)\b)"
+                 r"|(?:do it|go ahead|mach (?:das|es)|go for it)\b)", re.I)
 NO = re.compile(r"^\W*(no|nope|nein|cancel|stop|don'?t|do not|never ?mind)\b.*$", re.I)
 
 
@@ -190,7 +190,7 @@ class Brain:
             self.pending.pop(channel, None)
             self.team.hands.cancel(item["code"])
             return None
-        if YES.match(text):
+        if YES.match(text) and len(text.split()) <= 8:             # "yes", "yes close it", "ok do it"
             self.pending.pop(channel, None)
             out = self.team.hands.confirm(item["code"])
             said = out.get("error") or out.get("text") or "Done."
