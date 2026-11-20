@@ -326,3 +326,16 @@ def test_cleanup_waits_for_yes(home, monkeypatch, tmp_path):
     out = hands.do("clean_temp", {"days": 7})
     assert "pending" in out and "1 temporary files" in out["text"] and old.exists()
     assert "Removed 1 temporary files" in hands.confirm(out["pending"])["text"] and not old.exists()
+
+
+def test_hawkeye_roll_call_uses_light_queries(cfg, mem):
+    from jobhunter.models import Job
+    store = Skills(cfg, mem)._store()
+    good, thin = Job("ashby", "1", "Flink", "Data Engineer", "u", description="x" * 200), \
+        Job("ashby", "2", "Tiny", "Analyst", "u2", description="short")
+    good.score, thin.score = 95, 99
+    store.save([good, thin])
+    skills = Skills(cfg, mem)
+    assert skills._store() is skills._store()                # one connection pool
+    line = Team(cfg, skills, hands=FakeHands())._hawkeye()
+    assert "2 open jobs" in line and "Flink, Data Engineer, score 95" in line   # the job without a real ad isn't 'best'

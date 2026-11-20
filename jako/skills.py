@@ -139,8 +139,10 @@ class Skills:
 
     # ----------------------------------------------------------------- job hunter
     def _store(self):
-        from jobhunter.storage import Store
-        return Store(self.cfg.jobs_database_url or f"sqlite:///{self.cfg.data_dir / 'jobs.db'}")
+        if getattr(self, "_store_obj", None) is None:           # one connection pool, not a new one per question
+            from jobhunter.storage import Store
+            self._store_obj = Store(self.cfg.jobs_database_url or f"sqlite:///{self.cfg.data_dir / 'jobs.db'}")
+        return self._store_obj
 
     def _find_job(self, store, query: str):
         rows = store.list(limit=100_000, include_skipped=True)

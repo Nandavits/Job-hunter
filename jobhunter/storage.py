@@ -116,6 +116,16 @@ class Store:
             self.update(r["uid"], status="skipped", excluded_reason=f"same job as {uid[:8]}, already applied")
         return len(copies)
 
+    def top_open(self, limit: int = 5) -> list[dict]:
+        """Best open jobs with a real ad (light query: only the columns a summary needs)."""
+        c = jobs_table.c
+        query = (select(c.uid, c.company, c.title, c.location, c.score, c.status)
+                 .where(c.status.in_(["new", "prepared"]))
+                 .where(func.length(func.coalesce(c.description, "")) >= 100)
+                 .order_by(c.score.desc()).limit(limit))
+        with self.engine.connect() as conn:
+            return [dict(r) for r in conn.execute(query).mappings()]
+
     def stats(self) -> dict:
         with self.engine.connect() as conn:
             rows = conn.execute(select(jobs_table.c.status, func.count()).group_by(jobs_table.c.status))
