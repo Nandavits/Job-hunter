@@ -359,3 +359,42 @@ def test_window_opens_on_localhost_where_the_microphone_is_allowed():
     from jako import hands as H
     assert H.window_url("http://127.0.0.1:8765") == "http://localhost:8765/"
     assert H.window_url("http://localhost:8765/") == "http://localhost:8765/"
+
+
+def test_team_status_questions_get_the_instant_report():
+    from jako.brain import is_roll_call
+    for t in ["status of team report", "team status", "what's the team status", "Avengers, status update",
+              "give me the team report", "jako wake up"]:
+        assert is_roll_call(t), t
+    for t in ["remind me to send the status report to my manager tomorrow at nine please ok",
+              "open github", "what's the weather"]:
+        assert not is_roll_call(t), t
+
+
+def test_roll_call_never_waits_for_a_stuck_check(cfg, mem):
+    import time as _t
+    team = Team(cfg, Skills(cfg, mem), hands=FakeHands())
+    team.roll_call_seconds = 1
+    team._hawkeye = lambda: _t.sleep(30)
+    t0 = _t.monotonic()
+    parts = team.roll_call()
+    assert _t.monotonic() - t0 < 3
+    hawk = [p for p in parts if p["who"] == "hawkeye"][0]["text"]
+    assert "slow" in hawk
+
+
+def test_members_run_together_and_a_slow_one_is_not_waited_for(cfg, mem):
+    import time as _t
+    team = Team(cfg, Skills(cfg, mem), hands=FakeHands())
+    team.member_seconds = 1
+
+    def run(client, agent, task, lang, pending, channel="voice"):
+        if agent == "black_widow":
+            _t.sleep(30)
+        _t.sleep(0.3)
+        return f"{agent} done"
+    team.run = run
+    t0 = _t.monotonic()
+    out = team.run_many(None, [("hulk", "x"), ("thor", "y"), ("black_widow", "z")], "English", [])
+    assert _t.monotonic() - t0 < 2.5
+    assert out[0] == "hulk done" and out[1] == "thor done" and "too long" in out[2]

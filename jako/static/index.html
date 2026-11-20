@@ -443,10 +443,16 @@ async function say(parts) {
 async function ask(text) {
   if (!text.trim() || busy) return;
   busy = true; add('me', text); captionEl.textContent = '“' + text + '”'; setState('thinking', 'Working on it…');
+  const ctl = new AbortController();
+  const slow = setTimeout(() => setState('thinking', 'Still working on it — the team is checking…'), 12000);
+  const stop = setTimeout(() => ctl.abort(), 120000);
   try {
-    const data = await (await fetch('/api/ask', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text }) })).json();
+    const data = await (await fetch('/api/ask', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text }), signal: ctl.signal })).json();
     busy = false; await say(data.parts && data.parts.length ? data.parts : [{ who:'jako', text:data.reply }]);
-  } catch (e) { busy = false; await say([{ who:'jako', text:'I could not reach my brain. Is Jako running?' }]); }
+  } catch (e) {
+    busy = false;
+    await say([{ who:'jako', text: e.name === 'AbortError' ? 'Sorry, that took too long. Please ask me again.' : 'I could not reach my brain. Is Jako running?' }]);
+  } finally { clearTimeout(slow); clearTimeout(stop); }
 }
 function goAwake(msg) {
   awake = true; setState('listening', msg || 'Listening — what can I do for you?'); clearTimeout(awakeTimer);

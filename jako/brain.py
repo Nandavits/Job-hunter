@@ -57,9 +57,18 @@ STYLES = {
 
 OWN_TOOLS = [t for t in TOOLS if t["name"] in ("remember", "forget")] + [DELEGATE_TOOL]
 
-ROLL_CALL = re.compile(r"^\W*(?:(?:hello|hi|hey|hallo|ok(?:ay)?)\W+(?:jako\W+)?)?(?:wake up|roll call|team status|"
+ROLL_CALL = re.compile(r"^\W*(?:(?:hello|hi|hey|hallo|ok(?:ay)?)\W+)?(?:jako\W+)?(?:wake up|roll call|team status|"
                        r"status report|avengers,? assemble|everyone report|team,? report|who is (?:awake|there))\W*$",
                        re.I)
+TEAM_STATUS = re.compile(r"\b(?:team|avengers|everyone|everybody)\b.*\b(?:status|report|update)\b|"
+                         r"\b(?:status|report|update)\b.*\b(?:team|avengers|everyone|everybody)\b", re.I)
+
+
+def is_roll_call(text: str) -> bool:
+    """Short requests about the team's status get the instant report (no AI, answers in seconds)."""
+    return bool(ROLL_CALL.match(text) or (TEAM_STATUS.search(text) and len(text.split()) <= 9))
+
+
 YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|ja|jawohl|do it|go ahead|confirm(?:ed)?|ok(?:ay)?|okay do it|"
                  r"yes,? do it|yes please)\W*$", re.I)
 NO = re.compile(r"^\W*(no|nope|nein|cancel|stop|don'?t|do not|never ?mind)\b.*$", re.I)
@@ -100,7 +109,7 @@ class Brain:
         gated = self._confirmation(text, channel)
         if gated is not None:
             return gated
-        if ROLL_CALL.match(text):
+        if is_roll_call(text):
             return self.team.roll_call()
         if not self.cfg.api_key and self.client is None:
             return [{"who": "jako", "text": "I need a Claude API key first. Add ANTHROPIC_API_KEY to the .env file."}]
@@ -117,12 +126,16 @@ class Brain:
             calls = [b for b in msg.content if getattr(b, "type", "") == "tool_use"]
             if not calls:
                 break
+            team_calls = [c for c in calls if c.name == "ask_team" and dict(c.input).get("member") in AGENTS
+                          and dict(c.input).get("member") != "jako"]
+            jobs = [(dict(c.input)["member"], dict(c.input).get("task", "")) for c in team_calls]
+            done = dict(zip([c.id for c in team_calls],
+                            self.team.run_many(self._client(), jobs, lang, new_pending, channel) if jobs else []))
             results = []
             for call in calls:
                 args = dict(call.input)
-                if call.name == "ask_team" and args.get("member") in AGENTS and args.get("member") != "jako":
-                    member = args["member"]
-                    report = self.team.run(self._client(), member, args.get("task", ""), lang, new_pending, channel)
+                if call.id in done:
+                    member, report = args["member"], done[call.id]
                     log.info("%s reports: %s", AGENTS[member]["name"], report[:150])
                     reports.append({"who": member, "text": report})
                     out = f"{AGENTS[member]['name']} reported (already spoken to the user): {report}"
