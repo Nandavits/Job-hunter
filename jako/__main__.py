@@ -13,9 +13,12 @@ from .telegram_bot import Telegram
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
-    logging.getLogger("httpx").setLevel(logging.WARNING)
     cfg = config.load()
+    from logging.handlers import RotatingFileHandler
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S",
+                        handlers=[logging.StreamHandler(),
+                                  RotatingFileHandler(cfg.data_dir / "jako.log", maxBytes=1_000_000, backupCount=2)])
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     brain = Brain(cfg, Memory(cfg.data_dir / "jako.db"))
     telegram = Telegram(cfg, brain)
 
