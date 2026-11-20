@@ -103,6 +103,7 @@
     <div class="row"><span class="ic">⚡</span><span class="tx" id="h-weather">Checking the sky…</span></div>
     <div class="row"><span class="ic">🛡️</span><span class="tx" id="h-plan">—</span></div>
     <div class="row"><span class="ic">🔋</span><span class="tx" id="h-battery">—</span></div>
+    <div class="row"><span class="ic">💪</span><span class="tx" id="h-health">—</span></div>
   </div>
 </div>
 
@@ -133,7 +134,7 @@ const WAKE = new RegExp('(?:^|\\b(hey|hi|hello|hallo|okay|ok)[\\s,]+)(' + NAMES 
 const $ = id => document.getElementById(id);
 const statusEl = $('status'), whoEl = $('who'), captionEl = $('caption'), logEl = $('log'), langSel = $('lang');
 let TEAM = { jako:{ name:'Jako', color:'#5b8cff', emoji:'🔵', prefer:[], pitch:1, rate:1.03 } };
-const ORBIT = ['iron_man', 'black_widow', 'hawkeye', 'captain_america', 'thor'];
+const ORBIT = ['iron_man', 'black_widow', 'hawkeye', 'captain_america', 'thor', 'hulk', 'vision'];
 let rec = null, running = false, awake = false, awakeTimer = null, busy = false, speaking = false;
 let state = 'idle', current = 'jako', micLevel = 0, wordPulse = 0, clapOn = true, freq = null;
 const boot0 = performance.now();
@@ -158,7 +159,8 @@ function drawMembers() {
     d.style.setProperty('--c', a.color);
     d.innerHTML = `<i class="dot"></i><b>${a.emoji || ''} ${a.name}</b><span></span>`;
     d.querySelector('span').textContent = { iron_man:'Laptop', black_widow:'Email & calendar', hawkeye:'Job hunt',
-                                            captain_america:'Plans & reminders', thor:'Web & weather' }[key] || '';
+                                            captain_america:'Plans & reminders', thor:'Web & weather',
+                                            hulk:'Laptop health', vision:'Screen review' }[key] || '';
     box.appendChild(d);
   }
 }
@@ -170,6 +172,7 @@ async function refreshHud() {
   setText('h-plan', HUD.captain_america);
   setText('h-jobs', HUD.hawkeye);
   setText('h-mail', HUD.black_widow);
+  setText('h-health', HUD.hulk);
   $('h-battery').textContent = HUD.battery ? 'Battery ' + HUD.battery + ' · ' + (HUD.iron_man || '').replace(/\.$/, '')
                                            : (HUD.iron_man || '—');
 }
