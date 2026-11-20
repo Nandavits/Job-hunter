@@ -398,3 +398,14 @@ def test_members_run_together_and_a_slow_one_is_not_waited_for(cfg, mem):
     out = team.run_many(None, [("hulk", "x"), ("thor", "y"), ("black_widow", "z")], "English", [])
     assert _t.monotonic() - t0 < 2.5
     assert out[0] == "hulk done" and out[1] == "thor done" and "too long" in out[2]
+
+
+def test_file_search_skips_program_folders_and_stops_on_time(home, monkeypatch):
+    (home / "AppData" / "Local" / "x").mkdir(parents=True)
+    (home / "AppData" / "Local" / "x" / "team report.txt").write_text("hidden")
+    (home / "Documents" / "Team Report.docx").write_text("x")
+    out = H.find_files("team report")
+    assert "Team Report.docx" in out and "AppData" not in out
+    clock = iter([0, 100, 100, 100, 100])                       # the clock jumps past the 8-second limit
+    monkeypatch.setattr(H.time, "time", lambda: next(clock, 100))
+    assert "stopped after 8 seconds" in H.find_files("nothing-like-this")

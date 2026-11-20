@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 import time
+import logging
 from pathlib import Path
 
 import secrets
@@ -21,6 +22,9 @@ class Ask(BaseModel):
     text: str
 
 
+log = logging.getLogger("jako.server")
+
+
 def create_app(brain: Brain) -> FastAPI:
     app = FastAPI(title="Jako", docs_url=None, redoc_url=None)
 
@@ -36,7 +40,8 @@ def create_app(brain: Brain) -> FastAPI:
         try:
             parts = brain.talk(text, channel="voice")
         except Exception as exc:
-            parts = [{"who": "jako", "text": f"Sorry, something went wrong: {exc}"}]
+            log.exception("ask failed: %s", text[:80])
+            parts = [{"who": "jako", "text": "Sorry, something went wrong on my side. Please ask me again."}]
         return {"reply": as_text(parts), "parts": parts}
 
     hud = {"at": 0.0, "data": {}, "lock": threading.Lock()}
