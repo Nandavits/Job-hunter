@@ -311,7 +311,7 @@ class Team:
             lines = {}
             for a, fut in futures.items():
                 try:
-                    lines[a] = fut.result(timeout=15)
+                    lines[a] = fut.result(timeout=30)
                 except Exception as exc:
                     log.warning("roll call %s failed: %r", a, exc, exc_info=True)
                     lines[a] = "I'm here, but I couldn't check my area right now."
@@ -357,13 +357,15 @@ class Team:
         return "Black Widow here. " + ", and ".join(bits).capitalize() + "."
 
     def _hawkeye(self) -> str:
-        rows = self.skills._store().list(limit=100_000, include_skipped=True)
-        jobs = [j for j in rows if j["status"] in ("new", "prepared") and len(j.get("description") or "") >= 100]
-        applied = sum(1 for j in rows if j["status"] == "applied")
-        if not jobs:
+        store = self.skills._store()
+        counts = store.stats()
+        open_jobs = counts.get("new", 0) + counts.get("prepared", 0)
+        applied = counts.get("applied", 0)
+        top = store.top_open(1)
+        if not top:
             return f"Hawkeye here. No open jobs right now, {applied} applications out."
-        best = max(jobs, key=lambda j: j.get("score") or 0)
-        return (f"Hawkeye here. {len(jobs)} open jobs, {applied} applications out. "
+        best = top[0]
+        return (f"Hawkeye here. {open_jobs} open jobs, {applied} applications out. "
                 f"Best target: {best.get('company')}, {best.get('title')}, score {best.get('score')}.")
 
     def _captain(self) -> str:
