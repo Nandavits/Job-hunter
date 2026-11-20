@@ -80,7 +80,7 @@ TOOLS_BY_AGENT = {
 HANDS_TOOLS = {
     "iron_man": ["open_app", "open_url", "open_path", "find_files", "list_folder", "read_file", "screenshot", "volume",
                  "lock_screen", "run_command", "write_file", "move", "delete", "close_app",
-                 "whatsapp_message", "whatsapp_call"],
+                 "whatsapp_message", "whatsapp_call", "whatsapp_save_contact", "whatsapp_contacts"],
     "hulk": ["system_info", "hardware_health", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
              "find_files", "list_folder"],
     "vision": ["screenshot", "read_file", "find_files", "list_folder"],
@@ -121,9 +121,15 @@ LAPTOP_TOOLS = [
          "source": {"type": "string"}, "target": {"type": "string"}}}},
     {"name": "delete", "description": "Move a file or folder to the Recycle Bin. Needs the user's yes.",
      "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "whatsapp_message", "description": "Send a WhatsApp message from the laptop to a contact or group, by "
-     "the chat name the user said. Sends right away (the user asked for it). Use the user's exact words for the text; "
-     "if no single chat matches, the tool says which names it found: ask the user which one.",
+    {"name": "whatsapp_save_contact", "description": "Save (or update) a WhatsApp contact: the name the user will "
+     "say and the phone number with country code, e.g. Mahir, +49 170 1234567.",
+     "input_schema": {"type": "object", "required": ["name", "number"], "properties": {
+         "name": {"type": "string"}, "number": {"type": "string"}}}},
+    {"name": "whatsapp_contacts", "description": "List the saved WhatsApp contacts' names.",
+     "input_schema": {"type": "object", "properties": {}}},
+    {"name": "whatsapp_message", "description": "Send a WhatsApp message from the laptop to a saved contact, by "
+     "the name the user said. Sends right away (the user asked for it). Use the user's exact words for the text; "
+     "if no single contact matches, the tool says so: ask the user which one, or for the number to save.",
      "input_schema": {"type": "object", "required": ["contact", "text"], "properties": {
          "contact": {"type": "string"}, "text": {"type": "string"}}}},
     {"name": "whatsapp_call", "description": "Start a WhatsApp voice call (or video call with video=true) from the "

@@ -1,37 +1,39 @@
 """WhatsApp on the Windows laptop: send a message, or start a voice or video call.
 
-Drives the WhatsApp desktop app through Windows UI Automation (pywinauto), the same way a screen reader
-would: it finds the search box, the chat list, the message box and the call buttons by their names.
+How it works (fast and reliable, no hunting for buttons):
+- Jako keeps Nanda's WhatsApp contacts (name, number) in data/whatsapp-contacts.csv on the laptop. They are added
+  by saying e.g. "Jako, save Mahir's WhatsApp number +49 170 1234567" (or by editing that file).
+- A message opens the exact chat with  whatsapp://send?phone=<number>&text=<message>  and presses Enter.
+- A call opens the chat the same way and presses WhatsApp's own shortcut: Ctrl+Shift+C (voice), Ctrl+Shift+V (video).
 
-Safety: it only acts when exactly one chat matches the name that was said. If no chat or several chats match
-("Mahir Khan" and "Mahir S"), it does nothing and says which names it found, so a misheard name never
-reaches the wrong person.
+Safety: a name must match exactly one saved contact, and keys are only pressed while WhatsApp is the active
+window. Otherwise nothing is sent and Jako says what's wrong.
 """
 from __future__ import annotations
 
+import csv
 import re
 import time
 import unicodedata
+import urllib.parse
 from pathlib import Path
 
-SEARCH_NAMES = ("search or start a new chat", "search input textbox", "search", "suchen")
-MESSAGE_NAMES = ("type a message", "type a message to", "message", "nachricht schreiben", "nachricht")
-VOICE_NAMES = ("voice call", "audio call", "sprachanruf", "anruf")
-VIDEO_NAMES = ("video call", "videoanruf")
-CALL_MENU_NAMES = ("call", "calls", "anrufen")
+ROOT = Path(__file__).resolve().parents[1]
+CONTACTS = ROOT / "data" / "whatsapp-contacts.csv"
 
 
 class WhatsAppError(Exception):
     pass
 
 
+# ---------------------------------------------------------------- contacts
 def _norm(s: str) -> str:
     s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9 ]+", " ", s).strip()
 
 
 def match_contact(said: str, names: list[str]) -> tuple[str | None, list[str]]:
-    """Pick the one chat that matches what was said. Returns (name, []) or (None, the candidates)."""
+    """Pick the one contact that matches what was said. Returns (name, []) or (None, the candidates)."""
     want = _norm(said)
     if not want:
         return None, []
@@ -46,135 +48,121 @@ def match_contact(said: str, names: list[str]) -> tuple[str | None, list[str]]:
     return None, (exact or starts)[:5]
 
 
-def _escape_keys(text: str) -> str:
-    """pywinauto type_keys treats + ^ % ~ ( ) { } [ ] as special keys."""
-    return re.sub(r"([+^%~(){}\[\]])", r"{\1}", text).replace("\n", "+{ENTER}")
+def clean_number(number: str) -> str:
+    """'+49 170 123-4567' -> '491701234567'. Needs the country code."""
+    raw = (number or "").strip()
+    digits = re.sub(r"\D", "", raw)
+    if raw.startswith("00"):
+        digits = digits[2:]
+    elif not raw.startswith("+") and digits.startswith("0"):
+        raise WhatsAppError("Please say the number with its country code, like plus 49 for Germany or plus 91 for India.")
+    if not 8 <= len(digits) <= 15:
+        raise WhatsAppError(f"{number} doesn't look like a phone number.")
+    return digits
 
 
-# ---------------------------------------------------------------- the app window
-def _window(timeout: float = 20):
-    from pywinauto import Desktop
-    from pywinauto.timings import wait_until_passes
-    def find():
-        for w in Desktop(backend="uia").windows():
-            title = (w.window_text() or "").strip()
-            if title == "WhatsApp" or title.startswith("WhatsApp"):
-                return w
-        raise WhatsAppError("WhatsApp window not found")
-    return wait_until_passes(timeout, 0.5, find)
+def load_contacts(path: Path = CONTACTS) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8", newline="") as f:
+        return {r["name"].strip(): r["phone"].strip() for r in csv.DictReader(f) if r.get("name") and r.get("phone")}
 
 
-def _start_whatsapp():
-    from .hands import open_app
-    open_app("whatsapp")
-    w = _window()
+def save_contact(name: str, number: str, path: Path = CONTACTS) -> str:
+    name = " ".join((name or "").split())
+    if not name:
+        raise WhatsAppError("Which name should I save the number under?")
+    phone = clean_number(number)
+    contacts = {n: p for n, p in load_contacts(path).items() if _norm(n) != _norm(name)}
+    contacts[name] = phone
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["name", "phone"])
+        for n, p in sorted(contacts.items(), key=lambda x: x[0].lower()):
+            w.writerow([n, p])
+    return f"Saved {name}'s WhatsApp number (+{phone})."
+
+
+def list_contacts(path: Path = CONTACTS) -> str:
+    c = load_contacts(path)
+    if not c:
+        return "No WhatsApp contacts saved yet. Say for example: save Mahir's WhatsApp number plus 49 170 1234567."
+    return "WhatsApp contacts: " + ", ".join(sorted(c, key=str.lower)) + "."
+
+
+def find(contact: str, path: Path = CONTACTS) -> tuple[str, str]:
+    contacts = load_contacts(path)
+    name, options = match_contact(contact, list(contacts))
+    if name:
+        return name, contacts[name]
+    if options:
+        raise WhatsAppError(f"I have more than one {contact}: {', '.join(options)}. Which one do you mean?")
+    raise WhatsAppError(f"I don't have a WhatsApp number for {contact} yet. Say: save {contact}'s WhatsApp number, "
+                        "and the number with its country code.")
+
+
+# ---------------------------------------------------------------- the app
+def _foreground_title() -> str:
+    import ctypes
+    user32 = ctypes.windll.user32
+    hwnd = user32.GetForegroundWindow()
+    buf = ctypes.create_unicode_buffer(256)
+    user32.GetWindowTextW(hwnd, buf, 256)
+    return buf.value
+
+
+def _bring_whatsapp_forward() -> bool:
+    import ctypes
+    hwnd = ctypes.windll.user32.FindWindowW(None, "WhatsApp")
+    if not hwnd:
+        return False
     try:
-        if w.is_minimized():
-            w.restore()
-        w.set_focus()
+        from pywinauto.controls.hwndwrapper import HwndWrapper
+        HwndWrapper(hwnd).set_focus()
     except Exception:
-        pass
-    time.sleep(1.0)
-    return w
+        ctypes.windll.user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+    return True
 
 
-def _find(w, names: tuple, control_type: str = "Button", timeout: float = 6):
-    end = time.time() + timeout
-    while time.time() < end:
-        for el in w.descendants(control_type=control_type):        # filtered by Windows: fast
-            n = _norm(el.window_text())
-            if n and any(n == x or n.startswith(x) for x in names):
-                return el
-        time.sleep(0.4)
-    return None
+def _open_chat(phone: str, text: str = "") -> None:
+    import os
+    url = f"whatsapp://send?phone={phone}"
+    if text:
+        url += "&text=" + urllib.parse.quote(text)
+    os.startfile(url)                                       # nosec - fixed scheme, the number is digits only
+    end = time.time() + 25
+    while time.time() < end:                                # wait until WhatsApp is the active window
+        if _foreground_title() == "WhatsApp":
+            time.sleep(2.5)                                 # let the chat open
+            if _foreground_title() == "WhatsApp":
+                return
+        else:
+            _bring_whatsapp_forward()
+        time.sleep(0.7)
+    raise WhatsAppError("WhatsApp didn't come to the front, so I didn't press anything. Is WhatsApp signed in?")
 
 
-def _open_chat(w, contact: str) -> str:
-    box = _find(w, SEARCH_NAMES, "Edit")
-    if box is None:
-        raise WhatsAppError("I couldn't find WhatsApp's search box.")
-    box.click_input()
-    box.type_keys("^a{BACKSPACE}", set_foreground=False)
-    box.type_keys(_escape_keys(contact), with_spaces=True, set_foreground=False)
-    time.sleep(1.8)                                          # let WhatsApp filter the chat list
-    items = [el for el in w.descendants(control_type="ListItem") if (el.window_text() or "").strip()]
-    # a list item's text often holds "Name, last message, time": the chat name comes first
-    names = {}
-    for el in items:
-        first = re.split(r"[\n,]", el.window_text().strip())[0].strip()
-        names.setdefault(first, el)
-    name, candidates = match_contact(contact, list(names))
-    if name is None:
-        box.type_keys("^a{BACKSPACE}", set_foreground=False)
-        if candidates:
-            raise WhatsAppError(f"I found more than one chat for {contact}: {', '.join(candidates)}. Which one do you mean?")
-        raise WhatsAppError(f"I couldn't find a WhatsApp chat called {contact}.")
-    names[name].click_input()
-    time.sleep(1.2)
-    return name
+def _press(keys: str) -> None:
+    from pywinauto.keyboard import send_keys
+    if _foreground_title() != "WhatsApp":                   # never type into another app
+        raise WhatsAppError("WhatsApp lost focus, so I didn't press anything.")
+    send_keys(keys)
 
 
 # ---------------------------------------------------------------- actions
 def send_message(contact: str, text: str) -> str:
-    if not text.strip():
+    if not (text or "").strip():
         raise WhatsAppError("There's no message text to send.")
-    w = _start_whatsapp()
-    name = _open_chat(w, contact)
-    box = _find(w, MESSAGE_NAMES, "Edit")
-    if box is None:
-        raise WhatsAppError(f"I opened the chat with {name} but couldn't find the message box, so nothing was sent.")
-    box.click_input()
-    box.type_keys(_escape_keys(text), with_spaces=True, set_foreground=False)
-    time.sleep(0.3)
-    box.type_keys("{ENTER}", set_foreground=False)
-    return f"Sent to {name} on WhatsApp: “{text}”"
+    name, phone = find(contact)
+    _open_chat(phone, text.strip())
+    _press("{ENTER}")
+    return f"Sent to {name} on WhatsApp: “{text.strip()}”"
 
 
 def call(contact: str, video: bool = False) -> str:
-    w = _start_whatsapp()
-    name = _open_chat(w, contact)
-    names = VIDEO_NAMES if video else VOICE_NAMES
-    btn = _find(w, names, "Button", timeout=3)
-    if btn is None:                                          # newer WhatsApp: one "Call" button with a small menu
-        menu = _find(w, CALL_MENU_NAMES, "Button", timeout=3)
-        if menu is not None:
-            menu.click_input()
-            time.sleep(0.8)
-            btn = _find(_window(), names, "MenuItem", timeout=3) or _find(_window(), names, "Button", timeout=2)
-    if btn is None:
-        raise WhatsAppError(f"I opened the chat with {name} but couldn't find the {'video' if video else 'voice'} call button.")
-    btn.click_input()
+    name, phone = find(contact)
+    _open_chat(phone)
+    _press("^+v" if video else "^+c")
     return f"Calling {name} on WhatsApp ({'video' if video else 'voice'} call)."
-
-
-# ---------------------------------------------------------------- one-time look at WhatsApp's controls
-def inspect(out: Path) -> None:
-    """Write the names of WhatsApp's buttons and boxes to a file (chat names and messages are hidden)."""
-    lines: list[str] = []
-    def note(s):
-        lines.append(s)
-        out.write_text("\n".join(lines), encoding="utf-8")         # saved as it goes
-    t0 = time.time()
-    note("starting")
-    w = _start_whatsapp()
-    note(f"window: {w.window_text()!r} after {time.time() - t0:.1f}s")
-    def dump(when):
-        note(f"--- {when}")
-        for ct in ("Edit", "Button", "MenuItem"):
-            t = time.time()
-            els = w.descendants(control_type=ct)
-            note(f"{ct}: {len(els)} found in {time.time() - t:.1f}s")
-            for el in els[:80]:
-                note(f"  {ct:8} {(el.window_text() or '')[:60]!r} id={el.element_info.automation_id!r}")
-        t = time.time()
-        items = w.descendants(control_type="ListItem")
-        note(f"ListItem: {len(items)} found in {time.time() - t:.1f}s (text hidden: lengths only)")
-        note("  " + ", ".join(str(len(el.window_text() or "")) for el in items[:30]))
-        return items
-    items = dump("main window")
-    first = next((el for el in items if el.window_text()), None)
-    if first is not None:                                   # open the top chat (nothing is sent) to see its buttons
-        first.click_input()
-        time.sleep(1.5)
-        dump("inside a chat")
-    note(f"done in {time.time() - t0:.1f}s")
