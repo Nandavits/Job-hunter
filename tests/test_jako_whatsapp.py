@@ -189,25 +189,26 @@ def test_file_tools_never_open_the_contacts_or_voiceprint(monkeypatch, tmp_path)
             H.safe_path(str(tmp_path / name))
 
 
-class Btn:
-    def __init__(self, name, left, top):
-        self.name, self.l, self.t, self.clicked = name, left, top, False
-    def window_text(self): return self.name
-    def rectangle(self):
-        from types import SimpleNamespace
-        return SimpleNamespace(left=self.l, top=self.t, width=lambda: 30, height=lambda: 30)
-    def click_input(self): self.clicked = True
-
-
 def test_only_the_chat_top_bar_call_button_is_used():
-    from types import SimpleNamespace
-    win = SimpleNamespace(rectangle=lambda: SimpleNamespace(left=0, top=0, width=lambda: 1000, height=lambda: 800),
-                          descendants=lambda control_type=None: buttons)
-    calls_tab = Btn("Calls", 10, 60)                 # left side tab: never
-    voice, video = Btn("Voice call", 900, 40), Btn("Video call", 860, 40)
-    lower = Btn("Voice call", 900, 600)              # something further down the chat: never
-    buttons = [calls_tab, lower, video, voice]
-    top = W._header_buttons(win)
-    assert calls_tab not in top and lower not in top
+    win = (0, 0, 1000, 800)
+    calls_tab = (None, "Calls", (10, 60, 40, 90))             # left side tab: never
+    voice, video = (None, "Voice call", (900, 40, 930, 70)), (None, "Video call", (860, 40, 890, 70))
+    lower = (None, "Voice call", (900, 600, 930, 630))          # further down the chat: never
+    hidden = (None, "Voice call", (0, 0, 0, 0))                  # off-screen copy: never
+    top = W._header([calls_tab, lower, hidden, video, voice], win)
+    assert top == [video, voice]
     assert W._named(top, W.VOICE) is voice and W._named(top, W.VIDEO) is video
     assert W._named([calls_tab], W.CALL_MENU) is None
+
+
+def test_one_whatsapp_action_at_a_time(tmp_path, monkeypatch):
+    import pytest
+    f = tmp_path / "c.dat"
+    W.save_contact("Maheer", "+919876543261", f)
+    monkeypatch.setattr(W.find, "__defaults__", (f,))
+    W._BUSY.acquire()
+    try:
+        with pytest.raises(W.WhatsAppError, match="still busy"):
+            W.call("Maheer")
+    finally:
+        W._BUSY.release()

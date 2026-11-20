@@ -16,6 +16,7 @@ import csv
 import json
 import os
 import re
+import threading
 import time
 import unicodedata
 import urllib.parse
@@ -226,6 +227,9 @@ def _open_chat(phone: str, text: str = "") -> None:
 
 def _press(keys: str) -> None:
     from pywinauto.keyboard import send_keys
+    if _foreground_title() != "WhatsApp":                   # something else came to the front: bring WhatsApp back once
+        _bring_whatsapp_forward()
+        time.sleep(0.8)
     if _foreground_title() != "WhatsApp":                   # never type into another app
         raise WhatsAppError("WhatsApp lost focus, so I didn't press anything.")
     send_keys(keys)
@@ -236,8 +240,13 @@ def send_message(contact: str, text: str) -> str:
     if not (text or "").strip():
         raise WhatsAppError("There's no message text to send.")
     name, phone = find(contact)
-    _open_chat(phone, text.strip())
-    _press("{ENTER}")
+    if not _BUSY.acquire(blocking=False):
+        raise WhatsAppError("I'm still busy with the last WhatsApp call or message. Give me a moment.")
+    try:
+        _open_chat(phone, text.strip())
+        _press("{ENTER}")
+    finally:
+        _BUSY.release()
     return f"Sent to {name} on WhatsApp: “{text.strip()}”"
 
 
@@ -245,65 +254,106 @@ VOICE = ("voice call", "audio call", "sprachanruf", "audioanruf")
 VIDEO = ("video call", "videoanruf")
 CALL_MENU = ("call", "anrufen", "start call")
 
+# Windows UI Automation ids
+NAME, RECT, CONTROL_TYPE = 30005, 30001, 30003
+BUTTON, WINDOW, MENU_ITEM = 50000, 50032, 50011
+CHILDREN, DESCENDANTS = 2, 4
+INVOKE = 10000
 
-def _header_buttons(win) -> list:
-    """Visible buttons in the open chat's top bar (right part, top strip of the window), never the left side tabs."""
-    r = win.rectangle()
-    top, left = r.top + max(140, int(r.height() * 0.16)), r.left + int(r.width() * 0.35)
-    seen, out = set(), []
-    for el in win.descendants(control_type="Button"):
-        try:
-            b = el.rectangle()
-            if b.width() < 3 or b.height() < 3 or b.top > top or b.left < left:
-                continue
-            key = (b.left, b.top, el.window_text())
-            if key not in seen:
-                seen.add(key)
-                out.append(el)
-        except Exception:
-            continue
-    return out
+_BUSY = threading.Lock()                                    # one WhatsApp action at a time: retries can't pile up
 
 
 def _named(buttons, names):
-    for el in buttons:
-        n = _norm(el.window_text())
+    """buttons: [(element, name, (left, top, right, bottom))]. The first whose name is one of `names`."""
+    for b in buttons:
+        n = _norm(b[1])
         if any(n == x or n.startswith(x + " ") for x in names):
-            return el
+            return b
     return None
 
 
+def _header(buttons, win_rect):
+    """Only the open chat's top bar: the top strip of the window, right of the chat list (never the left tabs)."""
+    l, t, r, btm = win_rect
+    top, left = t + max(140, int((btm - t) * 0.16)), l + int((r - l) * 0.35)
+    return [b for b in buttons if b[2][2] - b[2][0] > 2 and b[2][3] - b[2][1] > 2 and b[2][1] <= top and b[2][0] >= left]
+
+
+def _uia():
+    from pywinauto.uia_defines import IUIA
+    return IUIA()
+
+
+def _whatsapp_window(ia):
+    cond = ia.iuia.CreateAndCondition(ia.iuia.CreatePropertyCondition(NAME, "WhatsApp"),
+                                      ia.iuia.CreatePropertyCondition(CONTROL_TYPE, WINDOW))
+    win = ia.iuia.GetRootElement().FindFirst(CHILDREN, cond)
+    if not win:
+        raise WhatsAppError("I can't see the WhatsApp window.")
+    return win
+
+
+def _all_buttons(ia, root, control_type=BUTTON):
+    """All buttons with their names and positions in ONE request to Windows (fast even on a busy laptop)."""
+    req = ia.iuia.CreateCacheRequest()
+    req.AddProperty(NAME)
+    req.AddProperty(RECT)
+    arr = root.FindAllBuildCache(DESCENDANTS, ia.iuia.CreatePropertyCondition(CONTROL_TYPE, control_type), req)
+    out = []
+    for i in range(arr.Length if arr else 0):
+        e = arr.GetElement(i)
+        r = e.CachedBoundingRectangle
+        out.append((e, e.CachedName or "", (r.left, r.top, r.right, r.bottom)))
+    return out
+
+
+def _invoke(ia, element) -> None:
+    """Press a button the way a screen reader does: works even when WhatsApp isn't the front window."""
+    try:
+        pattern = element.GetCurrentPattern(INVOKE).QueryInterface(ia.UIA_dll.IUIAutomationInvokePattern)
+        pattern.Invoke()
+    except Exception:
+        from pywinauto.controls.uiawrapper import UIAWrapper
+        from pywinauto.uia_element_info import UIAElementInfo
+        _bring_whatsapp_forward()
+        UIAWrapper(UIAElementInfo(element)).click_input()
+
+
 def call_click(video: bool) -> None:
-    """Click the call button in the open chat's top bar."""
-    from pywinauto import Desktop
-    win = Desktop(backend="uia").window(title="WhatsApp", control_type="Window").wrapper_object()
-    buttons = _header_buttons(win)
-    btn = _named(buttons, VIDEO if video else VOICE)
-    if btn is None:                                         # newer WhatsApp: one "Call" button that opens a small menu
-        menu = _named(buttons, CALL_MENU)
-        if menu is not None:
-            menu.click_input()
-            time.sleep(1.0)
-            for ct in ("MenuItem", "Button", "ListItem"):
-                for el in win.descendants(control_type=ct):
-                    n = _norm(el.window_text())
-                    if any(n == x or n.startswith(x) for x in (VIDEO if video else VOICE)):
-                        btn = el
-                        break
-                if btn is not None:
-                    break
-    if btn is None:
-        names = sorted({(b.window_text() or "")[:40] for b in buttons})
-        (ROOT / "logs").mkdir(exist_ok=True)
-        (ROOT / "logs" / "whatsapp-ui.txt").write_text("chat top-bar buttons: " + repr(names), encoding="utf-8")
-        raise WhatsAppError("I opened the chat but couldn't find WhatsApp's call button, so no call was started.")
-    if _foreground_title() != "WhatsApp":
-        raise WhatsAppError("WhatsApp lost focus, so I didn't press anything.")
-    btn.click_input()
+    """Press the call button in the open chat's top bar."""
+    ia = _uia()
+    names = VIDEO if video else VOICE
+    end = time.time() + 12
+    while True:
+        win = _whatsapp_window(ia)
+        r = win.CurrentBoundingRectangle
+        header = _header(_all_buttons(ia, win), (r.left, r.top, r.right, r.bottom))
+        hit = _named(header, names)
+        if hit is None:                                     # newer WhatsApp: one "Call" button that opens a small menu
+            menu = _named(header, CALL_MENU)
+            if menu is not None:
+                _invoke(ia, menu[0])
+                time.sleep(1.0)
+                hit = _named(_all_buttons(ia, win, MENU_ITEM) + _all_buttons(ia, win), names)
+        if hit is not None:
+            _invoke(ia, hit[0])
+            return
+        if time.time() > end:                               # the chat may still be loading: look again for a few seconds
+            break
+        time.sleep(1.5)
+    (ROOT / "logs").mkdir(exist_ok=True)
+    (ROOT / "logs" / "whatsapp-ui.txt").write_text("chat top-bar buttons: " + repr(sorted({b[1][:40] for b in header})),
+                                                  encoding="utf-8")
+    raise WhatsAppError("I opened the chat but couldn't find WhatsApp's call button, so no call was started.")
 
 
 def call(contact: str, video: bool = False) -> str:
     name, phone = find(contact)
-    _open_chat(phone)
-    call_click(video)
+    if not _BUSY.acquire(blocking=False):
+        raise WhatsAppError("I'm still busy with the last WhatsApp call or message. Give me a moment.")
+    try:
+        _open_chat(phone)
+        call_click(video)
+    finally:
+        _BUSY.release()
     return f"Calling {name} on WhatsApp ({'video' if video else 'voice'} call)."
