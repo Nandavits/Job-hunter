@@ -118,3 +118,11 @@ def test_hulk_has_the_hardware_tool():
     from jako.team import HANDS_TOOLS, LAPTOP_TOOLS
     assert "hardware_health" in HANDS_TOOLS["hulk"] and "hardware_health" in H.SAFE
     assert any(t["name"] == "hardware_health" for t in LAPTOP_TOOLS)
+
+
+def test_check_retries_soon_when_the_laptop_link_is_not_up_yet(brain):
+    brain.team.hands.online = lambda: False
+    S.hardware_alerts(brain, Tg(), clock=10_000)
+    brain.team.hands.online = lambda: True
+    assert S.hardware_alerts(brain, Tg(), clock=10_000 + 30) == []          # not yet
+    assert len(S.hardware_alerts(brain, Tg(), clock=10_000 + 70)) == 2      # a minute later it checks

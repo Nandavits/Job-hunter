@@ -33,6 +33,8 @@ def hardware_alerts(brain: Brain, telegram: Telegram, clock: float | None = None
     state["_checked"] = clock
     warnings: list[tuple[str, str]] = []
     hands = getattr(getattr(brain, "team", None), "hands", None)
+    if hands is not None and not hands.online():
+        state["_checked"] = clock - CHECK_EVERY + 60                  # laptop link not up yet: try again in a minute
     if hands is not None and hands.online():
         out = hands.do("hardware_health", {})
         if out.get("error"):
