@@ -36,8 +36,9 @@ How to work:
 - Small talk, opinions, explanations and things you know well: answer yourself.
 - Anything about the laptop, email, calendar, jobs, reminders, to-dos, the weather or current facts: give it to
   the right member with a complete task. Use several members at once when the request has several parts.
-- Members' reports are spoken to {name} in their own voices before your answer. Do not repeat them. After a report,
-  add at most one short sentence of your own, or nothing at all.
+- Members' reports are spoken to {name} in their own voices before your answer. Do not repeat or summarise them.
+  After reports, add one short sentence only if it adds something new (a warning, a connection, a question);
+  otherwise answer with exactly "-" and nothing else.
 - Never claim an action was done unless a member reported it. You cannot send email, apply to jobs or approve
   laptop actions; laptop changes wait for {name}'s yes.
 - {style}
@@ -119,7 +120,7 @@ class Brain:
                 args = dict(call.input)
                 if call.name == "ask_team" and args.get("member") in AGENTS and args.get("member") != "jako":
                     member = args["member"]
-                    report = self.team.run(self._client(), member, args.get("task", ""), lang, new_pending)
+                    report = self.team.run(self._client(), member, args.get("task", ""), lang, new_pending, channel)
                     log.info("%s reports: %s", AGENTS[member]["name"], report[:150])
                     reports.append({"who": member, "text": report})
                     out = f"{AGENTS[member]['name']} reported (already spoken to the user): {report}"
@@ -130,6 +131,8 @@ class Brain:
 
         if new_pending:                                   # only the latest request can be approved
             self.pending[channel] = {**new_pending[-1], "at": time.time()}
+        if reports and (not reply.strip(" -.") or re.search(r"nothing (?:more )?to add|has covered it", reply, re.I)):
+            reply = ""
         parts = reports + ([{"who": "jako", "text": reply}] if reply else [])
         if not parts:
             parts = [{"who": "jako", "text": "Sorry, I couldn't finish that. Please try again."}]
