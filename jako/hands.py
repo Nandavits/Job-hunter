@@ -629,6 +629,19 @@ def whatsapp_message(contact: str, text: str) -> str:
         return str(exc)
 
 
+def whatsapp_save_contact(name: str, number: str) -> str:
+    from .whatsapp import WhatsAppError, save_contact
+    try:
+        return save_contact(name, number)
+    except WhatsAppError as exc:
+        return str(exc)
+
+
+def whatsapp_contacts() -> str:
+    from .whatsapp import list_contacts
+    return list_contacts()
+
+
 def whatsapp_call(contact: str, video: bool = False) -> str:
     from .whatsapp import WhatsAppError, call
     try:
@@ -644,7 +657,8 @@ SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "fin
         "list_folder": list_folder, "read_file": read_file, "screenshot": screenshot, "volume": volume,
         "system_info": system_info, "lock_screen": lock_screen, "top_processes": top_processes,
         "disk_report": disk_report, "old_files": old_files, "hardware_health": hardware_health,
-        "close_app": _do_close_app, "whatsapp_message": whatsapp_message, "whatsapp_call": whatsapp_call}
+        "close_app": _do_close_app, "whatsapp_message": whatsapp_message, "whatsapp_call": whatsapp_call,
+        "whatsapp_save_contact": whatsapp_save_contact, "whatsapp_contacts": whatsapp_contacts}
 
 
 def describe(action: str, args: dict) -> str:
@@ -864,22 +878,6 @@ def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None) 
     return True
 
 
-def _inspect_whatsapp_if_asked() -> None:
-    flag = ROOT / "data" / "whatsapp-inspect.flag"
-    if not flag.exists():
-        return
-    try:
-        flag.unlink()
-        import comtypes
-        comtypes.CoInitializeEx()                               # this runs in its own thread
-        from .whatsapp import inspect
-        inspect(ROOT / "logs" / "whatsapp-ui.txt")
-        print(time.strftime("%H:%M:%S"), "WhatsApp controls written to logs/whatsapp-ui.txt", flush=True)
-    except Exception as exc:                                  # noqa: BLE001
-        p = ROOT / "logs" / "whatsapp-ui.txt"
-        p.write_text((p.read_text(encoding="utf-8") if p.exists() else "") + f"\ninspect failed: {exc!r}", encoding="utf-8")
-
-
 def main() -> None:
     if sys.stdout is None or sys.stderr is None:      # started hidden (pythonw): no console to write to
         (ROOT / "logs").mkdir(exist_ok=True)
@@ -913,8 +911,6 @@ def main() -> None:
     if sys.platform == "win32":
         threading.Thread(target=watchdog, daemon=True).start()
     print(time.strftime("%H:%M:%S"), f"Jako laptop link started on {computer}, talking to {base}", flush=True)
-    if sys.platform == "win32":
-        threading.Thread(target=_inspect_whatsapp_if_asked, daemon=True).start()   # never blocks Iron Man
     while True:
         try:
             serve_once(hands, base, token, computer)
