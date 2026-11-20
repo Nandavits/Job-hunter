@@ -9,11 +9,13 @@ Thor             web search, news and weather
 from __future__ import annotations
 
 import logging
+import queue
 import re
+import threading
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-
-import requests
 
 from .config import JakoConfig
 from .skills import TOOLS as SKILL_TOOLS
@@ -120,42 +122,66 @@ Rules:
 
 
 class HandsClient:
-    """Talks to jako/hands.py running on Windows."""
+    """Talks to jako/hands.py on Windows. The helper calls *us* (it polls /api/hands/poll on this computer),
+    because Docker can't connect into the laptop. Each request waits here until the helper sends the result."""
 
     def __init__(self, cfg: JakoConfig, session=None):
         self.cfg = cfg
-        self.http = session or requests.Session()
+        self.jobs: "queue.Queue[dict]" = queue.Queue()
+        self.waiting: dict[str, list] = {}
+        self.last_seen = 0.0
+        self.computer = ""
 
-    def _post(self, path: str, payload: dict, timeout: int = 100) -> dict:
+    # ---- used by the team
+    def _call(self, kind: str, payload: dict, timeout: float = 100) -> dict:
         if not self.cfg.hands_token:
             return {"error": "The laptop link is not set up (JAKO_HANDS_TOKEN missing). Run start-jako.bat."}
-        try:
-            r = self.http.post(self.cfg.hands_url.rstrip("/") + path, json=payload, timeout=timeout,
-                               headers={"X-Jako-Token": self.cfg.hands_token})
-            if r.status_code == 401:
-                return {"error": "The laptop link refused the key. Run start-jako.bat again."}
-            return r.json()
-        except requests.RequestException:
-            return {"error": "I can't reach the laptop. Is the Jako hands window running? Run start-jako.bat."}
+        if not self.online():
+            return {"error": "I can't reach the laptop. Run jako-laptop-link.bat (or start-jako.bat) on the laptop."}
+        job_id = uuid.uuid4().hex
+        done = threading.Event()
+        self.waiting[job_id] = [done, None]
+        self.jobs.put({"id": job_id, "kind": kind, **payload})
+        done.wait(timeout)
+        result = self.waiting.pop(job_id, [None, None])[1]
+        return result if isinstance(result, dict) else {"error": "The laptop didn't answer in time."}
 
     def do(self, action: str, args: dict) -> dict:
-        return self._post("/do", {"action": action, "args": args})
+        return self._call("do", {"action": action, "args": args})
 
     def confirm(self, code: str) -> dict:
-        return self._post("/confirm", {"code": code})
+        return self._call("confirm", {"code": code})
 
     def cancel(self, code: str) -> dict:
-        return self._post("/cancel", {"code": code}, timeout=10)
+        return self._call("cancel", {"code": code}, timeout=10)
 
     def status(self) -> dict:
         if not self.cfg.hands_token:
             return {"error": "not set up"}
-        try:
-            r = self.http.get(self.cfg.hands_url.rstrip("/") + "/status", timeout=4,
-                              headers={"X-Jako-Token": self.cfg.hands_token})
-            return r.json()
-        except requests.RequestException:
+        if not self.online():
             return {"error": "offline"}
+        out = self._call("status", {}, timeout=6)
+        return out if out.get("ok") else {"error": "offline"}
+
+    def online(self) -> bool:
+        return time.time() - self.last_seen < 45
+
+    # ---- used by the web server, for the helper on Windows
+    def poll(self, computer: str, wait: float = 25) -> dict:
+        self.last_seen, self.computer = time.time(), computer or self.computer
+        try:
+            job = self.jobs.get(timeout=wait)
+        except queue.Empty:
+            return {}
+        self.last_seen = time.time()
+        return job
+
+    def deliver(self, job_id: str, result: dict) -> None:
+        self.last_seen = time.time()
+        slot = self.waiting.get(job_id)
+        if slot:
+            slot[1] = result
+            slot[0].set()
 
 
 def tools_for(agent: str) -> list[dict]:
@@ -261,7 +287,7 @@ class Team:
         if st.get("error") == "not set up":
             return "Iron Man here. The laptop link isn't set up yet. Run start-jako.bat and I'm in."
         if st.get("error"):
-            return "Iron Man here. I can't reach the laptop right now. Start the Jako hands window and I'm back."
+            return "Iron Man here. I can't reach the laptop right now. Run jako-laptop-link.bat and I'm back."
         waiting = st.get("pending", 0)
         extra = f" {waiting} action{'s' if waiting != 1 else ''} waiting for your yes." if waiting else ""
         return f"Iron Man here. Connected to {st.get('computer', 'your laptop')} and ready.{extra}"
@@ -301,9 +327,12 @@ class Team:
         return text + f". {len(todos)} thing{'s' if len(todos) != 1 else ''} on your to-do list."
 
     def _thor(self) -> str:
-        now = self.skills.weather_now()
+        try:
+            now = self.skills.weather_now()
+        except Exception:
+            now = ""
         return f"Thor here. {now} I'm ready to search the web for you." if now else \
-            "Thor here. Ready to search the web for you."
+            "Thor here. I can't see the sky right now, but I'm ready to search the web for you."
 
 
 def _parse(value: str, tz) -> datetime:

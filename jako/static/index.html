@@ -151,7 +151,7 @@ function drawMembers() {
 function setText(id, txt) { if (txt) $(id).textContent = txt; }
 async function refreshHud() {
   try { HUD = await (await fetch('/api/hud')).json(); } catch (e) { return; }
-  const strip = s => (s || '').replace(/\s*I'm ready to search the web for you\.?/, '').trim();
+  const strip = s => (s || '').replace(/,? ?(but )?I'm ready to search the web for you\.?/, '').replace(/^I can't see the sky right now$/, 'Weather not available right now.').trim();
   setText('h-weather', strip(HUD.thor));
   setText('h-plan', HUD.captain_america);
   setText('h-jobs', HUD.hawkeye);
