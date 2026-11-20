@@ -242,8 +242,9 @@ function arcText(text, cx, cy, r, start, size, col) {
   ctx.restore();
 }
 
-function frame(now) {
-  const t = (now - boot0) / 1000, boot = Math.min(1, t / 2.4), ease = 1 - Math.pow(1 - boot, 3);
+function frame() {
+  const now = performance.now();                 // own clock: some Edge builds give rAF a different time base
+  const t = Math.max(0, now - boot0) / 1000, boot = Math.min(1, t / 2.4), ease = 1 - Math.pow(1 - boot, 3);
   const c = color(current), cx = L.cx * DPR, cy = L.cy * DPR, R = L.R * DPR;
   const target = ({ idle:0.25, listening:0.45 + micLevel * 2.2, thinking:0.75, speaking:0.8 + wordPulse * 0.6 }[state] || 0.3) + (awake ? 0.3 : 0);
   energy += (Math.min(target, 1.7) - energy) * 0.1; wordPulse *= 0.9;
