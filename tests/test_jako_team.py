@@ -209,3 +209,17 @@ def test_hands_api_needs_the_token(home):
     assert "Documents" in ok.json()["text"]
     with pytest.raises(SystemExit):
         H.create_app("short")
+
+
+def test_hands_starts_without_a_console(home, monkeypatch, tmp_path):
+    """pythonw has no stdout/stderr; the helper must still start (this crashed on the real laptop)."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(H, "ROOT", tmp_path)
+    monkeypatch.setattr(H, "read_token", lambda: "k" * 32)
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    import uvicorn
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw, out=sys.stdout))
+    H.main()
+    assert seen["log_config"] is None and seen["out"] is not None

@@ -404,8 +404,13 @@ def create_app(token: str, hands: Hands | None = None):
 
 def main() -> None:
     import uvicorn
+    if sys.stdout is None or sys.stderr is None:      # started hidden (pythonw): no console to write to
+        (ROOT / "logs").mkdir(exist_ok=True)
+        log = open(ROOT / "logs" / "jako-hands-run.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+        sys.stdout = sys.stdout or log
+        sys.stderr = sys.stderr or log
     host = os.environ.get("JAKO_HANDS_BIND", "127.0.0.1")
-    uvicorn.run(create_app(read_token()), host=host, port=8766, log_level="warning")
+    uvicorn.run(create_app(read_token()), host=host, port=8766, log_level="warning", log_config=None)
 
 
 if __name__ == "__main__":
