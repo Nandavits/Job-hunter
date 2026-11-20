@@ -135,8 +135,9 @@ class Brain:
         reports: list[dict] = []
         new_pending: list[dict] = []
         reply = ""
-        for _ in range(6):
-            msg = self._client().messages.create(model=self.cfg.model, max_tokens=1500, system=self.system(channel),
+        system = self.system(channel)                 # fixed for the whole question: the AI rejects a follow-up call
+        for _ in range(6):                            # whose instructions changed (e.g. the clock moved a minute)
+            msg = self._client().messages.create(model=self.cfg.model, max_tokens=1500, system=system,
                                                  tools=OWN_TOOLS, messages=messages)
             reply = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text").strip()
             calls = [b for b in msg.content if getattr(b, "type", "") == "tool_use"]
