@@ -2,13 +2,11 @@
 rem Opens the Jako window (the desktop "Jako" icon). Starts Jako first if it isn't running.
 cd /d "%~dp0"
 if exist data\jako-stopped.flag del data\jako-stopped.flag
-powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing http://localhost:8765/api/health -TimeoutSec 3 | Out-Null; exit 0 } catch { exit 1 }"
+curl -s -m 2 -o nul http://localhost:8765/api/health
 if errorlevel 1 (
   call start-jako.bat --boot
   exit /b 0
 )
-powershell -NoProfile -Command "if (-not (Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" | Where-Object { $_.CommandLine -like '*jako.hands*' })) { exit 1 }"
-if errorlevel 1 call jako-laptop-link.bat
 call :openjako
 exit /b 0
 
