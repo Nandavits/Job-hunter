@@ -251,6 +251,23 @@ class Team:
     def __init__(self, cfg: JakoConfig, skills, hands: HandsClient | None = None):
         self.cfg, self.skills = cfg, skills
         self.hands = hands or HandsClient(cfg)
+        self.roll_call_seconds = 20      # the whole roll call answers within this time
+        self.member_seconds = 75         # one member's job (AI + tools) gets at most this long
+
+    def run_many(self, client, jobs: list[tuple[str, str]], lang: str, pending: list, channel: str = "voice") -> list[str]:
+        """Run several members at the same time; a member that takes too long is reported, not waited for."""
+        pool = ThreadPoolExecutor(max_workers=max(1, len(jobs)))
+        futs = [pool.submit(self.run, client, agent, task, lang, pending, channel) for agent, task in jobs]
+        deadline = time.monotonic() + self.member_seconds
+        out = []
+        for (agent, _), fut in zip(jobs, futs):
+            try:
+                out.append(fut.result(timeout=max(0.1, deadline - time.monotonic())))
+            except Exception as exc:
+                log.warning("%s did not finish: %r", AGENTS[agent]["name"], exc)
+                out.append("This is taking too long right now (the laptop is very busy). Please ask me again in a minute.")
+        pool.shutdown(wait=False, cancel_futures=True)
+        return out
 
     # ---------- running a member ----------
     def run(self, client, agent: str, task: str, lang: str, pending: list, channel: str = "voice") -> str:
@@ -306,15 +323,17 @@ class Team:
     def roll_call(self) -> list[dict]:
         checks = {"iron_man": self._iron_man, "black_widow": self._black_widow, "hawkeye": self._hawkeye,
                   "captain_america": self._captain, "thor": self._thor, "hulk": self._hulk, "vision": self._vision}
-        with ThreadPoolExecutor(max_workers=7) as pool:
-            futures = {a: pool.submit(fn) for a, fn in checks.items()}
-            lines = {}
-            for a, fut in futures.items():
-                try:
-                    lines[a] = fut.result(timeout=30)
-                except Exception as exc:
-                    log.warning("roll call %s failed: %r", a, exc, exc_info=True)
-                    lines[a] = "I'm here, but I couldn't check my area right now."
+        pool = ThreadPoolExecutor(max_workers=7)
+        futures = {a: pool.submit(fn) for a, fn in checks.items()}
+        deadline = time.monotonic() + self.roll_call_seconds
+        lines = {}
+        for a, fut in futures.items():
+            try:
+                lines[a] = fut.result(timeout=max(0.1, deadline - time.monotonic()))
+            except Exception as exc:
+                log.warning("roll call %s failed: %r", a, exc)
+                lines[a] = "I'm here, but my check is slow right now, so I'll skip it this time."
+        pool.shutdown(wait=False, cancel_futures=True)       # never wait for a stuck check
         parts = [{"who": "jako", "text": f"Hello {self.cfg.owner_name}, I'm awake. Team, report in."}]
         parts += [{"who": a, "text": lines[a]} for a in checks]
         parts.append({"who": "jako", "text": "Everyone is ready. What should we do?"})

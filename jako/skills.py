@@ -193,7 +193,7 @@ class Skills:
         if not (self.cfg.gmail_address and self.cfg.gmail_password):
             return "Gmail is not set up (GMAIL_ADDRESS / GMAIL_APP_PASSWORD missing)."
         out = []
-        with imaplib.IMAP4_SSL("imap.gmail.com") as imap:
+        with imaplib.IMAP4_SSL("imap.gmail.com", timeout=20) as imap:
             imap.login(self.cfg.gmail_address, self.cfg.gmail_password)
             imap.select("INBOX", readonly=True)                 # read-only: nothing is marked as read
             terms = []
@@ -216,7 +216,7 @@ class Skills:
 
     def unread_count(self) -> int:
         """Unread primary emails from the last day (for the roll call)."""
-        with imaplib.IMAP4_SSL("imap.gmail.com") as imap:
+        with imaplib.IMAP4_SSL("imap.gmail.com", timeout=20) as imap:
             imap.login(self.cfg.gmail_address, self.cfg.gmail_password)
             imap.select("INBOX", readonly=True)
             typ, data = imap.search(None, "X-GM-RAW", '"is:unread newer_than:1d category:primary"')
