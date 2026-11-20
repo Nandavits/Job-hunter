@@ -212,6 +212,14 @@ class Skills:
                            f"{text[:400]}")
         return "\n\n".join(out) if out else "No matching emails."
 
+    def unread_count(self) -> int:
+        """Unread primary emails from the last day (for the roll call)."""
+        with imaplib.IMAP4_SSL("imap.gmail.com") as imap:
+            imap.login(self.cfg.gmail_address, self.cfg.gmail_password)
+            imap.select("INBOX", readonly=True)
+            typ, data = imap.search(None, "X-GM-RAW", '"is:unread newer_than:1d category:primary"')
+            return len(data[0].split()) if typ == "OK" and data and data[0] else 0
+
     # ----------------------------------------------------------------- calendar (read-only)
     def calendar(self, days: int = 1) -> str:
         if not self.cfg.calendar_ics_url:
@@ -233,6 +241,25 @@ class Skills:
             lines.append(f"{when} – {ev.get('SUMMARY')}{loc}")
         return "\n".join(lines) if lines else "No events."
 
+
+    def next_event(self) -> str:
+        """The next calendar event today, e.g. '14:00 Interview Flink' (for the roll call)."""
+        now = self._now()
+        for line in self.calendar(days=1).splitlines():
+            if " – " not in line or "(all day)" in line:
+                continue
+            try:
+                when = datetime.strptime(line[4:16], "%d.%m. %H:%M").replace(year=now.year, tzinfo=self.cfg.tz)
+            except ValueError:
+                continue
+            if when >= now:
+                return f"{when:%H:%M} {line.split(' – ', 1)[1]}"
+        return ""
+
+    def weather_now(self) -> str:
+        first = self.get_weather(days=1).splitlines()[0]          # "Berlin now: 4.2°C (feels 1.0°C), light rain, ..."
+        m = re.match(r"(.+?) now: ([-\d.]+)°C \(feels [-\d.]+°C\), ([^,]+)", first)
+        return f"It's {round(float(m.group(2)))} degrees and {m.group(3)} in {m.group(1)}." if m else ""
 
 def _hdr(value) -> str:
     try:

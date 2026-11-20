@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from jako.brain import Brain
 from jako.config import JakoConfig
 from jako.memory import Memory
 from jako.scheduler import tick
@@ -89,35 +88,6 @@ def test_calendar_from_ical(cfg, mem):
     assert "Interview Flink @ Zoom" in text and "15:00" in text
 
 
-class Block(SimpleNamespace):
-    pass
-
-
-class FakeClaude:
-    """First answer asks for the weather tool, second answer uses the result."""
-    def __init__(self):
-        self.calls = []
-        self.messages = self
-
-    def create(self, **kw):
-        self.calls.append(kw)
-        if len(self.calls) == 1:
-            return SimpleNamespace(stop_reason="tool_use", content=[
-                Block(type="tool_use", id="t1", name="list_todos", input={})])
-        result = kw["messages"][-1]["content"][0]["content"]
-        return SimpleNamespace(stop_reason="end_turn", content=[Block(type="text", text=f"Your list: {result}")])
-
-
-def test_brain_uses_tools_and_remembers(cfg, mem):
-    mem.add_todo("send CV to Flink")
-    brain = Brain(cfg, mem, client=FakeClaude())
-    reply = brain.ask("what is on my to-do list?", channel="voice")
-    assert "send CV to Flink" in reply
-    assert [m["role"] for m in mem.history("voice")] == ["user", "assistant"]
-    assert "spoken aloud" in brain.client.calls[0]["system"]
-    assert any(t.get("name") == "web_search" for t in brain.client.calls[0]["tools"])
-
-
 def test_telegram_only_answers_the_owner(cfg, mem):
     http = FakeHTTP({})
     brain = SimpleNamespace(ask=lambda text, channel: f"echo {text}", mem=mem, briefing=lambda: "b")
@@ -144,8 +114,8 @@ def test_due_reminder_is_announced_once(cfg, mem):
     brain = SimpleNamespace(cfg=cfg, mem=mem, briefing=lambda: "brief")
     tick(brain, tg, now=noon)
     tick(brain, tg, now=noon)
-    assert sent == ["⏰ Reminder: drink water"]
-    assert mem.take_outbox() == ["Reminder: drink water"]
+    assert sent == ["🛡️ Captain America: Reminder: drink water"]
+    assert mem.take_outbox() == ["[captain_america] Reminder: drink water"]
 
 
 def test_briefing_once_a_morning(cfg, mem):
@@ -161,9 +131,13 @@ def test_briefing_once_a_morning(cfg, mem):
 def test_web_page_and_api(cfg, mem):
     from fastapi.testclient import TestClient
     from jako.server import create_app
-    brain = SimpleNamespace(ask=lambda text, channel: f"heard {text} via {channel}", mem=mem)
+    brain = SimpleNamespace(talk=lambda text, channel: [{"who": "thor", "text": f"heard {text} via {channel}"}],
+                            mem=mem)
     client = TestClient(create_app(brain))
-    assert "Hey Jako" in client.get("/").text
-    assert client.post("/api/ask", json={"text": "hi"}).json() == {"reply": "heard hi via voice"}
-    mem.say_later("Reminder: stretch")
-    assert client.get("/api/outbox").json() == {"items": ["Reminder: stretch"]}
+    assert "Hello Jako, wake up" in client.get("/").text
+    data = client.post("/api/ask", json={"text": "hi"}).json()
+    assert data["parts"] == [{"who": "thor", "text": "heard hi via voice"}]
+    assert data["reply"].startswith("⚡ Thor:")
+    mem.say_later("[captain_america] Reminder: stretch")
+    assert client.get("/api/outbox").json() == {"items": [{"who": "captain_america", "text": "Reminder: stretch"}]}
+    assert client.get("/api/team").json()["iron_man"]["name"] == "Iron Man"

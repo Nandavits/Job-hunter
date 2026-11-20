@@ -69,14 +69,18 @@ class Telegram:
         if not text:
             return
         if text in ("/start", "/help"):
-            self.send("Hi, I'm Jako. Ask me anything, or try: 'what's my day?', 'remind me at 6 pm to call mum', "
-                      "'my top jobs', 'any emails from recruiters?'. /briefing = morning summary, /new = fresh start.")
+            self.send("Hi, I'm Jako, with my team: Iron Man (laptop), Black Widow (email & calendar), Hawkeye (jobs), "
+                      "Captain America (reminders & to-dos) and Thor (web & weather). Ask me anything, e.g. "
+                      "'what's my day?', 'open my CV folder on the laptop', 'my top jobs'.\n"
+                      "/team = everyone reports, /briefing = morning summary, /new = fresh start.")
             return
         if text == "/new":
             self.brain.mem.clear_history("telegram")
             self.send("Fresh start. What can I do for you?")
             return
         self.call("sendChatAction", chat_id=chat_id, action="typing")
+        if text == "/team":
+            text = "wake up"
         reply = self.brain.briefing() if text == "/briefing" else self.brain.ask(text, channel="telegram")
         self.send(reply)
 
