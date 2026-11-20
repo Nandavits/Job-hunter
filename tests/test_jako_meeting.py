@@ -110,3 +110,12 @@ def test_jako_can_use_the_meeting_tool_for_other_wordings(setup):
                    say("Today the team found that your battery is worn."))
     parts = b.talk("anything I should know about today?", channel="voice")
     assert parts[-1]["text"] == "Today the team found that your battery is worn."
+
+
+def test_instructions_stay_the_same_across_calls_of_one_question(setup, monkeypatch):
+    b = brain_with(setup, use("remember", text="likes tea"), say("Noted."))
+    stamps = iter(["10:00", "10:01", "10:02"])
+    original = b.system
+    monkeypatch.setattr(b, "system", lambda ch: original(ch) + next(stamps))
+    b.talk("remember that I like tea", channel="voice")
+    assert b.client.calls[0]["system"] == b.client.calls[1]["system"]
