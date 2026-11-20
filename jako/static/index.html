@@ -11,6 +11,9 @@
   body { margin:0; overflow:hidden; color:var(--text); background:#000;
          font-family: "Segoe UI", "Bahnschrift", system-ui, sans-serif; }
   #fx { position:fixed; inset:0; width:100vw; height:100vh; }
+  #bgvid { position:fixed; inset:0; width:100vw; height:100vh; object-fit:cover; opacity:0; transition:opacity 2s;
+           filter: brightness(.55) saturate(.9); pointer-events:none; }
+  #bgvid.on { opacity:.6; }
   .scan { position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.07;
           background: repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px); }
   .vignette { position:fixed; inset:0; pointer-events:none; z-index:1;
@@ -94,6 +97,7 @@
 </style>
 </head>
 <body>
+<video id="bgvid" muted loop playsinline autoplay></video>
 <canvas id="fx"></canvas>
 <div class="scan"></div><div class="vignette"></div>
 
@@ -332,7 +336,7 @@ function drawBattle(t, R, ease) {
     return true;
   });
   ctx.restore();
-  drawGround(t, dt, ease);
+  if (!bgVideo) drawGround(t, dt, ease);                              // a real video replaces the drawn soldiers
   // our two ships, smaller, on top of the battle
   for (const sh of ships) drawShip(sh.x, sh.y, R * 0.36, t, 0.85 * ease);
 }
@@ -340,6 +344,10 @@ function drawBattle(t, R, ease) {
 // ---- ground battle on the horizon: blue squad (left) against red squad (right). Stylised: a hit soldier
 // gets a shield flash, kneels for a moment and gets back up.
 const ground = { troops: [], bolts: [], dust: [] };
+let bgVideo = false;                                                  // data/background.mp4 plays behind Jako when it exists
+(async () => { try { if ((await (await fetch('/api/background')).json()).video) {
+  const v = $('bgvid'); v.src = '/background-video'; v.oncanplay = () => { v.classList.add('on'); bgVideo = true; }; v.play().catch(() => {});
+} } catch (e) {} })();
 for (let i = 0; i < 6; i++) ground.troops.push({ side: -1, x: 0.27 + i * 0.022 + Math.random() * 0.01, y: 0.715 + Math.random() * 0.045, ph: Math.random() * 6, cool: Math.random() * 2, down: 0, home: 0 });
 for (let i = 0; i < 6; i++) ground.troops.push({ side: 1, x: 0.61 + i * 0.022 + Math.random() * 0.01, y: 0.715 + Math.random() * 0.045, ph: Math.random() * 6, cool: Math.random() * 2, down: 0, home: 0 });
 ground.troops.forEach(tr => tr.home = tr.x);
