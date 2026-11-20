@@ -146,7 +146,10 @@ $('clapbtn').onclick = () => { clapOn = !clapOn; $('clapbtn').classList.toggle('
                                try { localStorage.setItem('jako-clap', clapOn ? 'on' : 'off'); } catch (e) {} };
 $('logbtn').onclick = () => { logEl.classList.toggle('open'); $('logbtn').classList.toggle('on'); };
 
-fetch('/api/team').then(r => r.json()).then(t => { TEAM = t; drawMembers(); }).catch(() => {});
+(function loadTeam() {                                       // keep asking until Jako has started
+  fetch('/api/team').then(r => r.json()).then(t => { TEAM = t; drawMembers(); refreshHud(); })
+                    .catch(() => setTimeout(loadTeam, 3000));
+})();
 const color = who => (TEAM[who] || TEAM.jako).color;
 
 // ================================================================== side panels
@@ -176,7 +179,7 @@ async function refreshHud() {
   $('h-battery').textContent = HUD.battery ? 'Battery ' + HUD.battery + ' · ' + (HUD.iron_man || '').replace(/\.$/, '')
                                            : (HUD.iron_man || '—');
 }
-refreshHud(); setInterval(refreshHud, 60000);
+setInterval(refreshHud, 60000);
 function tick() {
   const n = new Date(), p = v => String(v).padStart(2, '0');
   $('clock').innerHTML = `${p(n.getHours())}:${p(n.getMinutes())}<small>:${p(n.getSeconds())}</small>`;
