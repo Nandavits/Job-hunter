@@ -339,3 +339,17 @@ def test_hawkeye_roll_call_uses_light_queries(cfg, mem):
     assert skills._store() is skills._store()                # one connection pool
     line = Team(cfg, skills, hands=FakeHands())._hawkeye()
     assert "2 open jobs" in line and "Flink, Data Engineer, score 95" in line   # the job without a real ad isn't 'best'
+
+
+def test_closed_window_comes_back_unless_stopped(tmp_path, monkeypatch):
+    monkeypatch.setattr(H, "PAUSE_FLAG", tmp_path / "jako-stopped.flag")
+    opened = []
+    up = lambda base: True
+    assert H.watch_window("http://x", check=lambda: True, opener=opened.append, healthy=up) == "open"
+    assert H.watch_window("http://x", check=lambda: False, opener=lambda b: opened.append(b) or True,
+                          healthy=up) == "reopened" and opened == ["http://x"]
+    assert H.watch_window("http://x", check=lambda: False, opener=opened.append,
+                          healthy=lambda b: False) == "jako not running"
+    (tmp_path / "jako-stopped.flag").write_text("x")
+    assert H.watch_window("http://x", check=lambda: False, opener=opened.append, healthy=up) == "stopped"
+    assert opened == ["http://x"]
