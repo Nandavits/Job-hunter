@@ -261,7 +261,7 @@ class Team:
                 try:
                     lines[a] = fut.result(timeout=15)
                 except Exception as exc:
-                    log.warning("roll call %s failed: %s", a, exc)
+                    log.warning("roll call %s failed: %r", a, exc, exc_info=True)
                     lines[a] = "I'm here, but I couldn't check my area right now."
         parts = [{"who": "jako", "text": f"Hello {self.cfg.owner_name}, I'm awake. Team, report in."}]
         parts += [{"who": a, "text": lines[a]} for a in checks]
