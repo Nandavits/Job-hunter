@@ -1,0 +1,12 @@
+{
+  "AppVersion": "2.0.0.0",
+  "Title": "Jako live desktop",
+  "Desc": "Jako's energy core and team, live on your desktop.",
+  "Author": "Jako",
+  "License": "",
+  "Contact": "",
+  "Type": 1,
+  "FileName": "index.html",
+  "Arguments": null,
+  "IsAbsolutePath": false
+}
