@@ -1,19 +1,34 @@
 @echo off
+rem Starts Jako. Double-click it once; after that Windows starts Jako by itself when you sign in.
+rem start-jako.bat --boot  = quiet start at sign-in (used by the Startup shortcut)
 cd /d "%~dp0"
 if not exist logs mkdir logs
+if not exist data mkdir data
+set "BOOT="
+if /i "%~1"=="--boot" set "BOOT=1"
 
 rem --- 1. Secret key for the laptop link (created once, stays in .env) ---
 findstr /b "JAKO_HANDS_TOKEN=" .env >nul 2>&1
 if errorlevel 1 powershell -NoProfile -Command "Add-Content -Path .env -Value ([Environment]::NewLine + 'JAKO_HANDS_TOKEN=' + [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N'))"
 
-rem --- 2. Jako's hands: lets Iron Man use this laptop (runs on Windows, not in Docker) ---
+rem --- 2. First run only: start with Windows, and the Jako wallpaper ---
+if not defined BOOT if not exist data\jako-autostart.done (
+  powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\Jako.lnk'); $s.TargetPath='%~f0'; $s.Arguments='--boot'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=7; $s.Description='Start Jako'; $s.Save()"
+  echo done> data\jako-autostart.done
+  echo Jako will now start by itself when you sign in to Windows. To stop that, run jako-autostart-off.bat.
+)
+if not defined BOOT if not exist data\jako-wallpaper.done (
+  powershell -NoProfile -ExecutionPolicy Bypass -File jako\set-wallpaper.ps1 "%CD%\jako\static\wallpaper.jpg"
+  echo done> data\jako-wallpaper.done
+)
+
+rem --- 3. Jako's hands: lets Iron Man use this laptop (runs on Windows, not in Docker) ---
 set "PY="
 py -3 --version >nul 2>&1 && set "PY=py -3"
 if not defined PY python --version >nul 2>&1 && set "PY=python"
 if not defined PY (
   echo Python is not installed, so Iron Man cannot use the laptop yet.
   echo Install it from https://www.python.org/downloads/ ^(tick "Add python.exe to PATH"^), then run this file again.
-  echo Jako and the rest of the team still start now.
   goto docker
 )
 if not exist .venv-hands\Scripts\pythonw.exe (
@@ -25,22 +40,35 @@ powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='py
 powershell -NoProfile -Command "Start-Process -FilePath '.venv-hands\Scripts\pythonw.exe' -ArgumentList '-m','jako.hands' -WorkingDirectory '%CD%' -WindowStyle Hidden -RedirectStandardError 'logs\jako-hands.log'"
 
 :docker
-rem --- 3. Jako and the team (Docker) ---
+rem --- 4. Jako and the team (Docker). At sign-in Docker needs a minute, so wait for it. ---
 docker info >nul 2>&1
-if errorlevel 1 (
-  echo Docker Desktop is not running. Start it, wait until it says "running", then double-click this file again.
-  pause
-  exit /b 1
+if not errorlevel 1 goto dockerok
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+echo Waiting for Docker Desktop...
+for /l %%i in (1,1,60) do (
+  timeout /t 5 /nobreak >nul
+  docker info >nul 2>&1 && goto dockerok
 )
+echo Docker Desktop did not start. Start it, wait until it says "running", then double-click this file again.
+if not defined BOOT pause
+exit /b 1
+
+:dockerok
 echo Starting Jako and the team (the first time takes 5-10 minutes)...
 docker compose up -d --build jako > logs\jako-setup.log 2>&1
 if errorlevel 1 (
   echo Starting Jako failed - see logs\jako-setup.log
-  pause
+  if not defined BOOT pause
   exit /b 1
 )
-timeout /t 5 /nobreak >nul
+rem wait until Jako answers, then open its window
+for /l %%i in (1,1,30) do (
+  powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing http://localhost:8765/api/health -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }" && goto jakoup
+  timeout /t 2 /nobreak >nul
+)
+:jakoup
 call :openjako
+if defined BOOT exit /b 0
 echo.
 echo Jako is running in its own window. Say "Hello Jako, wake up" or clap twice.
 echo The very first time, allow the microphone once. After that Jako starts listening by itself.
@@ -59,5 +87,5 @@ if not defined BROWSER (
   start "" "http://localhost:8765"
   exit /b 0
 )
-start "" "%BROWSER%" --app=http://localhost:8765 --user-data-dir="%CD%\data\jako-window" --autoplay-policy=no-user-gesture-required --window-size=1200,860 --no-first-run --no-default-browser-check
+start "" "%BROWSER%" --app=http://localhost:8765 --user-data-dir="%CD%\data\jako-window" --autoplay-policy=no-user-gesture-required --start-maximized --no-first-run --no-default-browser-check
 exit /b 0

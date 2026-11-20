@@ -1,6 +1,8 @@
 """Jako's laptop page and API. Only reachable from this computer (Docker maps it to 127.0.0.1)."""
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -34,6 +36,23 @@ def create_app(brain: Brain) -> FastAPI:
         except Exception as exc:
             parts = [{"who": "jako", "text": f"Sorry, something went wrong: {exc}"}]
         return {"reply": as_text(parts), "parts": parts}
+
+    hud = {"at": 0.0, "data": {}, "lock": threading.Lock()}
+
+    @app.get("/api/hud")
+    def hud_data():
+        """Live lines for the side panels; refreshed at most once a minute (email and the laptop are slow)."""
+        team_obj = getattr(brain, "team", None)
+        if team_obj is None:
+            return {}
+        with hud["lock"]:
+            if time.time() - hud["at"] > 60:
+                try:
+                    hud["data"] = team_obj.status_lines()
+                except Exception as exc:
+                    hud["data"] = {"error": str(exc)}
+                hud["at"] = time.time()
+            return hud["data"]
 
     @app.get("/api/team")
     def team():
