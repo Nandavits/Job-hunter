@@ -476,6 +476,18 @@ def _do_close_app(name: str) -> str:
     exe = name.strip().lower().removesuffix(".exe")
     if not re.fullmatch(r"[\w .-]{1,60}", exe):
         raise Refused("That doesn't look like an app name.")
+    if exe in ("msedge", "chrome"):                       # close the browser, but never Jako's own window
+        import psutil
+        closed = 0
+        for proc in psutil.process_iter(["name", "cmdline"]):
+            try:
+                if (proc.info["name"] or "").lower() == f"{exe}.exe" and \
+                        "jako-window" not in " ".join(proc.info["cmdline"] or []):
+                    proc.terminate()
+                    closed += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return f"Closed {exe} ({closed} processes). Jako's own window stays open." if closed else f"{exe} wasn't running."
     out = subprocess.run(["taskkill", "/IM", f"{exe}.exe"], capture_output=True, text=True, timeout=20)  # nosec
     return out.stdout.strip() or out.stderr.strip() or f"Closed {exe}."
 

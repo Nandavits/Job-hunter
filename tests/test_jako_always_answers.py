@@ -126,3 +126,17 @@ def test_vision_has_the_engineer_tools():
     from jako.team import HANDS_TOOLS, LAPTOP_TOOLS
     need = {"code_list", "code_read", "code_search", "code_edit", "code_write", "code_undo", "restart_jako"}
     assert need <= set(HANDS_TOOLS["vision"]) and need <= {t["name"] for t in LAPTOP_TOOLS} and need <= set(H.SAFE)
+
+
+def test_closing_edge_keeps_jakos_window(monkeypatch):
+    import psutil
+
+    class P:
+        def __init__(self, name, cmd):
+            self.info, self.done = {"name": name, "cmdline": cmd}, False
+        def terminate(self):
+            self.done = True
+    browser, jako = P("msedge.exe", ["msedge.exe"]), P("msedge.exe", ["msedge.exe", "--user-data-dir=C:\\\\job-hunter\\\\data\\\\jako-window"])
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs: [browser, jako])
+    assert "Jako's own window stays open" in H._do_close_app("msedge")
+    assert browser.done and not jako.done
