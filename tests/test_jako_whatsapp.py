@@ -59,6 +59,8 @@ def test_message_and_call_press_keys_only_in_whatsapp(tmp_path, monkeypatch):
     monkeypatch.setattr(W.find, "__defaults__", (f,))
     opened, pressed = [], []
     monkeypatch.setattr(W, "_open_chat", lambda phone, text="": opened.append((phone, text)))
+    monkeypatch.setattr(W, "call_click", lambda video: (W._foreground_title() == "WhatsApp" or (_ for _ in ()).throw(
+        W.WhatsAppError("WhatsApp lost focus, so I didn't press anything."))) and pressed.append("video-button" if video else "voice-button"))
     title = {"t": "WhatsApp"}
     monkeypatch.setattr(W, "_foreground_title", lambda: title["t"])
     import types, sys
@@ -67,11 +69,11 @@ def test_message_and_call_press_keys_only_in_whatsapp(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "pywinauto.keyboard", fake)
     assert W.send_message("meghana", "Hi, on my way!") == "Sent to Meghana on WhatsApp: “Hi, on my way!”"
     assert W.call("Meghana", video=True).startswith("Calling Meghana")
-    assert opened == [("919876543210", "Hi, on my way!"), ("919876543210", "")] and pressed == ["{ENTER}", "^+v"]
+    assert opened == [("919876543210", "Hi, on my way!"), ("919876543210", "")] and pressed == ["{ENTER}", "video-button"]
     title["t"] = "Notepad"                                                 # focus elsewhere: press nothing
     with pytest.raises(W.WhatsAppError, match="didn't press anything"):
         W.call("Meghana")
-    assert pressed == ["{ENTER}", "^+v"]
+    assert pressed == ["{ENTER}", "video-button"]
 
 
 def test_whatsapp_and_closing_apps_need_no_yes(monkeypatch):
@@ -185,3 +187,27 @@ def test_file_tools_never_open_the_contacts_or_voiceprint(monkeypatch, tmp_path)
         (tmp_path / name).write_text("x")
         with pytest.raises(H.Refused):
             H.safe_path(str(tmp_path / name))
+
+
+class Btn:
+    def __init__(self, name, left, top):
+        self.name, self.l, self.t, self.clicked = name, left, top, False
+    def window_text(self): return self.name
+    def rectangle(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(left=self.l, top=self.t, width=lambda: 30, height=lambda: 30)
+    def click_input(self): self.clicked = True
+
+
+def test_only_the_chat_top_bar_call_button_is_used():
+    from types import SimpleNamespace
+    win = SimpleNamespace(rectangle=lambda: SimpleNamespace(left=0, top=0, width=lambda: 1000, height=lambda: 800),
+                          descendants=lambda control_type=None: buttons)
+    calls_tab = Btn("Calls", 10, 60)                 # left side tab: never
+    voice, video = Btn("Voice call", 900, 40), Btn("Video call", 860, 40)
+    lower = Btn("Voice call", 900, 600)              # something further down the chat: never
+    buttons = [calls_tab, lower, video, voice]
+    top = W._header_buttons(win)
+    assert calls_tab not in top and lower not in top
+    assert W._named(top, W.VOICE) is voice and W._named(top, W.VIDEO) is video
+    assert W._named([calls_tab], W.CALL_MENU) is None
