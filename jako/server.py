@@ -146,6 +146,25 @@ def create_app(brain: Brain, voice: VoiceGate | None = None) -> FastAPI:
     def desktop():
         return FileResponse(STATIC / "index.html")
 
+    # ---- optional background video: put background.mp4 (or .webm) in the data folder
+    def _bg_video():
+        folder = Path(getattr(cfg, "data_dir", Path("data")))
+        for name in ("background.mp4", "background.webm"):
+            if (folder / name).is_file():
+                return folder / name
+        return None
+
+    @app.get("/api/background")
+    def background_info():
+        return {"video": _bg_video() is not None}
+
+    @app.get("/background-video")
+    def background_video():
+        f = _bg_video()
+        if f is None:
+            raise HTTPException(404, "No background video")
+        return FileResponse(f, media_type="video/webm" if f.suffix == ".webm" else "video/mp4")
+
     @app.get("/api/version")
     def version():
         return {"version": int((STATIC / "index.html").stat().st_mtime)}

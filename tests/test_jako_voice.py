@@ -65,3 +65,16 @@ def test_voice_api(tmp_path):
     assert c.post("/api/voice/check", json={"audio": b64(tone(2, 430))}).json()["ok"] is False
     assert c.delete("/api/voice").json()["enrolled"] is False
     assert np.allclose(decode(b64(tone(0.1, 200))), tone(0.1, 200), atol=1e-3)
+
+
+def test_background_video_is_served_only_when_present(tmp_path):
+    from jako.server import create_app
+    from jako.memory import Memory
+    brain = SimpleNamespace(mem=Memory(str(tmp_path / "m.db")), cfg=SimpleNamespace(data_dir=tmp_path))
+    c = TestClient(create_app(brain, voice=VoiceGate(tmp_path, embed=fake_embed)))
+    assert c.get("/api/background").json() == {"video": False}
+    assert c.get("/background-video").status_code == 404
+    (tmp_path / "background.mp4").write_bytes(b"fake video")
+    assert c.get("/api/background").json() == {"video": True}
+    r = c.get("/background-video")
+    assert r.status_code == 200 and r.headers["content-type"] == "video/mp4"
