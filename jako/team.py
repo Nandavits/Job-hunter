@@ -54,9 +54,9 @@ AGENTS = {
 }
 
 JOBS = {
-    "iron_man": ("the laptop: open apps (also Store apps like WhatsApp) and websites (GitHub, LinkedIn, Gmail ...), "
-                 "open, find, list and read files, volume, lock the screen. Changing things (commands, writing, moving "
-                 "or deleting files, closing apps) needs the user's yes, which Jako handles."),
+    "iron_man": ("WhatsApp calls and messages, and the laptop: open apps (also Store apps like WhatsApp) and websites (GitHub, LinkedIn, Gmail ...), "
+                 "open, find, list and read files, volume, lock the screen, close apps. Commands and writing, moving "
+                 "or deleting files need the user's yes, which Jako handles."),
     "black_widow": "email (Gmail, read-only) and the Google Calendar: what is new, from whom, what is coming up.",
     "hawkeye": "the Job Hunter: best open jobs, job details, and updating a job's status when the user says so.",
     "captain_america": "reminders, the to-do list and planning the day.",
@@ -79,7 +79,8 @@ TOOLS_BY_AGENT = {
 }
 HANDS_TOOLS = {
     "iron_man": ["open_app", "open_url", "open_path", "find_files", "list_folder", "read_file", "screenshot", "volume",
-                 "lock_screen", "run_command", "write_file", "move", "delete", "close_app"],
+                 "lock_screen", "run_command", "write_file", "move", "delete", "close_app",
+                 "whatsapp_message", "whatsapp_call"],
     "hulk": ["system_info", "hardware_health", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
              "find_files", "list_folder"],
     "vision": ["screenshot", "read_file", "find_files", "list_folder"],
@@ -120,7 +121,16 @@ LAPTOP_TOOLS = [
          "source": {"type": "string"}, "target": {"type": "string"}}}},
     {"name": "delete", "description": "Move a file or folder to the Recycle Bin. Needs the user's yes.",
      "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "close_app", "description": "Close an app by its program name, e.g. chrome, notepad. Needs the user's yes.",
+    {"name": "whatsapp_message", "description": "Send a WhatsApp message from the laptop to a contact or group, by "
+     "the chat name the user said. Sends right away (the user asked for it). Use the user's exact words for the text; "
+     "if no single chat matches, the tool says which names it found: ask the user which one.",
+     "input_schema": {"type": "object", "required": ["contact", "text"], "properties": {
+         "contact": {"type": "string"}, "text": {"type": "string"}}}},
+    {"name": "whatsapp_call", "description": "Start a WhatsApp voice call (or video call with video=true) from the "
+     "laptop to a contact by the chat name the user said. Starts right away.",
+     "input_schema": {"type": "object", "required": ["contact"], "properties": {
+         "contact": {"type": "string"}, "video": {"type": "boolean", "default": False}}}},
+    {"name": "close_app", "description": "Close an app by its program name, e.g. chrome, notepad, msedge. Closes right away.",
      "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
     {"name": "top_processes", "description": "The programs using the most CPU and memory right now.",
      "input_schema": {"type": "object", "properties": {"count": {"type": "integer", "default": 8}}}},

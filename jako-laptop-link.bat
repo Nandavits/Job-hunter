@@ -7,6 +7,10 @@ if not exist .venv-hands\Scripts\pythonw.exe (
   pause
   exit /b 1
 )
+fc /b requirements-hands.txt .venv-hands\installed.txt >nul 2>&1 || (
+  echo Installing new parts for the laptop link...
+  .venv-hands\Scripts\python -m pip install -q --disable-pip-version-check -r requirements-hands.txt > logs\jako-hands-setup.log 2>&1 && copy /y requirements-hands.txt .venv-hands\installed.txt >nul
+)
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" | Where-Object { $_.CommandLine -like '*jako.hands*' } | ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }"
 powershell -NoProfile -Command "Start-Process -FilePath '.venv-hands\Scripts\pythonw.exe' -ArgumentList '-m','jako.hands' -WorkingDirectory '%CD%' -WindowStyle Hidden -RedirectStandardError 'logs\jako-hands.log'"
 timeout /t 4 /nobreak >nul
