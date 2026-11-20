@@ -176,7 +176,7 @@ class HandsClient:
         self.computer = ""
 
     # ---- used by the team
-    def _call(self, kind: str, payload: dict, timeout: float = 100) -> dict:
+    def _call(self, kind: str, payload: dict, timeout: float = 40) -> dict:
         if not self.cfg.hands_token:
             return {"error": "The laptop link is not set up (JAKO_HANDS_TOKEN missing). Run start-jako.bat."}
         if not self.online():
