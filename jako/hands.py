@@ -52,6 +52,50 @@ APPS = {  # spoken name -> things to try: "x:" = Windows link, "x.exe" = program
     "powerpoint": ["PowerPoint", "powerpnt.exe"], "outlook": ["Outlook", "outlook.exe"], "teams": ["ms-teams:"],
     "spotify": ["Spotify", "spotify:"], "settings": ["ms-settings:"], "task manager": ["taskmgr.exe"],
     "docker": ["Docker Desktop"], "pycharm": ["PyCharm"], "camera": ["microsoft.windows.camera:"],
+    "whatsapp": ["WhatsApp", "whatsapp:"], "telegram": ["Telegram", "tg:"], "store": ["ms-windows-store:"],
+    "snipping tool": ["Snipping Tool"], "photos": ["Photos"], "clock": ["Clock"], "mail": ["Outlook"],
+}
+_store_apps: dict = {"at": 0.0, "apps": []}
+
+
+def _start_apps() -> list[dict]:
+    """Every app in the Start menu, including Microsoft Store apps such as WhatsApp (cached 10 minutes)."""
+    if time.time() - _store_apps["at"] < 600:
+        return _store_apps["apps"]
+    import json
+    out = subprocess.run(["powershell", "-NoProfile", "-Command",  # nosec - fixed command, no user input
+                          "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress"],
+                         capture_output=True, text=True, timeout=30)
+    try:
+        apps = json.loads(out.stdout or "[]")
+        apps = apps if isinstance(apps, list) else [apps]
+    except ValueError:
+        apps = []
+    _store_apps.update(at=time.time(), apps=apps)
+    return apps
+
+
+def _store_app(name: str) -> dict | None:
+    want = re.sub(r"[^a-z0-9]", "", name.lower())
+    if not want or sys.platform != "win32":
+        return None
+    best = None
+    for app in _start_apps():
+        have = re.sub(r"[^a-z0-9]", "", str(app.get("Name", "")).lower())
+        if have == want:
+            return app
+        if want in have and (best is None or len(have) < len(re.sub(r"[^a-z0-9]", "", best["Name"].lower()))):
+            best = app
+    return best
+
+
+WEBSITES = {  # spoken name -> address (opened in the default browser)
+    "github": "https://github.com", "linkedin": "https://www.linkedin.com", "gmail": "https://mail.google.com",
+    "google": "https://www.google.com", "youtube": "https://www.youtube.com", "chatgpt": "https://chatgpt.com",
+    "claude": "https://claude.ai", "google calendar": "https://calendar.google.com", "calendar": "https://calendar.google.com",
+    "google drive": "https://drive.google.com", "drive": "https://drive.google.com", "stepstone": "https://www.stepstone.de",
+    "xing": "https://www.xing.com", "indeed": "https://de.indeed.com", "glassdoor": "https://www.glassdoor.de",
+    "whatsapp web": "https://web.whatsapp.com", "outlook web": "https://outlook.live.com", "netflix": "https://www.netflix.com",
 }
 
 
@@ -101,7 +145,9 @@ def _start_menu_shortcut(name: str) -> Path | None:
 
 
 def open_app(name: str) -> str:
-    key = name.lower().strip()
+    key = name.lower().strip().removesuffix(" app").removesuffix(" website").removesuffix(".com").strip()
+    if key in WEBSITES and key not in APPS:
+        return open_url(WEBSITES[key])
     for target in APPS.get(key, []) + [key]:
         if target.endswith(":") or target.endswith(".exe"):
             if target == key:
@@ -115,7 +161,13 @@ def open_app(name: str) -> str:
         if shortcut:
             _start(str(shortcut))
             return f"Opened {shortcut.stem}."
-    raise Refused(f"I couldn't find an app called '{name}' in the Start menu.")
+        app = _store_app(target)
+        if app and re.fullmatch(r"[\w.!{}\\:~ -]{1,200}", str(app.get("AppID", ""))):
+            _start("shell:AppsFolder\\" + app["AppID"])
+            return f"Opened {app['Name']}."
+    if key in WEBSITES:
+        return open_url(WEBSITES[key])
+    raise Refused(f"I couldn't find an app called '{name}'. If it's a website, ask me to open its web address.")
 
 
 def open_url(url: str) -> str:
@@ -219,6 +271,152 @@ def lock_screen() -> str:
     return "Screen locked."
 
 
+def top_processes(count: int = 8) -> str:
+    import psutil
+    procs = []
+    for p in psutil.process_iter(["name", "memory_info"]):
+        try:
+            procs.append((p.info["name"] or "?", p.info["memory_info"].rss, p.cpu_percent(None), p))
+        except (psutil.Error, AttributeError):
+            continue
+    time.sleep(0.6)
+    rows = []
+    for name, rss, _, p in procs:
+        try:
+            rows.append((name, rss, p.cpu_percent(None)))
+        except psutil.Error:
+            continue
+    merged: dict = {}
+    for name, rss, cpu in rows:                          # one line per program (Chrome has many processes)
+        m = merged.setdefault(name, [0, 0.0, 0])
+        m[0] += rss
+        m[1] += cpu
+        m[2] += 1
+    top = sorted(merged.items(), key=lambda kv: (-kv[1][1], -kv[1][0]))[:max(3, min(int(count), 20))]
+    cores = psutil.cpu_count() or 1
+    return "Busiest programs right now:\n" + "\n".join(
+        f"{n}: CPU {c / cores:.0f}%, memory {r / 1e6:.0f} MB" + (f" ({k} processes)" if k > 1 else "")
+        for n, (r, c, k) in top)
+
+
+def _folder_size(path: Path, deadline: float) -> int:
+    total = 0
+    for root, dirs, files in os.walk(path, onerror=lambda e: None):
+        if time.time() > deadline:
+            break
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                pass
+    return total
+
+
+def _recycle_bin_bytes() -> int:
+    if sys.platform != "win32":
+        return 0
+
+    class SHQUERYRBINFO(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_ulong), ("i64Size", ctypes.c_longlong), ("i64NumItems", ctypes.c_longlong)]
+    info = SHQUERYRBINFO(ctypes.sizeof(SHQUERYRBINFO), 0, 0)
+    ctypes.windll.shell32.SHQueryRecycleBinW(None, ctypes.byref(info))  # type: ignore[attr-defined]
+    return int(info.i64Size)
+
+
+def _temp_dir() -> Path:
+    return Path(os.environ.get("TEMP") or HOME / "AppData" / "Local" / "Temp")
+
+
+def _old_temp_files(days: int) -> list[Path]:
+    cutoff, out = time.time() - days * 86400, []
+    for root, dirs, files in os.walk(_temp_dir(), onerror=lambda e: None):
+        for f in files:
+            p = Path(root) / f
+            try:
+                if p.stat().st_mtime < cutoff:
+                    out.append(p)
+            except OSError:
+                pass
+    return out
+
+
+def disk_report() -> str:
+    import psutil
+    lines = []
+    for part in psutil.disk_partitions(all=False):
+        try:
+            u = psutil.disk_usage(part.mountpoint)
+            lines.append(f"Drive {part.device}: {u.free / 1e9:.0f} GB free of {u.total / 1e9:.0f} GB ({u.percent:.0f}% used)")
+        except (PermissionError, OSError):
+            continue
+    deadline = time.time() + 20
+    for name in ["Downloads", "Desktop", "Documents", "Videos", "Pictures"]:
+        folder = HOME / name
+        if folder.exists():
+            lines.append(f"{name}: {_folder_size(folder, deadline) / 1e9:.1f} GB")
+    temp = _old_temp_files(7)
+    temp_mb = sum(p.stat().st_size for p in temp if p.exists()) / 1e6
+    lines.append(f"Temporary files older than 7 days: {len(temp)} files, {temp_mb:.0f} MB (safe to clean)")
+    lines.append(f"Recycle Bin: {_recycle_bin_bytes() / 1e6:.0f} MB")
+    return "\n".join(lines)
+
+
+def old_files(folder: str = "Downloads", months: int = 6, min_mb: int = 20, limit: int = 25) -> str:
+    root = safe_path(folder or "Downloads")
+    cutoff = time.time() - max(1, int(months)) * 30 * 86400
+    hits, deadline = [], time.time() + 20
+    for dirpath, dirs, files in os.walk(root, onerror=lambda e: None):
+        if time.time() > deadline:
+            break
+        dirs[:] = [d for d in dirs if d.lower() not in ("appdata", ".git", "node_modules", ".venv", "venv")]
+        for f in files:
+            p = Path(dirpath) / f
+            try:
+                st = p.stat()
+                last = max(st.st_mtime, st.st_atime)
+                if st.st_size >= min_mb * 1e6 and last < cutoff:
+                    safe_path(str(p))
+                    hits.append((st.st_size, last, p))
+            except (OSError, Refused):
+                continue
+    if not hits:
+        return f"No files over {min_mb} MB unused for {months} months in {root}."
+    hits.sort(reverse=True)
+    total = sum(h[0] for h in hits)
+    return (f"{len(hits)} files over {min_mb} MB not used for {months}+ months in {root} ({total / 1e9:.1f} GB):\n"
+            + "\n".join(f"{p}  {size / 1e6:.0f} MB, last used {time.strftime('%d.%m.%Y', time.localtime(last))}"
+                         for size, last, p in hits[:max(1, min(int(limit), 50))]))
+
+
+PERF_FILE = ROOT / "data" / "perf.csv"
+
+
+def sample_performance() -> None:
+    """One line every 10 minutes for Hulk's day-to-day report (data/perf.csv, last 30 days kept)."""
+    import psutil
+    bat = psutil.sensors_battery()
+    disk = psutil.disk_usage(str(HOME.anchor or HOME))
+    top = ""
+    try:
+        procs = sorted(psutil.process_iter(["name", "memory_info"]), key=lambda p: -(p.info["memory_info"].rss
+                                                                                     if p.info["memory_info"] else 0))
+        top = procs[0].info["name"] if procs else ""
+    except psutil.Error:
+        pass
+    row = [time.strftime("%Y-%m-%d %H:%M"), f"{psutil.cpu_percent(interval=1):.0f}",
+           f"{psutil.virtual_memory().percent:.0f}", f"{disk.free / 1e9:.1f}",
+           f"{bat.percent:.0f}" if bat else "", ("1" if bat and bat.power_plugged else "0") if bat else "", top]
+    PERF_FILE.parent.mkdir(parents=True, exist_ok=True)
+    new = not PERF_FILE.exists()
+    with open(PERF_FILE, "a", encoding="utf-8") as f:
+        if new:
+            f.write("time,cpu,ram,disk_free_gb,battery,plugged,top_memory_app\n")
+        f.write(",".join(row) + "\n")
+    lines = PERF_FILE.read_text(encoding="utf-8").splitlines()
+    if len(lines) > 30 * 144 + 1:
+        PERF_FILE.write_text("\n".join([lines[0]] + lines[-30 * 144:]) + "\n", encoding="utf-8")
+
+
 # ---------- actions that need your "yes" ----------
 def _do_run_command(command: str) -> str:
     out = subprocess.run(["powershell", "-NoProfile", "-Command", command], capture_output=True, text=True,  # nosec
@@ -269,6 +467,27 @@ def _do_close_app(name: str) -> str:
     return out.stdout.strip() or out.stderr.strip() or f"Closed {exe}."
 
 
+def _do_clean_temp(days: int = 7) -> str:
+    files, freed, failed = _old_temp_files(int(days)), 0, 0
+    for p in files:
+        try:
+            size = p.stat().st_size
+            p.unlink()
+            freed += size
+        except OSError:
+            failed += 1                                   # in use by a running program: skip
+    return f"Removed {len(files) - failed} temporary files and freed {freed / 1e6:.0f} MB." + (
+        f" {failed} were in use and stayed." if failed else "")
+
+
+def _do_empty_recycle_bin() -> str:
+    if sys.platform != "win32":
+        raise Refused("This only works on Windows.")
+    size = _recycle_bin_bytes()
+    ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 0x1 | 0x2 | 0x4)  # type: ignore[attr-defined]
+    return f"Emptied the Recycle Bin and freed {size / 1e6:.0f} MB."
+
+
 def _do_open_program(path: str) -> str:
     p = safe_path(path)
     _start(str(p))
@@ -276,10 +495,12 @@ def _do_open_program(path: str) -> str:
 
 
 RISKY = {"run_command": _do_run_command, "write_file": _do_write_file, "move": _do_move,
-         "delete": _do_delete, "close_app": _do_close_app, "open_program": _do_open_program}
+         "delete": _do_delete, "close_app": _do_close_app, "open_program": _do_open_program,
+         "clean_temp": _do_clean_temp, "empty_recycle_bin": _do_empty_recycle_bin}
 SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "find_files": find_files,
         "list_folder": list_folder, "read_file": read_file, "screenshot": screenshot, "volume": volume,
-        "system_info": system_info, "lock_screen": lock_screen}
+        "system_info": system_info, "lock_screen": lock_screen, "top_processes": top_processes,
+        "disk_report": disk_report, "old_files": old_files}
 
 
 def describe(action: str, args: dict) -> str:
@@ -292,7 +513,15 @@ def describe(action: str, args: dict) -> str:
         "delete": f"move {a.get('path', '')} to the Recycle Bin",
         "close_app": f"close {a.get('name', '')}",
         "open_program": f"start the program {a.get('path', '')}",
+        "clean_temp": _describe_temp(int(args.get("days", 7) or 7)),
+        "empty_recycle_bin": f"permanently empty the Recycle Bin ({_recycle_bin_bytes() / 1e6:.0f} MB, can't be undone)",
     }.get(action, f"{action} {a}")
+
+
+def _describe_temp(days: int) -> str:
+    files = _old_temp_files(days)
+    mb = sum(p.stat().st_size for p in files if p.exists()) / 1e6
+    return f"permanently remove {len(files)} temporary files older than {days} days ({mb:.0f} MB)"
 
 
 def _exists(path) -> bool:
@@ -447,6 +676,16 @@ def main() -> None:
         raise SystemExit("JAKO_HANDS_TOKEN is missing or too short in .env. start-jako.bat creates one.")
     base = os.environ.get("JAKO_URL", "http://127.0.0.1:8765").rstrip("/")
     hands, computer, quiet = Hands(), platform.node(), 0
+
+    def sampler():
+        while True:
+            try:
+                sample_performance()
+            except Exception as exc:                    # never stop the link because of a sample
+                print(time.strftime("%H:%M:%S"), f"performance sample failed: {exc}", flush=True)
+            time.sleep(600)
+    import threading
+    threading.Thread(target=sampler, daemon=True).start()
     print(time.strftime("%H:%M:%S"), f"Jako laptop link started on {computer}, talking to {base}", flush=True)
     while True:
         try:

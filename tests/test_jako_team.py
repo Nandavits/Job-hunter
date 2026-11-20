@@ -136,7 +136,7 @@ def test_roll_call_everyone_reports(cfg, mem):
     brain = Brain(cfg, mem, skills=skills, client=Script(), team=Team(cfg, skills, hands=FakeHands()))
     parts = brain.talk("Hello Jako, wake up!")
     who = [p["who"] for p in parts]
-    assert who == ["jako", "iron_man", "black_widow", "hawkeye", "captain_america", "thor", "jako"]
+    assert who == ["jako", "iron_man", "black_widow", "hawkeye", "captain_america", "thor", "hulk", "vision", "jako"]
     text = {p["who"]: p["text"] for p in parts}
     assert "LAPTOP-FDG" in text["iron_man"] and "aren't connected" in text["black_widow"]
     assert "1 thing on your to-do list" in text["captain_america"] and "light rain" in text["thor"]
@@ -272,3 +272,57 @@ def test_laptop_link_end_to_end(home, cfg, mem):
     assert "LAPTOP-TEST" in Team(cfg, skills, hands=bridge)._iron_man()
     stop.set()
     server.should_exit = True
+
+
+def test_websites_and_store_apps_open(home, monkeypatch):
+    opened = []
+    monkeypatch.setattr(H, "_start", lambda target: opened.append(target))
+    monkeypatch.setattr(H, "_start_menu_shortcut", lambda name: None)
+    monkeypatch.setattr(H, "_store_app", lambda name: {"Name": "WhatsApp", "AppID": "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"}
+                        if "whatsapp" in name.lower() else None)
+    assert H.open_app("GitHub") == "Opened https://github.com in your browser."
+    assert H.open_app("linkedin") == "Opened https://www.linkedin.com in your browser."
+    H.open_app("WhatsApp")
+    assert opened[-1] in ("whatsapp:", "shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App")
+    with pytest.raises(H.Refused):
+        H.open_app("NoSuchThing")
+
+
+def test_each_member_only_gets_its_own_laptop_tools(cfg, mem):
+    from jako.team import tools_for
+    names = {a: {t["name"] for t in tools_for(a)} for a in ("iron_man", "hulk", "vision")}
+    assert "delete" not in names["vision"] and "run_command" not in names["vision"] and "screenshot" in names["vision"]
+    assert {"disk_report", "old_files", "clean_temp", "performance_report"} <= names["hulk"]
+    assert "run_command" not in names["hulk"] and "open_app" in names["iron_man"]
+    hands = FakeHands()
+    client = Script(use("ask_team", member="vision", task="delete my code"), use("delete", path="x.py"),
+                    say("I can only look, not delete."), say(""))
+    make(cfg, mem, client, hands).talk("delete x.py")
+    assert hands.done == []                              # Vision's delete never reached the laptop
+
+
+def test_hulk_reads_the_performance_log(cfg, mem, tmp_path):
+    from datetime import datetime, timedelta
+    from jako.team import performance_report
+    rows = ["time,cpu,ram,disk_free_gb,battery,plugged,top_memory_app"]
+    now = datetime.now()
+    for i, (cpu, ram) in enumerate([(10, 60), (80, 90), (30, 70)]):
+        rows.append(f"{(now - timedelta(minutes=30 - i * 10)):%Y-%m-%d %H:%M},{cpu},{ram},120.5,80,1,chrome.exe")
+    (cfg.data_dir / "perf.csv").write_text("\n".join(rows) + "\n")
+    text = performance_report(cfg.data_dir / "perf.csv", 1)
+    assert "CPU average 40%, peak 80%" in text and "above 85% in 1 samples" in text and "chrome.exe" in text
+    assert "Hulk here. CPU 30%" in Team(cfg, Skills(cfg, mem), hands=FakeHands())._hulk()
+
+
+def test_cleanup_waits_for_yes(home, monkeypatch, tmp_path):
+    temp = tmp_path / "Temp"
+    temp.mkdir()
+    old = temp / "old.tmp"
+    old.write_bytes(b"x" * 2000)
+    import os
+    os.utime(old, (0, 0))
+    monkeypatch.setattr(H, "_temp_dir", lambda: temp)
+    hands = H.Hands()
+    out = hands.do("clean_temp", {"days": 7})
+    assert "pending" in out and "1 temporary files" in out["text"] and old.exists()
+    assert "Removed 1 temporary files" in hands.confirm(out["pending"])["text"] and not old.exists()

@@ -5,6 +5,8 @@ Black Widow      email and calendar (read-only)
 Hawkeye          Job Hunter
 Captain America  reminders, to-dos and the daily plan
 Thor             web search, news and weather
+Hulk             laptop health: performance day to day, disk space, old files, cleaning up
+Vision           looks at your screen and reviews your work (code, pipelines, documents) when you ask
 """
 from __future__ import annotations
 
@@ -15,7 +17,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .config import JakoConfig
 from .skills import TOOLS as SKILL_TOOLS
@@ -43,16 +45,27 @@ AGENTS = {
     "thor": {"name": "Thor", "emoji": "⚡", "color": "#f5a524",
              "voice": {"prefer": ["Google UK English Male", "Microsoft George", "Microsoft Ryan", "George"],
                        "pitch": 0.6, "rate": 0.88}},
+    "hulk": {"name": "Hulk", "emoji": "💪", "color": "#3fbf5f",
+             "voice": {"prefer": ["Microsoft Guy", "Microsoft Davis", "Microsoft David", "David"],
+                       "pitch": 0.45, "rate": 0.9}},
+    "vision": {"name": "Vision", "emoji": "👁️", "color": "#22c3c9",
+               "voice": {"prefer": ["Microsoft Andrew", "Microsoft Brian", "Google UK English Male", "Microsoft Ryan"],
+                         "pitch": 0.95, "rate": 0.97}},
 }
 
 JOBS = {
-    "iron_man": ("the laptop: open apps, websites and documents, find, list and read files, take a screenshot and "
-                 "describe the screen, volume, battery and system info, lock the screen. Changing things (commands, "
-                 "writing, moving or deleting files, closing apps) needs the user's yes, which Jako handles."),
+    "iron_man": ("the laptop: open apps (also Store apps like WhatsApp) and websites (GitHub, LinkedIn, Gmail ...), "
+                 "open, find, list and read files, volume, lock the screen. Changing things (commands, writing, moving "
+                 "or deleting files, closing apps) needs the user's yes, which Jako handles."),
     "black_widow": "email (Gmail, read-only) and the Google Calendar: what is new, from whom, what is coming up.",
     "hawkeye": "the Job Hunter: best open jobs, job details, and updating a job's status when the user says so.",
     "captain_america": "reminders, the to-do list and planning the day.",
     "thor": "web search: news, facts, prices, opening hours, rules, anything current; also the weather.",
+    "hulk": ("laptop health: performance today and day to day (CPU, memory, battery, disk), the busiest programs, "
+             "disk space, big old files that are not used any more, and cleaning up (temporary files, Recycle Bin, "
+             "old files). Cleaning always needs the user's yes, which Jako handles."),
+    "vision": ("looks at the screen and reviews what the user is working on when asked: code, data pipelines, SQL, "
+               "notebooks, documents, error messages. Can also read the code files on the laptop."),
 }
 
 TOOLS_BY_AGENT = {
@@ -62,11 +75,19 @@ TOOLS_BY_AGENT = {
                         "complete_todo"],
     "thor": ["get_weather"],
 }
+HANDS_TOOLS = {
+    "iron_man": ["open_app", "open_url", "open_path", "find_files", "list_folder", "read_file", "screenshot", "volume",
+                 "lock_screen", "run_command", "write_file", "move", "delete", "close_app"],
+    "hulk": ["system_info", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
+             "find_files", "list_folder"],
+    "vision": ["screenshot", "read_file", "find_files", "list_folder"],
+}
 
 LAPTOP_TOOLS = [
     {"name": "open_app", "description": "Open an app by name, e.g. notepad, chrome, excel, spotify, settings.",
      "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
-    {"name": "open_url", "description": "Open a web address in the default browser.",
+    {"name": "open_url", "description": "Open a web address in the default browser (for websites like GitHub, LinkedIn, "
+     "Gmail: use the full address, e.g. https://github.com).",
      "input_schema": {"type": "object", "required": ["url"], "properties": {"url": {"type": "string"}}}},
     {"name": "open_path", "description": "Open a file or folder in the user's folder with its normal app.",
      "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
@@ -78,7 +99,7 @@ LAPTOP_TOOLS = [
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}}},
     {"name": "read_file", "description": "Read a text file (txt, md, csv, json, py, sql, ...).",
      "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "screenshot", "description": "Take a screenshot so you can see and describe the screen.",
+    {"name": "screenshot", "description": "Take a screenshot so you can see the screen (what the user is working on).",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "volume", "description": "Change the volume.",
      "input_schema": {"type": "object", "required": ["direction"], "properties": {
@@ -99,12 +120,34 @@ LAPTOP_TOOLS = [
      "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "close_app", "description": "Close an app by its program name, e.g. chrome, notepad. Needs the user's yes.",
      "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
+    {"name": "top_processes", "description": "The programs using the most CPU and memory right now.",
+     "input_schema": {"type": "object", "properties": {"count": {"type": "integer", "default": 8}}}},
+    {"name": "disk_report", "description": "Free space per drive, size of Downloads/Desktop/Documents/Videos/Pictures, "
+     "old temporary files and the Recycle Bin.", "input_schema": {"type": "object", "properties": {}}},
+    {"name": "old_files", "description": "Big files that were not used for months (candidates to delete).",
+     "input_schema": {"type": "object", "properties": {
+         "folder": {"type": "string", "default": "Downloads"}, "months": {"type": "integer", "default": 6},
+         "min_mb": {"type": "integer", "default": 20}}}},
+    {"name": "clean_temp", "description": "Remove temporary files older than some days. Needs the user's yes.",
+     "input_schema": {"type": "object", "properties": {"days": {"type": "integer", "default": 7}}}},
+    {"name": "empty_recycle_bin", "description": "Permanently empty the Recycle Bin. Needs the user's yes.",
+     "input_schema": {"type": "object", "properties": {}}},
+    {"name": "performance_report", "description": "Laptop performance over the last days from the log taken every "
+     "10 minutes: CPU, memory, battery, disk trend, busiest app.",
+     "input_schema": {"type": "object", "properties": {"days": {"type": "integer", "default": 1}}}},
 ]
 
 MEMBER_STYLES = {
     "voice": "It is spoken aloud in your own voice: at most 2 short sentences, no lists, no ids, no links, "
              "and only the facts that answer the task.",
     "telegram": "It is read on a phone: up to 4 short lines, a short list is fine, plain text.",
+}
+
+REVIEW_STYLES = {
+    "voice": "It is spoken aloud: up to 4 short sentences. Say what you looked at, then the most important problems or "
+             "improvements first (bugs, wrong logic, risks, performance), concretely. No lists or markdown.",
+    "telegram": "It is read on a phone: what you looked at, then up to 6 short numbered findings, most important "
+                "first, each with the fix. Plain text.",
 }
 
 AGENT_PROMPT = """You are {name}, a member of Jako's team. Jako is {owner}'s personal assistant and gives you tasks.
@@ -185,8 +228,9 @@ class HandsClient:
 
 
 def tools_for(agent: str) -> list[dict]:
-    if agent == "iron_man":
-        return LAPTOP_TOOLS
+    if agent in HANDS_TOOLS:
+        names = HANDS_TOOLS[agent] + (["performance_report"] if agent == "hulk" else [])
+        return [t for t in LAPTOP_TOOLS if t["name"] in names]
     names = TOOLS_BY_AGENT.get(agent, [])
     tools = [t for t in SKILL_TOOLS if t["name"] in names]
     return tools + ([WEB_SEARCH] if agent == "thor" else [])
@@ -210,10 +254,13 @@ class Team:
 
     # ---------- running a member ----------
     def run(self, client, agent: str, task: str, lang: str, pending: list, channel: str = "voice") -> str:
+        style = MEMBER_STYLES.get(channel, MEMBER_STYLES["voice"])
+        if agent == "vision":
+            style = REVIEW_STYLES.get(channel, REVIEW_STYLES["voice"])
         now = datetime.now(self.cfg.tz)
         system = AGENT_PROMPT.format(name=AGENTS[agent]["name"], owner=self.cfg.owner_name, job=JOBS[agent],
                                      now=now.strftime("%A, %d %B %Y, %H:%M"), tz=self.cfg.timezone,
-                                     city=self.cfg.city, lang=lang, style=MEMBER_STYLES.get(channel, MEMBER_STYLES["voice"]))
+                                     city=self.cfg.city, lang=lang, style=style)
         messages = [{"role": "user", "content": task}]
         report = ""
         for _ in range(6):
@@ -232,12 +279,17 @@ class Team:
 
     def _tool(self, agent: str, call, pending: list) -> dict:
         args = dict(call.input)
-        if agent == "iron_man":
+        if agent == "hulk" and call.name == "performance_report":
+            return {"type": "tool_result", "tool_use_id": call.id,
+                    "content": performance_report(self.cfg.data_dir / "perf.csv", int(args.get("days", 1) or 1))}
+        if agent in HANDS_TOOLS:
+            if call.name not in HANDS_TOOLS[agent]:
+                return {"type": "tool_result", "tool_use_id": call.id, "content": "Not your tool.", "is_error": True}
             out = self.hands.do(call.name, args)
             if out.get("pending"):
                 pending.append({"code": out["pending"], "summary": out.get("text", "")})
             text = out.get("error") or out.get("text") or "Done."
-            log.info("Iron Man %s -> %s", call.name, text[:120].replace("\n", " "))
+            log.info("%s %s -> %s", AGENTS[agent]["name"], call.name, text[:120].replace("\n", " "))
             if out.get("image_b64"):
                 return {"type": "tool_result", "tool_use_id": call.id, "content": [
                     {"type": "text", "text": text},
@@ -253,8 +305,8 @@ class Team:
     # ---------- roll call: everyone says what they are doing, no AI needed ----------
     def roll_call(self) -> list[dict]:
         checks = {"iron_man": self._iron_man, "black_widow": self._black_widow, "hawkeye": self._hawkeye,
-                  "captain_america": self._captain, "thor": self._thor}
-        with ThreadPoolExecutor(max_workers=5) as pool:
+                  "captain_america": self._captain, "thor": self._thor, "hulk": self._hulk, "vision": self._vision}
+        with ThreadPoolExecutor(max_workers=7) as pool:
             futures = {a: pool.submit(fn) for a, fn in checks.items()}
             lines = {}
             for a, fut in futures.items():
@@ -326,6 +378,18 @@ class Team:
             text += f", next at {_parse(first['due_at'], self.cfg.tz):%H:%M}: {first['text']}"
         return text + f". {len(todos)} thing{'s' if len(todos) != 1 else ''} on your to-do list."
 
+    def _hulk(self) -> str:
+        rows = _read_perf(self.cfg.data_dir / "perf.csv", 1)
+        if not rows:
+            return "Hulk here. I start watching the laptop's health once the laptop link runs."
+        last = rows[-1]
+        cpu = _num(rows, "cpu")
+        return (f"Hulk here. CPU {last.get('cpu')}% now, {sum(cpu) / len(cpu):.0f}% on average today, memory "
+                f"{last.get('ram')}%, {float(last.get('disk_free_gb') or 0):.0f} GB disk free.")
+
+    def _vision(self) -> str:
+        return "Vision here. Ask me to look at your screen and I'll review your code or pipeline."
+
     def _thor(self) -> str:
         try:
             now = self.skills.weather_now()
@@ -333,6 +397,58 @@ class Team:
             now = ""
         return f"Thor here. {now} I'm ready to search the web for you." if now else \
             "Thor here. I can't see the sky right now, but I'm ready to search the web for you."
+
+
+def _read_perf(path, days: float) -> list[dict]:
+    import csv
+    if not path.exists():
+        return []
+    cutoff = datetime.now() - timedelta(days=days)
+    rows = []
+    with open(path, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            try:
+                if datetime.strptime(r["time"], "%Y-%m-%d %H:%M") >= cutoff:
+                    rows.append(r)
+            except (KeyError, ValueError):
+                continue
+    return rows
+
+
+def _num(rows, key) -> list[float]:
+    out = []
+    for r in rows:
+        try:
+            out.append(float(r[key]))
+        except (KeyError, ValueError, TypeError):
+            pass
+    return out
+
+
+def performance_report(path, days: int = 1) -> str:
+    rows = _read_perf(path, max(1, min(int(days), 30)))
+    if not rows:
+        return ("No performance log yet. It starts once the laptop link (jako-laptop-link.bat) is running "
+                "and adds a line every 10 minutes.")
+    cpu, ram, disk, bat = _num(rows, "cpu"), _num(rows, "ram"), _num(rows, "disk_free_gb"), _num(rows, "battery")
+    tops: dict = {}
+    for r in rows:
+        tops[r.get("top_memory_app", "")] = tops.get(r.get("top_memory_app", ""), 0) + 1
+    busiest = max((k for k in tops if k), key=lambda k: tops[k], default="")
+    parts = [f"Last {days} day(s), {len(rows)} samples from {rows[0]['time']} to {rows[-1]['time']}."]
+    if cpu:
+        parts.append(f"CPU average {sum(cpu) / len(cpu):.0f}%, peak {max(cpu):.0f}%.")
+    if ram:
+        high = sum(1 for x in ram if x >= 85)
+        parts.append(f"Memory average {sum(ram) / len(ram):.0f}%, peak {max(ram):.0f}%"
+                     + (f", above 85% in {high} samples." if high else "."))
+    if disk:
+        parts.append(f"Free disk space {disk[-1]:.0f} GB (was {disk[0]:.0f} GB at the start).")
+    if bat:
+        parts.append(f"Battery between {min(bat):.0f}% and {max(bat):.0f}%.")
+    if busiest:
+        parts.append(f"Program using the most memory most often: {busiest}.")
+    return " ".join(parts)
 
 
 def _parse(value: str, tz) -> datetime:

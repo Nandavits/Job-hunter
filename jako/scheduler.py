@@ -34,6 +34,16 @@ def tick(brain: Brain, telegram: Telegram, now: datetime | None = None) -> list[
             said.append(text)
         except Exception as exc:
             log.warning("Briefing failed: %s", exc)
+    hulk_stamp = cfg.data_dir / "jako_last_health.txt"
+    last_health = hulk_stamp.read_text().strip() if hulk_stamp.is_file() else ""
+    if now.strftime("%H:%M") >= "19:00" and last_health != today:     # Hulk's daily laptop health report
+        hulk_stamp.write_text(today)
+        from .team import performance_report
+        report = performance_report(cfg.data_dir / "perf.csv", 1)
+        if not report.startswith("No performance log"):
+            telegram.send(f"💪 Hulk: Laptop health today. {report}")
+            mem.say_later(f"[hulk] Laptop health today. {report}")
+            said.append(report)
     return said
 
 
