@@ -187,19 +187,36 @@ keys, the job database and generated documents stay on your computer.
 
 MIT. You can use and change it for your own job search.
 
-## Jako – personal assistant
+## Jako – personal assistant with a team
 
-Jako is a voice and Telegram assistant that runs next to Job Hunter. It uses Claude.
+Jako is a voice and Telegram assistant that runs next to Job Hunter. It uses Claude. Jako is the boss and gives
+tasks to a team; each member has its own tools and its own voice:
 
-What it can do:
-- Answer general questions (it can search the web)
-- Tell you the weather and give a morning briefing at 08:00
-- Set reminders and keep a to-do list, and remember facts you tell it
-- Show and update your Job Hunter jobs ("mark Flink as applied")
-- Read your Gmail and Google Calendar. It only reads them: it never sends, deletes or applies.
+| Member | Does |
+|---|---|
+| Iron Man | the laptop: open apps, websites and files, find and read files, screenshots ("what's on my screen?"), volume, battery |
+| Black Widow | Gmail and Google Calendar (read-only) |
+| Hawkeye | Job Hunter: top jobs, details, mark a job applied / interview / rejected |
+| Captain America | reminders, to-do list, planning the day |
+| Thor | web search, news, facts, and the weather |
 
-Start it: double-click `start-jako.bat`, open http://localhost:8765 in Chrome, click the orb, allow the microphone and say "Hey Jako, …".
+Say **"Hello Jako, wake up"** (or send `/team` on Telegram) and every member reports what they see right now.
 
-Phone: create a bot with @BotFather in Telegram, put `TELEGRAM_BOT_TOKEN` in `.env`, restart, send the bot a message and put the chat id it gives you in `TELEGRAM_CHAT_ID`. The bot only answers that chat. The phone works while the laptop and Docker are running.
+Safety:
+- Iron Man works through a small helper on Windows (`jako/hands.py`) that only listens on this computer and needs
+  a secret key. It stays inside your user folder and keeps out of password and key folders.
+- Anything that changes the laptop (run a command, write, move or delete a file, close an app, start a program)
+  waits for your "yes". That check is in code: an email, web page or file can't approve it, and the AI can't either.
+  Anything else you say cancels it. Deleting moves files to the Recycle Bin.
+- Email and calendar are read-only. Jako never sends email and never applies to jobs.
 
-Calendar (optional): Google Calendar → Settings → your calendar → "Secret address in iCal format" → `GOOGLE_CALENDAR_ICS_URL` in `.env`.
+Start it: double-click `start-jako.bat`, open http://localhost:8765 in Chrome, click the circle, allow the
+microphone and say "Hello Jako, wake up". Laptop control needs Python on Windows (python.org); the script sets
+up the rest.
+
+Phone: create a bot with @BotFather in Telegram, put `TELEGRAM_BOT_TOKEN` in `.env`, restart, send the bot a message
+and put the chat id it gives you in `TELEGRAM_CHAT_ID`. The bot only answers that chat. The phone works while the
+laptop and Docker are running.
+
+Calendar (optional): Google Calendar → Settings → your calendar → "Secret address in iCal format" →
+`GOOGLE_CALENDAR_ICS_URL` in `.env`.
