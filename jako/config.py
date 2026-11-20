@@ -40,6 +40,9 @@ class JakoConfig:
     jobs_database_url: str = ""
     data_dir: Path = field(default_factory=lambda: ROOT / "data")
     briefing_time: str = "08:00"
+    team_model: str = "claude-sonnet-5-5"
+    hands_url: str = "http://host.docker.internal:8766"
+    hands_token: str = ""
 
     @property
     def tz(self) -> ZoneInfo:
@@ -67,4 +70,7 @@ def load() -> JakoConfig:
         jobs_database_url=env("DATABASE_URL", ""),
         data_dir=data_dir,
         briefing_time=env("JAKO_BRIEFING_TIME", "08:00"),
+        team_model=env("JAKO_TEAM_MODEL", "") or env("JAKO_MODEL", "claude-sonnet-5-5"),
+        hands_url=env("JAKO_HANDS_URL", "http://host.docker.internal:8766"),
+        hands_token=env("JAKO_HANDS_TOKEN", ""),
     )

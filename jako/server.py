@@ -7,7 +7,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from .brain import Brain
+from .brain import Brain, as_text
+from .team import voices
 
 STATIC = Path(__file__).parent / "static"
 
@@ -27,15 +28,26 @@ def create_app(brain: Brain) -> FastAPI:
     def ask(body: Ask):
         text = body.text.strip()[:2000]
         if not text:
-            return {"reply": ""}
+            return {"reply": "", "parts": []}
         try:
-            return {"reply": brain.ask(text, channel="voice")}
+            parts = brain.talk(text, channel="voice")
         except Exception as exc:
-            return {"reply": f"Sorry, something went wrong: {exc}"}
+            parts = [{"who": "jako", "text": f"Sorry, something went wrong: {exc}"}]
+        return {"reply": as_text(parts), "parts": parts}
+
+    @app.get("/api/team")
+    def team():
+        return voices()
 
     @app.get("/api/outbox")
     def outbox():
-        return {"items": brain.mem.take_outbox()}
+        items = []
+        for raw in brain.mem.take_outbox():
+            who, text = "jako", raw
+            if raw.startswith("[") and "] " in raw:
+                who, text = raw[1:raw.index("] ")], raw[raw.index("] ") + 2:]
+            items.append({"who": who, "text": text})
+        return {"items": items}
 
     @app.get("/api/health")
     def health():

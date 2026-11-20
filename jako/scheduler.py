@@ -17,9 +17,9 @@ def tick(brain: Brain, telegram: Telegram, now: datetime | None = None) -> list[
     now = now or datetime.now(cfg.tz)
     said = []
     for r in mem.due_reminders(now):
-        text = f"⏰ Reminder: {r['text']}"
+        text = f"🛡️ Captain America: Reminder: {r['text']}"
         mem.finish_reminder(r["id"])
-        mem.say_later(f"Reminder: {r['text']}")
+        mem.say_later(f"[captain_america] Reminder: {r['text']}")
         telegram.send(text)
         said.append(text)
     stamp = cfg.data_dir / "jako_last_briefing.txt"

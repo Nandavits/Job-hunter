@@ -24,7 +24,11 @@
   #log { width:100%; max-width:760px; padding:16px 20px 120px; display:flex; flex-direction:column; gap:10px; }
   .msg { padding:12px 14px; border-radius:12px; max-width:85%; line-height:1.45; white-space:pre-wrap; }
   .me { align-self:flex-end; background:#243154; }
-  .jako { align-self:flex-start; background:var(--panel); border:1px solid #232835; }
+  .jako { align-self:flex-start; background:var(--panel); border:1px solid #232835; border-left:4px solid var(--who, #5b8cff); }
+  .who { display:block; font-size:12px; font-weight:600; letter-spacing:.3px; margin-bottom:3px; color:var(--who, #5b8cff); }
+  #team { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; max-width:760px; padding:0 20px; }
+  .chip { font-size:12px; padding:4px 9px; border-radius:999px; background:var(--panel); border:1px solid #2a2f3a; color:var(--muted); }
+  .chip.on { color:var(--text); border-color:var(--who); box-shadow:0 0 0 1px var(--who) inset; }
   form { position:fixed; bottom:0; width:100%; max-width:760px; padding:14px 20px 20px; background:linear-gradient(transparent, var(--bg) 30%);
          display:flex; gap:8px; }
   input { flex:1; background:var(--panel); color:var(--text); border:1px solid #2a2f3a; border-radius:10px; padding:12px 14px; font-size:15px; }
@@ -43,11 +47,22 @@
 <button id="orb" class="idle" title="Click to start listening"></button>
 <div id="status">Click the circle once to start. Then just say “Hey Jako …”.</div>
 <div class="hint">Works in Chrome or Edge. Your microphone is only used while this page is open.</div>
+<div id="team"></div>
+<div class="hint">Say “Hello Jako, wake up” and the whole team reports in.</div>
 <div id="log"></div>
 <form id="form"><input id="text" placeholder="Or type to Jako…" autocomplete="off"><button class="send">Send</button></form>
 
 <script>
-const WAKE = /\b(hey|hi|hallo|okay|ok)[\s,]+(jako|jacko|jakko|yako|jaco|jacob|jaku|jago)\b[\s,.!?]*/i;
+const WAKE = /\b(hey|hi|hello|hallo|okay|ok)[\s,]+(jako|jacko|jakko|yako|jaco|jacob|jaku|jago)\b[\s,.!?]*/i;
+let TEAM = { jako: { name:'Jako', color:'#5b8cff', prefer:[], pitch:1, rate:1.03 } };
+fetch('/api/team').then(r => r.json()).then(t => { TEAM = t; drawTeam(); }).catch(() => {});
+function drawTeam(active) {
+  const box = document.getElementById('team'); box.innerHTML = '';
+  for (const [key, a] of Object.entries(TEAM)) {
+    const c = document.createElement('span'); c.className = 'chip' + (key === active ? ' on' : '');
+    c.style.setProperty('--who', a.color); c.textContent = (a.emoji || '') + ' ' + a.name; box.appendChild(c);
+  }
+}
 const orb = document.getElementById('orb'), statusEl = document.getElementById('status');
 const logEl = document.getElementById('log'), langSel = document.getElementById('lang');
 let rec = null, running = false, awake = false, awakeTimer = null, busy = false, speaking = false;
@@ -56,24 +71,46 @@ try { langSel.value = localStorage.getItem('jako-lang') || 'en-US'; } catch (e) 
 langSel.onchange = () => { try { localStorage.setItem('jako-lang', langSel.value); } catch (e) {} restart(); };
 
 function setState(s, text) { orb.className = s; if (text !== undefined) statusEl.textContent = text; }
-function add(who, text) {
-  const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text;
+function add(cls, text, who) {
+  const d = document.createElement('div'); d.className = 'msg ' + cls;
+  if (who) {
+    const a = TEAM[who] || TEAM.jako; d.style.setProperty('--who', a.color);
+    const n = document.createElement('span'); n.className = 'who'; n.textContent = (a.emoji || '') + ' ' + a.name;
+    d.appendChild(n);
+  }
+  d.appendChild(document.createTextNode(text));
   logEl.appendChild(d); window.scrollTo(0, document.body.scrollHeight);
 }
+function pickVoice(who) {
+  const all = speechSynthesis.getVoices(), lang = langSel.value, a = TEAM[who] || TEAM.jako;
+  const sameLang = all.filter(v => v.lang.replace('_', '-').startsWith(lang.slice(0, 2)));
+  if (lang.startsWith('en')) {
+    for (const want of (a.prefer || [])) { const v = all.find(v => v.name.includes(want)); if (v) return v; }
+  }
+  const keys = Object.keys(TEAM), i = Math.max(0, keys.indexOf(who));      // spread members over the voices we have
+  const nice = sameLang.filter(v => /Google|Natural|Online/.test(v.name));
+  const pool = nice.length > 1 ? nice : sameLang;
+  return pool.length ? pool[i % pool.length] : null;
+}
 
-function speak(text) {
+function speak(text, who) {
+  who = who || 'jako';
   return new Promise(resolve => {
-    if (!('speechSynthesis' in window)) return resolve();
-    speaking = true; setState('speaking', '');
+    if (!('speechSynthesis' in window) || !text) return resolve();
+    speaking = true; setState('speaking', (TEAM[who] || TEAM.jako).name + ' is speaking…'); drawTeam(who);
     stopRec();
+    const a = TEAM[who] || TEAM.jako;
     const u = new SpeechSynthesisUtterance(text.replace(/[*_#`]/g, ''));
-    u.lang = langSel.value; u.rate = 1.03;
-    const voice = speechSynthesis.getVoices().find(v => v.lang === langSel.value && /Google|Natural|Online/.test(v.name))
-               || speechSynthesis.getVoices().find(v => v.lang === langSel.value);
-    if (voice) u.voice = voice;
-    u.onend = u.onerror = () => { speaking = false; resolve(); startRec(); };
-    speechSynthesis.cancel(); speechSynthesis.speak(u);
+    u.lang = langSel.value; u.rate = a.rate || 1; u.pitch = a.pitch || 1;
+    const voice = pickVoice(who); if (voice) { u.voice = voice; u.lang = voice.lang; }
+    u.onend = u.onerror = () => { speaking = false; drawTeam(); resolve(); };
+    speechSynthesis.speak(u);
   });
+}
+async function say(parts) {
+  speechSynthesis.cancel();
+  for (const p of parts) { add('jako', p.text, p.who); await speak(p.text, p.who); }
+  startRec();
 }
 
 async function ask(text) {
@@ -83,9 +120,9 @@ async function ask(text) {
     const r = await fetch('/api/ask', { method:'POST', headers:{'Content-Type':'application/json'},
                                         body: JSON.stringify({ text }) });
     const data = await r.json();
-    add('jako', data.reply); await speak(data.reply);
+    await say(data.parts && data.parts.length ? data.parts : [{ who:'jako', text:data.reply }]);
   } catch (e) {
-    add('jako', 'I could not reach my brain. Is Jako running?');
+    add('jako', 'I could not reach my brain. Is Jako running?', 'jako');
   } finally { busy = false; if (!speaking) setState(running ? 'listening' : 'idle', running ? 'Say “Hey Jako …”' : ''); }
 }
 
@@ -100,7 +137,8 @@ function handleFinal(text) {
   const m = text.match(WAKE);
   if (m) {
     const rest = text.slice(m.index + m[0].length).trim();
-    if (rest.split(/\s+/).length >= 2) { awake = false; ask(rest); } else { goAwake(); }
+    if (/^(wake up|aufwachen)\b/i.test(rest) || (!rest && /^hello$/i.test(m[1]))) { awake = false; ask('wake up'); }
+    else if (rest.split(/\s+/).length >= 2) { awake = false; ask(rest); } else { goAwake(); }
   } else if (awake) {
     awake = false; clearTimeout(awakeTimer); ask(text);
   }
@@ -137,7 +175,7 @@ document.getElementById('form').onsubmit = e => {
 setInterval(async () => {
   try {
     const r = await fetch('/api/outbox'); const items = (await r.json()).items || [];
-    for (const t of items) { add('jako', t); await speak(t); }
+    if (items.length && !busy && !speaking) await say(items.map(t => typeof t === 'string' ? { who:'jako', text:t } : t));
   } catch (e) {}
 }, 20000);
 speechSynthesis && speechSynthesis.getVoices();
