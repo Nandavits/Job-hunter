@@ -1,9 +1,9 @@
 @echo off
-rem Restarts Jako after an update: the Jako server, Iron Man's laptop link and the Jako window.
+rem Restarts Jako after an update: the Jako server and Iron Man's laptop link. The window stays open.
 cd /d "%~dp0"
 if not exist logs mkdir logs
 echo Restarting Jako...
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' OR Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*jako-window*' } | ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }"
+rem The Jako window stays open: it reconnects by itself when the server is back.
 docker compose up -d --build jako > logs\jako-restart.log 2>&1
 call jako-laptop-link.bat
 for /l %%i in (1,1,30) do (
@@ -11,7 +11,8 @@ for /l %%i in (1,1,30) do (
   timeout /t 2 /nobreak >nul
 )
 :up
-call :openjako
+rem Open the window only if it is not open already.
+powershell -NoProfile -Command "if (Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' OR Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*jako-window*' }) { exit 0 } else { exit 1 }" || call :openjako
 exit /b 0
 
 :openjako
