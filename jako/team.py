@@ -9,6 +9,7 @@ Thor             web search, news and weather
 from __future__ import annotations
 
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -240,6 +241,20 @@ class Team:
         parts += [{"who": a, "text": lines[a]} for a in checks]
         parts.append({"who": "jako", "text": "Everyone is ready. What should we do?"})
         return parts
+
+    def status_lines(self) -> dict:
+        """Short live lines for the screen's side panels (same checks as the roll call, without the greeting)."""
+        out = {}
+        for part in self.roll_call()[1:-1]:
+            name = AGENTS[part["who"]]["name"]
+            out[part["who"]] = part["text"].removeprefix(f"{name} here. ")
+        try:
+            info = self.hands.do("system_info", {}) if not self.hands.status().get("error") else {}
+            m = re.search(r"Battery: (\d+)% (\w+)", info.get("text", ""))
+            out["battery"] = f"{m.group(1)}% {'charging' if m.group(2) == 'charging' else 'battery'}" if m else ""
+        except Exception:
+            out["battery"] = ""
+        return out
 
     def _iron_man(self) -> str:
         st = self.hands.status()
