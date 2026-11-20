@@ -11,7 +11,10 @@ window. Otherwise nothing is sent and Jako says what's wrong.
 """
 from __future__ import annotations
 
+import base64
 import csv
+import json
+import os
 import re
 import time
 import unicodedata
@@ -19,7 +22,68 @@ import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTACTS = ROOT / "data" / "whatsapp-contacts.csv"
+CONTACTS = ROOT / "data" / "whatsapp-contacts.dat"          # encrypted with Windows DPAPI (this user, this laptop)
+OLD_CSV = ROOT / "data" / "whatsapp-contacts.csv"            # earlier plain file: moved into the encrypted one
+
+
+# ---------------------------------------------------------------- privacy
+def mask(phone: str) -> str:
+    """'491701234567' -> '+49 ••• ••67': country code and the last two digits only."""
+    d = re.sub(r"\D", "", phone or "")
+    if len(d) < 6:
+        return "•••"
+    return f"+{d[:2]} ••• ••{d[-2:]}"
+
+
+PHONE_RE = re.compile(r"(?<![\w])(?:\+|00)?\d[\d \-/().]{6,}\d")
+
+
+def mask_numbers(text: str) -> str:
+    """Hide every phone-like number in a text (for logs, memory and anything sent to the AI)."""
+    def sub(m):
+        s = m.group(0).strip()
+        if re.fullmatch(r"\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}", s):
+            return m.group(0)                                # a date, not a phone number
+        digits = re.sub(r"\D", "", s)
+        return mask(digits) if 7 <= len(digits) <= 15 else m.group(0)
+    return PHONE_RE.sub(sub, text or "")
+
+
+def _protect(data: bytes) -> bytes:
+    """Encrypt for the current Windows user (DPAPI). Elsewhere (tests) the data is only encoded."""
+    if os.name != "nt":
+        return base64.b64encode(data)
+    import ctypes
+    from ctypes import wintypes
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+    buf = ctypes.create_string_buffer(data, len(data))
+    src, out = BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))), BLOB()
+    if not ctypes.windll.crypt32.CryptProtectData(ctypes.byref(src), "Jako WhatsApp contacts", None, None, None, 0, ctypes.byref(out)):
+        raise WhatsAppError("Windows couldn't encrypt the contacts.")
+    try:
+        return ctypes.string_at(out.pbData, out.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(out.pbData)
+
+
+def _unprotect(data: bytes) -> bytes:
+    if os.name != "nt":
+        return base64.b64decode(data)
+    import ctypes
+    from ctypes import wintypes
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+    buf = ctypes.create_string_buffer(data, len(data))
+    src, out = BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))), BLOB()
+    if not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(out)):
+        raise WhatsAppError("I couldn't unlock the saved contacts (they belong to another Windows user).")
+    try:
+        return ctypes.string_at(out.pbData, out.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(out.pbData)
 
 
 class WhatsAppError(Exception):
@@ -61,11 +125,22 @@ def clean_number(number: str) -> str:
     return digits
 
 
+def _write(contacts: dict[str, str], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_protect(json.dumps(contacts, ensure_ascii=False).encode("utf-8")))
+
+
 def load_contacts(path: Path = CONTACTS) -> dict[str, str]:
+    old = OLD_CSV if path == CONTACTS else path.with_suffix(".csv")
+    if old.exists():                                         # move an old plain-text list into the encrypted file
+        with old.open(encoding="utf-8", newline="") as f:
+            plain = {r["name"].strip(): r["phone"].strip() for r in csv.DictReader(f) if r.get("name") and r.get("phone")}
+        merged = {**(json.loads(_unprotect(path.read_bytes())) if path.exists() else {}), **plain}
+        _write(merged, path)
+        old.unlink()
     if not path.exists():
         return {}
-    with path.open(encoding="utf-8", newline="") as f:
-        return {r["name"].strip(): r["phone"].strip() for r in csv.DictReader(f) if r.get("name") and r.get("phone")}
+    return json.loads(_unprotect(path.read_bytes()).decode("utf-8"))
 
 
 def save_contact(name: str, number: str, path: Path = CONTACTS) -> str:
@@ -75,20 +150,25 @@ def save_contact(name: str, number: str, path: Path = CONTACTS) -> str:
     phone = clean_number(number)
     contacts = {n: p for n, p in load_contacts(path).items() if _norm(n) != _norm(name)}
     contacts[name] = phone
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["name", "phone"])
-        for n, p in sorted(contacts.items(), key=lambda x: x[0].lower()):
-            w.writerow([n, p])
-    return f"Saved {name}'s WhatsApp number (+{phone})."
+    _write(contacts, path)
+    return f"Saved {name}'s WhatsApp number ({mask(phone)}), encrypted on this laptop."
+
+
+def forget_contact(name: str, path: Path = CONTACTS) -> str:
+    contacts = load_contacts(path)
+    hit, options = match_contact(name, list(contacts))
+    if not hit:
+        return f"Which one: {', '.join(options)}?" if options else f"I don't have {name} saved."
+    del contacts[hit]
+    _write(contacts, path)
+    return f"Deleted {hit} from your WhatsApp contacts."
 
 
 def list_contacts(path: Path = CONTACTS) -> str:
     c = load_contacts(path)
     if not c:
         return "No WhatsApp contacts saved yet. Say for example: save Mahir's WhatsApp number plus 49 170 1234567."
-    return "WhatsApp contacts: " + ", ".join(sorted(c, key=str.lower)) + "."
+    return "WhatsApp contacts: " + ", ".join(f"{n} ({mask(p)})" for n, p in sorted(c.items(), key=lambda x: x[0].lower())) + "."
 
 
 def find(contact: str, path: Path = CONTACTS) -> tuple[str, str]:

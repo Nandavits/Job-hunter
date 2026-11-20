@@ -21,8 +21,8 @@ def test_unclear_or_unknown_names_do_nothing():
 
 
 def test_contacts_are_saved_and_found(tmp_path):
-    f = tmp_path / "c.csv"
-    assert W.save_contact("Mahir Khan", "+49 170 123-4567", f) == "Saved Mahir Khan's WhatsApp number (+491701234567)."
+    f = tmp_path / "c.dat"
+    assert W.save_contact("Mahir Khan", "+49 170 123-4567", f) == "Saved Mahir Khan's WhatsApp number (+49 ••• ••67), encrypted on this laptop."
     W.save_contact("Meghana", "0091 98765 43210", f)
     assert W.find("mahir", f) == ("Mahir Khan", "491701234567")
     assert W.find("Meghana", f) == ("Meghana", "919876543210")
@@ -33,7 +33,7 @@ def test_contacts_are_saved_and_found(tmp_path):
 
 def test_unknown_or_unclear_contacts_send_nothing(tmp_path):
     import pytest
-    f = tmp_path / "c.csv"
+    f = tmp_path / "c.dat"
     W.save_contact("Mahir Khan", "+491701234567", f)
     W.save_contact("Mahir S", "+491709876543", f)
     with pytest.raises(W.WhatsAppError, match="more than one"):
@@ -53,7 +53,7 @@ def test_numbers_need_a_country_code():
 
 def test_message_and_call_press_keys_only_in_whatsapp(tmp_path, monkeypatch):
     import pytest
-    f = tmp_path / "c.csv"
+    f = tmp_path / "c.dat"
     W.save_contact("Meghana", "+919876543210", f)
     monkeypatch.setattr(W, "CONTACTS", f)
     monkeypatch.setattr(W.find, "__defaults__", (f,))
@@ -110,3 +110,69 @@ def test_natural_yes_answers():
     for t in ["no", "yes but don't close it", "please", "not now", "ok no wait",
               "yes and then also tell me about the weather in Berlin tomorrow please"]:
         assert not ok(t), t
+
+
+def test_numbers_are_masked():
+    assert W.mask("491701234567") == "+49 ••• ••67"
+    assert W.mask_numbers("call +49 170 1234567 or 0091 98765 43210 at 18:00 on 2026-11-20") == \
+        "call +49 ••• ••67 or +00 ••• ••10 at 18:00 on 2026-11-20"
+
+
+def test_contacts_file_is_not_plain_text(tmp_path):
+    f = tmp_path / "c.dat"
+    W.save_contact("Mahir", "+491701234567", f)
+    raw = f.read_bytes()
+    assert b"491701234567" not in raw and b"Mahir" not in raw              # encrypted on Windows, encoded elsewhere
+    assert W.load_contacts(f) == {"Mahir": "491701234567"}
+    assert "491701234567" not in W.list_contacts(f) and "+49 ••• ••67" in W.list_contacts(f)
+    assert W.forget_contact("mahir", f) == "Deleted Mahir from your WhatsApp contacts." and W.load_contacts(f) == {}
+
+
+def test_an_old_plain_list_moves_into_the_encrypted_file(tmp_path):
+    (tmp_path / "c.csv").write_text("name,phone\nMom,919876543210\n")
+    f = tmp_path / "c.dat"
+    assert W.load_contacts(f) == {"Mom": "919876543210"}
+    assert not (tmp_path / "c.csv").exists()
+
+
+def test_saving_a_contact_never_goes_to_the_ai(tmp_path):
+    from types import SimpleNamespace
+    from jako.brain import Brain, save_contact_request
+    from jako.config import JakoConfig
+    from jako.memory import Memory
+    assert save_contact_request("Jako, save Mahir's WhatsApp number plus 49 170 1234567") == ("Mahir", "+49 170 1234567")
+    assert save_contact_request("save my mom's number +91 98765 43210") == ("mom", "+91 98765 43210")
+    assert save_contact_request("save number +49 170 1234567 as Mahir Khan") == ("Mahir Khan", "+49 170 1234567")
+    assert save_contact_request("save the file to my desktop") is None
+
+    class Hands:
+        def __init__(self): self.calls = []
+        def do(self, action, args):
+            self.calls.append((action, args)); return {"text": "Saved Mahir's WhatsApp number (+49 ••• ••67), encrypted on this laptop."}
+
+    class NoAI:
+        class messages:
+            @staticmethod
+            def create(**kw):
+                raise AssertionError("the AI must not be asked")
+    cfg = JakoConfig(api_key="t", data_dir=tmp_path, hands_token="t" * 32)
+    mem = Memory(tmp_path / "j.db")
+    hands = Hands()
+    b = Brain(cfg, mem, client=NoAI(), team=SimpleNamespace(hands=hands))
+    parts = b.talk("save Mahir's WhatsApp number plus 49 170 1234567", channel="voice")
+    assert parts == [{"who": "iron_man", "text": "Saved Mahir's WhatsApp number (+49 ••• ••67), encrypted on this laptop."}]
+    assert hands.calls == [("whatsapp_save_contact", {"name": "Mahir", "number": "+49 170 1234567"})]
+    stored = str(mem.history("voice"))
+    assert "1234567" not in stored and "+49 ••• ••67" in stored
+
+
+def test_old_numbers_in_the_conversation_are_masked_on_start(tmp_path):
+    import json, sqlite3
+    from jako.memory import Memory
+    Memory(tmp_path / "j.db")
+    db = sqlite3.connect(tmp_path / "j.db")
+    db.execute("insert into messages (channel, role, content, at) values ('voice', 'user', ?, '2026-11-20T19:25:00')",
+               (json.dumps("save Mahir's number +49 170 1234567"),))
+    db.commit()
+    mem = Memory(tmp_path / "j.db")
+    assert "1234567" not in str(mem.history("voice")) and "+49 ••• ••67" in str(mem.history("voice"))

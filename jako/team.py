@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 from .config import JakoConfig
+from .whatsapp import mask_numbers
 from .skills import TOOLS as SKILL_TOOLS
 
 log = logging.getLogger("jako")
@@ -80,7 +81,8 @@ TOOLS_BY_AGENT = {
 HANDS_TOOLS = {
     "iron_man": ["open_app", "open_url", "open_path", "find_files", "list_folder", "read_file", "screenshot", "volume",
                  "lock_screen", "run_command", "write_file", "move", "delete", "close_app",
-                 "whatsapp_message", "whatsapp_call", "whatsapp_save_contact", "whatsapp_contacts"],
+                 "whatsapp_message", "whatsapp_call", "whatsapp_save_contact", "whatsapp_contacts",
+                 "whatsapp_forget_contact"],
     "hulk": ["system_info", "hardware_health", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
              "find_files", "list_folder"],
     "vision": ["screenshot", "read_file", "find_files", "list_folder"],
@@ -125,8 +127,10 @@ LAPTOP_TOOLS = [
      "say and the phone number with country code, e.g. Mahir, +49 170 1234567.",
      "input_schema": {"type": "object", "required": ["name", "number"], "properties": {
          "name": {"type": "string"}, "number": {"type": "string"}}}},
-    {"name": "whatsapp_contacts", "description": "List the saved WhatsApp contacts' names.",
+    {"name": "whatsapp_contacts", "description": "List the saved WhatsApp contacts (numbers are masked).",
      "input_schema": {"type": "object", "properties": {}}},
+    {"name": "whatsapp_forget_contact", "description": "Delete a saved WhatsApp contact by name.",
+     "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
     {"name": "whatsapp_message", "description": "Send a WhatsApp message from the laptop to a saved contact, by "
      "the name the user said. Sends right away (the user asked for it). Use the user's exact words for the text; "
      "if no single contact matches, the tool says so: ask the user which one, or for the number to save.",
@@ -327,7 +331,7 @@ class Team:
             if out.get("pending"):
                 pending.append({"code": out["pending"], "summary": out.get("text", "")})
             text = out.get("error") or out.get("text") or "Done."
-            log.info("%s %s -> %s", AGENTS[agent]["name"], call.name, text[:120].replace("\n", " "))
+            log.info("%s %s -> %s", AGENTS[agent]["name"], call.name, mask_numbers(text[:120]).replace("\n", " "))
             if out.get("image_b64"):
                 return {"type": "tool_result", "tool_use_id": call.id, "content": [
                     {"type": "text", "text": text},
@@ -337,7 +341,7 @@ class Team:
         if call.name not in TOOLS_BY_AGENT.get(agent, []):
             return {"type": "tool_result", "tool_use_id": call.id, "content": "Not your tool.", "is_error": True}
         out = self.skills.run(call.name, args)
-        log.info("%s %s -> %s", AGENTS[agent]["name"], call.name, out[:120].replace("\n", " "))
+        log.info("%s %s -> %s", AGENTS[agent]["name"], call.name, mask_numbers(out[:120]).replace("\n", " "))
         return {"type": "tool_result", "tool_use_id": call.id, "content": out[:8000]}
 
     # ---------- roll call: everyone says what they are doing, no AI needed ----------
