@@ -61,7 +61,9 @@ JOBS = {
     "hawkeye": "the Job Hunter: best open jobs, job details, and updating a job's status when the user says so.",
     "captain_america": "reminders, the to-do list and planning the day.",
     "thor": "web search: news, facts, prices, opening hours, rules, anything current; also the weather.",
-    "hulk": ("laptop health: performance today and day to day (CPU, memory, battery, disk), the busiest programs, "
+    "hulk": ("laptop health: performance today and day to day (CPU, memory, battery, disk), hardware warnings "
+             "(low battery, battery wear and when to replace the battery, low disk space, SSD health and when to "
+             "replace the drive), the busiest programs, "
              "disk space, big old files that are not used any more, and cleaning up (temporary files, Recycle Bin, "
              "old files). Cleaning always needs the user's yes, which Jako handles."),
     "vision": ("looks at the screen and reviews what the user is working on when asked: code, data pipelines, SQL, "
@@ -78,7 +80,7 @@ TOOLS_BY_AGENT = {
 HANDS_TOOLS = {
     "iron_man": ["open_app", "open_url", "open_path", "find_files", "list_folder", "read_file", "screenshot", "volume",
                  "lock_screen", "run_command", "write_file", "move", "delete", "close_app"],
-    "hulk": ["system_info", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
+    "hulk": ["system_info", "hardware_health", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
              "find_files", "list_folder"],
     "vision": ["screenshot", "read_file", "find_files", "list_folder"],
 }
@@ -122,6 +124,9 @@ LAPTOP_TOOLS = [
      "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
     {"name": "top_processes", "description": "The programs using the most CPU and memory right now.",
      "input_schema": {"type": "object", "properties": {"count": {"type": "integer", "default": 8}}}},
+    {"name": "hardware_health", "description": "Hardware check: battery charge and battery wear (health % of original "
+     "capacity, charge cycles), free disk space, SSD/drive health, wear and temperature, memory. Lines starting "
+     "with WARNING say what needs attention or replacing.", "input_schema": {"type": "object", "properties": {}}},
     {"name": "disk_report", "description": "Free space per drive, size of Downloads/Desktop/Documents/Videos/Pictures, "
      "old temporary files and the Recycle Bin.", "input_schema": {"type": "object", "properties": {}}},
     {"name": "old_files", "description": "Big files that were not used for months (candidates to delete).",

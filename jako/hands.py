@@ -507,13 +507,126 @@ def _do_open_program(path: str) -> str:
     return f"Started {p.name}."
 
 
+# ---------------------------------------------------------------- hardware health (battery wear, SSD, disk)
+def _battery_report() -> dict:
+    """Design vs. full-charge capacity and cycle count from Windows' own battery report (no admin needed)."""
+    import tempfile
+    import xml.etree.ElementTree as ET
+    out = Path(tempfile.gettempdir()) / "jako-battery-report.xml"
+    subprocess.run(["powercfg", "/batteryreport", "/xml", "/output", str(out)],  # nosec - fixed command
+                   capture_output=True, text=True, timeout=40)
+    root = ET.parse(out).getroot()
+    for el in root.iter():
+        el.tag = el.tag.split("}")[-1]
+    b = root.find(".//Battery")
+    if b is None:
+        return {}
+    num = lambda tag: int(float(b.findtext(tag) or 0))          # noqa: E731
+    return {"design_mwh": num("DesignCapacity"), "full_mwh": num("FullChargeCapacity"), "cycles": num("CycleCount")}
+
+
+def _disks() -> list[dict]:
+    """Physical disks with Windows' health status, plus wear/temperature when Windows shares them."""
+    import json
+    cmd = ("$d = Get-PhysicalDisk | ForEach-Object { $r = $null; try { $r = $_ | Get-StorageReliabilityCounter -ErrorAction Stop } catch {}; "
+           "[pscustomobject]@{Name=$_.FriendlyName; Media=[string]$_.MediaType; Health=[string]$_.HealthStatus; "
+           "Wear=$(if ($r) { $r.Wear } else { $null }); Temp=$(if ($r) { $r.Temperature } else { $null }); "
+           "Hours=$(if ($r) { $r.PowerOnHours } else { $null }) } }; $d | ConvertTo-Json -Compress")
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", cmd],  # nosec - fixed command, no user input
+                         capture_output=True, text=True, timeout=40)
+    try:
+        data = json.loads(out.stdout or "[]")
+    except ValueError:
+        return []
+    return data if isinstance(data, list) else [data]
+
+
+def hardware_facts() -> dict:
+    import psutil
+    facts: dict = {}
+    bat = psutil.sensors_battery()
+    if bat:
+        facts.update(battery_pct=round(bat.percent), plugged=bool(bat.power_plugged))
+        try:
+            facts.update(_battery_report())
+        except Exception as exc:                                     # noqa: BLE001 - report is optional
+            facts["battery_report_error"] = str(exc)[:120]
+    d = psutil.disk_usage(str(HOME.anchor or HOME))
+    facts.update(disk_free_gb=round(d.free / 1e9, 1), disk_total_gb=round(d.total / 1e9, 1))
+    facts["memory_pct"] = round(psutil.virtual_memory().percent)
+    facts["memory_total_gb"] = round(psutil.virtual_memory().total / 1e9, 1)
+    try:
+        facts["disks"] = _disks()
+    except Exception as exc:                                         # noqa: BLE001
+        facts["disks_error"] = str(exc)[:120]
+    return facts
+
+
+def hardware_check(f: dict) -> tuple[list[str], list[tuple[str, str]]]:
+    """Turn the facts into plain lines and warnings. Warnings are (key, text); the key decides how often to repeat."""
+    lines, warn = [], []
+    if "battery_pct" in f:
+        lines.append(f"Battery: {f['battery_pct']}% {'charging' if f.get('plugged') else 'on battery'}.")
+        if not f.get("plugged") and f["battery_pct"] <= 10:
+            warn.append(("battery_low", f"Battery is at {f['battery_pct']}%. Plug in the charger now."))
+        elif not f.get("plugged") and f["battery_pct"] <= 20:
+            warn.append(("battery_low", f"Battery is low, {f['battery_pct']}%. Please plug in the charger."))
+        if f.get("design_mwh") and f.get("full_mwh"):
+            health = round(100 * f["full_mwh"] / f["design_mwh"])
+            lines.append(f"Battery health: {health}% of its original capacity ({f['full_mwh']} of {f['design_mwh']} mWh), "
+                         f"{f.get('cycles', 0)} charge cycles.")
+            if health <= 60:
+                warn.append(("battery_wear", f"The battery holds only {health}% of its original charge. "
+                                             "It's time to replace the battery."))
+            elif health <= 80:
+                warn.append(("battery_wear", f"The battery has worn down to {health}% of its original capacity. "
+                                             "Plan a battery replacement in the next months."))
+    free, total = f.get("disk_free_gb"), f.get("disk_total_gb")
+    if free is not None and total:
+        lines.append(f"Disk C: {free:.0f} GB free of {total:.0f} GB.")
+        if free < 10 or free / total < 0.07:
+            warn.append(("disk_full", f"Disk C is almost full: only {free:.0f} GB left. Ask me to clean up, or move big files."))
+        elif free < 20 or free / total < 0.12:
+            warn.append(("disk_low", f"Disk C is getting full: {free:.0f} GB left. A clean-up soon would help."))
+    for d in f.get("disks") or []:
+        name, health = d.get("Name") or "Disk", (d.get("Health") or "").strip()
+        bits = [f"{name} ({d.get('Media') or 'disk'}): {health or 'unknown'}"]
+        if d.get("Wear") is not None:
+            bits.append(f"{d['Wear']}% worn")
+        if d.get("Temp"):
+            bits.append(f"{d['Temp']} °C")
+        lines.append(", ".join(bits) + ".")
+        if health and health.lower() != "healthy":
+            warn.append(("ssd_health", f"Windows reports your drive {name} as {health}. Back up your files today "
+                                       "and plan to replace the drive soon."))
+        if d.get("Wear") is not None and d["Wear"] >= 90:
+            warn.append(("ssd_wear", f"Your drive {name} is {d['Wear']}% worn. Back up and replace it soon."))
+        elif d.get("Wear") is not None and d["Wear"] >= 80:
+            warn.append(("ssd_wear", f"Your drive {name} is {d['Wear']}% worn. Plan a replacement in the next months."))
+        if d.get("Temp") and d["Temp"] >= 70:
+            warn.append(("ssd_hot", f"Your drive {name} is running hot ({d['Temp']} °C). Keep the air vents free."))
+    if f.get("memory_pct") is not None:
+        lines.append(f"Memory: {f['memory_pct']}% used of {f.get('memory_total_gb', 0):.0f} GB.")
+    return lines, warn
+
+
+def hardware_health() -> str:
+    lines, warn = hardware_check(hardware_facts())
+    out = "\n".join(lines)
+    if warn:
+        out += "\n" + "\n".join(f"WARNING [{k}]: {t}" for k, t in warn)
+    else:
+        out += "\nNo hardware warnings: battery, disk and drive look fine."
+    return out
+
+
 RISKY = {"run_command": _do_run_command, "write_file": _do_write_file, "move": _do_move,
          "delete": _do_delete, "close_app": _do_close_app, "open_program": _do_open_program,
          "clean_temp": _do_clean_temp, "empty_recycle_bin": _do_empty_recycle_bin}
 SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "find_files": find_files,
         "list_folder": list_folder, "read_file": read_file, "screenshot": screenshot, "volume": volume,
         "system_info": system_info, "lock_screen": lock_screen, "top_processes": top_processes,
-        "disk_report": disk_report, "old_files": old_files}
+        "disk_report": disk_report, "old_files": old_files, "hardware_health": hardware_health}
 
 
 def describe(action: str, args: dict) -> str:

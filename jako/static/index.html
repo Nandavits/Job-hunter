@@ -756,7 +756,8 @@ async function say(parts) {
   speechSynthesis.cancel(); hush = false;
   for (const p of parts) { if (hush) break; add('bot', p.text, p.who); await speak(p.text, p.who); }
   setTimeout(() => { if (!speaking) captionEl.textContent = ''; }, 5000);
-  setState(running ? 'listening' : 'idle', !running ? 'Paused' : hush ? 'Stopped. Say “Hey Jako …” when you need me.' : 'Say “Hey Jako …” or clap twice');
+  if (running && !hush) goAwake('Your turn — just talk, no need to say “Jako”.', 12000);   // follow-up questions
+  else setState(running ? 'listening' : 'idle', !running ? 'Paused' : 'Stopped. Say “Hey Jako …” when you need me.');
   startRec(); refreshHud();
 }
 
@@ -776,14 +777,17 @@ async function ask(text) {
     await say([{ who:'jako', text: e.name === 'AbortError' ? 'Sorry, that took too long. Please ask me again.' : 'I could not reach my brain. Is Jako running?' }]);
   } finally { clearTimeout(slow); clearTimeout(stop); askCtl = null; }
 }
-function goAwake(msg) {
+function goAwake(msg, ms) {
   awake = true; setState('listening', msg || 'Listening — what can I do for you?'); clearTimeout(awakeTimer);
-  awakeTimer = setTimeout(() => { awake = false; if (!busy && !speaking) setState('listening', 'Say “Hey Jako …” or clap twice'); }, 8000);
+  awakeTimer = setTimeout(() => { awake = false; if (!busy && !speaking) setState('listening', 'Say “Hey Jako …” or clap twice'); }, ms || 8000);
 }
 async function handleFinal(text) {
   text = text.trim(); if (!text || enrolling) return;
   const m = text.match(WAKE);
-  if (!m && !awake) return;                                             // not for Jako: nothing to check
+  if (!m && !awake) {                                                   // not for Jako: show what was heard, don't act
+    if (text.split(/\s+/).length >= 4) setState('listening', 'Say “Jako” first — I heard: “' + text.slice(0, 70) + '”');
+    return;
+  }
   if (!(await isOwner('command'))) { awake = false; return; }           // someone else's voice: ignore it
   if (m) {
     const rest = text.slice(m.index + m[0].length).trim();
