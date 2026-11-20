@@ -250,7 +250,7 @@ function arcText(text, cx, cy, r, start, size, col) {
 
 function frame() {
   const now = performance.now();                 // own clock: some Edge builds give rAF a different time base
-  const t = Math.max(0, now - boot0) / 1000, boot = Math.min(1, t / 2.4), ease = 1 - Math.pow(1 - boot, 3);
+  const t = Math.max(0, now - boot0) / 1000, boot = Math.min(1, t / 0.9), ease = 1 - Math.pow(1 - boot, 3);
   const c = color(current), cx = L.cx * DPR, cy = L.cy * DPR, R = L.R * DPR;
   const target = ({ idle:0.25, listening:0.45 + micLevel * 2.2, thinking:0.75, speaking:0.8 + wordPulse * 0.6 }[state] || 0.3) + (awake ? 0.3 : 0);
   energy += (Math.min(target, 1.7) - energy) * 0.1; wordPulse *= 0.9;
@@ -462,7 +462,7 @@ function handleFinal(text) {
   } else if (awake) { awake = false; clearTimeout(awakeTimer); ask(text); }
 }
 function startRec() {
-  if (!running || speaking || busy) return;
+  if (quiet || !running || speaking || busy) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { setState('idle', 'Voice needs Edge or Chrome. You can still type below.'); return; }
   stopRec(); rec = new SR(); rec.lang = langSel.value; rec.continuous = true; rec.interimResults = true;
@@ -485,6 +485,18 @@ cv.onclick = e => {
 };
 $('form').onsubmit = e => { e.preventDefault(); const i = $('text'); const t = i.value; i.value = ''; ask(t); };
 
+// Only one Jako window listens: when a new one opens, the older ones go quiet (no double answers).
+let quiet = false;
+if (!DESKTOP && 'BroadcastChannel' in window) {
+  const ch = new BroadcastChannel('jako-window'), me = Date.now() + Math.random();
+  ch.onmessage = e => {
+    if (e.data && e.data.hello && e.data.id > me && !quiet) {
+      quiet = true; running = false; stopRec(); speechSynthesis.cancel();
+      setState('idle', 'Jako is open in another window — this one is resting.');
+    }
+  };
+  ch.postMessage({ hello: true, id: me });
+}
 if (DESKTOP) {                                                          // mirror the Jako window
   setState('idle', 'Say “Jako …” — or clap twice');
   setInterval(async () => {
@@ -504,7 +516,7 @@ if (DESKTOP) {                                                          // mirro
   else setState('idle', 'Click the core once and allow the microphone. After that Jako starts by itself.');
 })();
 if (!DESKTOP) setInterval(async () => {
-  if (busy || speaking) return;
+  if (quiet || busy || speaking) return;
   try { const items = (await (await fetch('/api/outbox')).json()).items || [];
         if (items.length) await say(items.map(t => typeof t === 'string' ? { who:'jako', text:t } : t)); } catch (e) {}
 }, 15000);
