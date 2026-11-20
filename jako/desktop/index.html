@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Jako live desktop</title>
+<style>html,body{margin:0;height:100%;background:#03050a url('wallpaper.jpg') center/cover no-repeat}</style></head>
+<body>
+<script>
+// Lively Wallpaper shows this file as the desktop. When Jako is running, switch to the live Jako desktop;
+// until then (for example right after Windows starts) show the still Jako wallpaper and keep checking.
+async function tryJako() {
+  try { await fetch('http://localhost:8765/api/health', { cache:'no-store', mode:'no-cors' });
+        location.replace('http://localhost:8765/desktop'); return; } catch (e) {}
+  setTimeout(tryJako, 5000);
+}
+tryJako();
+</script>
+</body></html>

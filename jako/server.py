@@ -87,6 +87,24 @@ def create_app(brain: Brain) -> FastAPI:
             items.append({"who": who, "text": text})
         return {"items": items}
 
+    live = {"who": "jako", "state": "idle", "text": "", "at": 0.0}
+
+    @app.post("/api/state")
+    def set_state(body: dict = Body(...)):
+        """The Jako window reports who is speaking, so the live desktop can glow in that colour."""
+        who = str(body.get("who", "jako"))
+        live.update(who=who if who in voices() else "jako", state=str(body.get("state", "idle"))[:20],
+                    text=str(body.get("text", ""))[:300], at=time.time())
+        return {"ok": True}
+
+    @app.get("/api/state")
+    def get_state():
+        return live
+
+    @app.get("/desktop")
+    def desktop():
+        return FileResponse(STATIC / "index.html")
+
     @app.get("/api/version")
     def version():
         return {"version": int((STATIC / "index.html").stat().st_mtime)}
