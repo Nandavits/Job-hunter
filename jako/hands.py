@@ -36,7 +36,7 @@ PENDING_SECONDS = 300
 
 BLOCKED_PARTS = {".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", "credentials", "keychain",
                  "login data", "cookies", "user data", "protect", "crypto", "vault"}
-BLOCKED_NAMES = re.compile(r"(^\.env|password|passwort|secret|token|\.kdbx$|\.pem$|\.key$|\.pfx$|id_rsa|id_ed25519)",
+BLOCKED_NAMES = re.compile(r"(^\.env|password|passwort|secret|token|\.kdbx$|\.pem$|\.key$|\.pfx$|id_rsa|id_ed25519|whatsapp-contacts|voiceprint)",
                            re.I)
 TEXT_TYPES = {".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".py", ".sql", ".log", ".html", ".xml", ".ini",
               ".cfg", ".toml", ".js", ".ts", ".css", ".bat", ".ps1", ".tex", ".rst"}
@@ -917,6 +917,12 @@ def main() -> None:
     if sys.platform == "win32":
         threading.Thread(target=watchdog, daemon=True).start()
     print(time.strftime("%H:%M:%S"), f"Jako laptop link started on {computer}, talking to {base}", flush=True)
+    if sys.platform == "win32":
+        try:                                                    # move an old plain contacts list into the encrypted file
+            from .whatsapp import load_contacts
+            load_contacts()
+        except Exception as exc:                                # noqa: BLE001
+            print(time.strftime("%H:%M:%S"), f"contacts check failed: {exc}", flush=True)
     while True:
         try:
             serve_once(hands, base, token, computer)

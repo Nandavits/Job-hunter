@@ -176,3 +176,12 @@ def test_old_numbers_in_the_conversation_are_masked_on_start(tmp_path):
     db.commit()
     mem = Memory(tmp_path / "j.db")
     assert "1234567" not in str(mem.history("voice")) and "+49 ••• ••67" in str(mem.history("voice"))
+
+
+def test_file_tools_never_open_the_contacts_or_voiceprint(monkeypatch, tmp_path):
+    import pytest
+    monkeypatch.setattr(H, "HOME", tmp_path)
+    for name in ("whatsapp-contacts.dat", "whatsapp-contacts.csv", "voiceprint.json"):
+        (tmp_path / name).write_text("x")
+        with pytest.raises(H.Refused):
+            H.safe_path(str(tmp_path / name))
