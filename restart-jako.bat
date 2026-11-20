@@ -15,15 +15,6 @@ call :openjako
 exit /b 0
 
 :openjako
-if defined BOOT exit /b 0
-echo.
-echo Jako is running in its own window. Say "Hello Jako, wake up" or clap twice.
-echo The very first time, allow the microphone once. After that Jako starts listening by itself.
-echo Iron Man can use this laptop while this computer is on. Changes always wait for your "yes".
-pause
-exit /b 0
-
-:openjako
 rem Own window, own profile: Jako may speak without a click, and the microphone choice is remembered.
 set "BROWSER="
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
