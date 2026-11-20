@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import ctypes
 import io
+import fnmatch
 import os
 import platform
 import re
@@ -184,25 +185,36 @@ def open_path(path: str) -> str:
     return f"Opened {p}."
 
 
+SKIP_DIRS = {"appdata", "node_modules", "__pycache__", "site-packages", ".venv", "venv", ".venv-hands",
+             "$recycle.bin", "windows", "program files", "program files (x86)", "programdata"}
+
+
 def find_files(name: str, folder: str = "") -> str:
     root = safe_path(folder or str(HOME))
     pattern = name.strip()
     if not pattern:
         raise Refused("Tell me part of the file name.")
-    glob = pattern if any(c in pattern for c in "*?") else f"*{pattern}*"
-    hits, deadline = [], time.time() + 8
-    for p in root.rglob(glob):
-        if time.time() > deadline or len(hits) >= 25:
+    glob = (pattern if any(c in pattern for c in "*?") else f"*{pattern}*").lower()
+    hits, deadline, timed_out = [], time.time() + 8, False
+    for dirpath, dirnames, filenames in os.walk(root):
+        if time.time() > deadline:                      # checked per folder, so a search with no hits stops too
+            timed_out = True
             break
-        try:
-            safe_path(str(p))
-        except Refused:
-            continue
-        if "appdata" in {x.lower() for x in p.parts}:
-            continue
-        hits.append(p)
+        # skip hidden, system and huge program folders (AppData, node_modules, .git ...)
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d.lower() not in SKIP_DIRS]
+        for f in dirnames + filenames:
+            if fnmatch.fnmatch(f.lower(), glob):
+                p = Path(dirpath) / f
+                try:
+                    safe_path(str(p))
+                except Refused:
+                    continue
+                hits.append(p)
+        if len(hits) >= 25:
+            break
     if not hits:
-        return f"No files matching '{pattern}' in {root}."
+        more = " (I stopped after 8 seconds; tell me a folder to search more closely.)" if timed_out else ""
+        return f"No files matching '{pattern}' in {root}.{more}"
     hits.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
     return "\n".join(f"{p}  ({time.strftime('%d.%m.%Y', time.localtime(p.stat().st_mtime))})" for p in hits)
 
