@@ -655,6 +655,156 @@ def whatsapp_call(contact: str, video: bool = False) -> str:
         return str(exc)
 
 
+# ---------------------------------------------------------------- Jako's own code (Vision, the engineer)
+PROJECT = ROOT
+CODE_SKIP = {".git", ".venv", ".venv-hands", "data", "logs", "output", "node_modules", "__pycache__", ".pytest_cache"}
+CODE_BACKUPS = ROOT / "data" / "code-backups"
+
+
+def _code_path(rel: str, must_exist: bool = True) -> Path:
+    """A file inside the job-hunter folder, never secrets, data, logs or virtual environments."""
+    p = (PROJECT / (rel or "").replace("\\", "/").lstrip("/")).resolve()
+    if p != PROJECT and PROJECT not in p.parents:
+        raise Refused("I only work on files inside the job-hunter folder.")
+    parts = p.relative_to(PROJECT).parts
+    if set(parts) & CODE_SKIP or any(BLOCKED_NAMES.search(x) for x in parts) or p.name.startswith(".env"):
+        raise Refused("That file is off limits (secrets, personal data, logs or installed packages).")
+    if must_exist and not p.is_file():
+        raise Refused(f"There's no file {rel} in the job-hunter folder.")
+    return p
+
+
+def code_list(folder: str = "") -> str:
+    root = _code_path(folder, must_exist=False) if folder else PROJECT
+    out = []
+    for f in sorted(root.rglob("*")):
+        rel = f.relative_to(PROJECT)
+        if f.is_file() and not (set(rel.parts) & CODE_SKIP) and not any(BLOCKED_NAMES.search(x) for x in rel.parts) \
+                and not f.name.startswith(".env"):
+            out.append(f"{rel.as_posix()} ({f.stat().st_size // 1024 or 1} KB)")
+        if len(out) >= 300:
+            break
+    return "\n".join(out) or "No files."
+
+
+def code_read(path: str, start: int = 1, lines: int = 200) -> str:
+    p = _code_path(path)
+    text = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    start = max(1, int(start or 1))
+    end = min(len(text), start + max(1, min(int(lines or 200), 400)) - 1)
+    body = "\n".join(f"{i:5}| {text[i - 1]}" for i in range(start, end + 1))
+    more = f" (more: read again with start={end + 1})" if end < len(text) else ""
+    return f"{path}: lines {start}-{end} of {len(text)}{more}\n{body}"
+
+
+def code_search(text: str, folder: str = "") -> str:
+    root = _code_path(folder, must_exist=False) if folder else PROJECT
+    hits = []
+    for f in sorted(root.rglob("*")):
+        rel = f.relative_to(PROJECT)
+        if not f.is_file() or set(rel.parts) & CODE_SKIP or f.suffix.lower() not in TEXT_TYPES | {".bat", ".js", ".css", ".toml"} \
+                or any(BLOCKED_NAMES.search(x) for x in rel.parts) or f.name.startswith(".env"):
+            continue
+        for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if text.lower() in line.lower():
+                hits.append(f"{rel.as_posix()}:{n}: {line.strip()[:160]}")
+                if len(hits) >= 60:
+                    return "\n".join(hits) + "\n(more hits: search more precisely)"
+    return "\n".join(hits) or f"No line contains {text!r}."
+
+
+def _check_syntax(p: Path, source: str) -> str | None:
+    if p.suffix == ".py":
+        try:
+            compile(source, str(p), "exec")
+        except SyntaxError as exc:
+            return f"Python syntax error on line {exc.lineno}: {exc.msg}"
+    if p.suffix == ".json":
+        import json
+        try:
+            json.loads(source)
+        except ValueError as exc:
+            return f"JSON error: {exc}"
+    return None
+
+
+def _backup(p: Path) -> None:
+    import json
+    CODE_BACKUPS.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
+    copy = CODE_BACKUPS / f"{stamp}-{p.name}"
+    existed = p.exists()
+    if existed:
+        copy.write_bytes(p.read_bytes())
+    index = CODE_BACKUPS / "index.json"
+    items = json.loads(index.read_text()) if index.exists() else []
+    items.append({"file": str(p), "copy": str(copy) if existed else None, "at": stamp})
+    index.write_text(json.dumps(items[-200:]))
+
+
+def _save(p: Path, source: str) -> None:
+    if p.suffix.lower() in (".bat", ".cmd"):                 # Windows batch files need CRLF line endings
+        source = source.replace("\r\n", "\n").replace("\n", "\r\n")
+        p.write_bytes(source.encode("utf-8"))
+    else:
+        p.write_text(source, encoding="utf-8", newline="")
+
+
+def code_edit(path: str, old: str, new: str) -> str:
+    """Replace one exact piece of a file. A backup is kept; broken Python/JSON is put back automatically."""
+    p = _code_path(path)
+    source = p.read_text(encoding="utf-8").replace("\r\n", "\n")
+    old = (old or "").replace("\r\n", "\n")
+    count = source.count(old) if old else 0
+    if count != 1:
+        return (f"Not changed: the text to replace appears {count} times in {path}. "
+                "Read the file again and give a longer, exact piece that appears once.")
+    changed = source.replace(old, (new or "").replace("\r\n", "\n"), 1)
+    problem = _check_syntax(p, changed)
+    if problem:
+        return f"Not changed, because the edit would break {path}: {problem}"
+    _backup(p)
+    _save(p, changed)
+    return f"Edited {path} (backup kept; say 'undo' to put it back). Restart Jako if the change should take effect."
+
+
+def code_write(path: str, content: str) -> str:
+    p = _code_path(path, must_exist=False)
+    problem = _check_syntax(p, content or "")
+    if problem:
+        return f"Not written, because {path} would be broken: {problem}"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    _backup(p)
+    _save(p, content or "")
+    return f"Wrote {path} ({len((content or '').splitlines())} lines, backup kept)."
+
+
+def code_undo() -> str:
+    import json
+    index = CODE_BACKUPS / "index.json"
+    items = json.loads(index.read_text()) if index.exists() else []
+    if not items:
+        return "There's no code change to undo."
+    last = items.pop()
+    target = Path(last["file"])
+    if last["copy"]:
+        target.write_bytes(Path(last["copy"]).read_bytes())
+        msg = f"Put {target.relative_to(PROJECT).as_posix()} back as it was before the last change."
+    else:
+        target.unlink(missing_ok=True)
+        msg = f"Removed the new file {target.relative_to(PROJECT).as_posix()}."
+    index.write_text(json.dumps(items))
+    return msg
+
+
+def restart_jako() -> str:
+    """Restart Jako (and this helper) so code changes take effect. Runs on its own; Jako is back in about a minute."""
+    import subprocess as sp
+    sp.Popen(["cmd", "/c", "start", "", "/min", str(ROOT / "restart-jako.bat")], cwd=str(ROOT),  # nosec - fixed file
+             creationflags=getattr(sp, "CREATE_NO_WINDOW", 0))
+    return "Restarting Jako now. I'll be back in about a minute."
+
+
 RISKY = {"run_command": _do_run_command, "write_file": _do_write_file, "move": _do_move,
          "delete": _do_delete, "open_program": _do_open_program,
          "clean_temp": _do_clean_temp, "empty_recycle_bin": _do_empty_recycle_bin}
@@ -664,7 +814,9 @@ SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "fin
         "disk_report": disk_report, "old_files": old_files, "hardware_health": hardware_health,
         "close_app": _do_close_app, "whatsapp_message": whatsapp_message, "whatsapp_call": whatsapp_call,
         "whatsapp_save_contact": whatsapp_save_contact, "whatsapp_contacts": whatsapp_contacts,
-        "whatsapp_forget_contact": whatsapp_forget_contact}
+        "whatsapp_forget_contact": whatsapp_forget_contact,
+        "code_list": code_list, "code_read": code_read, "code_search": code_search, "code_edit": code_edit,
+        "code_write": code_write, "code_undo": code_undo, "restart_jako": restart_jako}
 
 
 def describe(action: str, args: dict) -> str:
@@ -852,8 +1004,18 @@ def _jako_healthy(base: str) -> bool:
         return False
 
 
-def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None) -> bool:
-    """Ask Jako for one job, do it, send the result back. Returns True if there was a job."""
+def _com_init() -> None:
+    try:                                                    # pywinauto / UI Automation need COM in every thread
+        import comtypes
+        comtypes.CoInitializeEx()
+    except Exception:
+        pass
+
+
+def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None, pool=None) -> bool:
+    """Ask Jako for one job, do it, send the result back. Returns True if there was a job.
+    With a pool, the job runs in a worker thread so the helper keeps answering while a slow job (a WhatsApp call,
+    a big search) is still running."""
     import json
     import urllib.parse
     import urllib.request
@@ -864,6 +1026,16 @@ def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None) 
         job = json.loads(r.read() or b"{}")
     if not job.get("id"):
         return False
+    if pool is not None:
+        pool.submit(_run_job, hands, job, base, token, computer, opener)
+        return True
+    _run_job(hands, job, base, token, computer, opener)
+    return True
+
+
+def _run_job(hands: Hands, job: dict, base: str, token: str, computer: str, opener) -> None:
+    import json
+    import urllib.request
     kind = job.get("kind")
     if kind == "do":
         result = hands.do(str(job.get("action", "")), job.get("args") or {})
@@ -879,9 +1051,11 @@ def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None) 
     body = json.dumps({"id": job["id"], "result": result}).encode()
     post = urllib.request.Request(f"{base}/api/hands/result", data=body, method="POST",
                                   headers={"X-Jako-Token": token, "Content-Type": "application/json"})
-    with opener(post, timeout=30):  # nosec B310
-        pass
-    return True
+    try:
+        with opener(post, timeout=30):  # nosec B310
+            pass
+    except Exception as exc:                                # Jako restarting: the answer is lost, the helper lives on
+        print(time.strftime("%H:%M:%S"), f"could not send a result: {exc}", flush=True)
 
 
 def main() -> None:
@@ -923,9 +1097,11 @@ def main() -> None:
             load_contacts()
         except Exception as exc:                                # noqa: BLE001
             print(time.strftime("%H:%M:%S"), f"contacts check failed: {exc}", flush=True)
+    from concurrent.futures import ThreadPoolExecutor
+    pool = ThreadPoolExecutor(max_workers=6, initializer=_com_init)
     while True:
         try:
-            serve_once(hands, base, token, computer)
+            serve_once(hands, base, token, computer, pool=pool)
             quiet = 0
         except Exception as exc:                        # Jako not up yet, or restarting: try again soon
             if quiet == 0:
