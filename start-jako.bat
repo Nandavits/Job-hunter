@@ -68,6 +68,7 @@ for /l %%i in (1,1,30) do (
 )
 :jakoup
 call :openjako
+call :livedesktop
 if defined BOOT exit /b 0
 echo.
 echo Jako is running in its own window. Say "Hello Jako, wake up" or clap twice.
@@ -88,4 +89,18 @@ if not defined BROWSER (
   exit /b 0
 )
 start "" "%BROWSER%" --app=http://localhost:8765 --user-data-dir="%CD%\data\jako-window" --autoplay-policy=no-user-gesture-required --start-maximized --no-first-run --no-default-browser-check
+exit /b 0
+
+:livedesktop
+rem Live desktop: start Lively Wallpaper (if installed) and show the Jako live desktop.
+set "LIVELY="
+for %%P in ("%ProgramFiles%\Lively Wallpaper\Lively.exe" "%LOCALAPPDATA%\Programs\Lively Wallpaper\Lively.exe" "%ProgramFiles(x86)%\Lively Wallpaper\Lively.exe") do if exist "%%~P" set "LIVELY=%%~P"
+if not defined LIVELY exit /b 0
+set "LIB=%LOCALAPPDATA%\Lively Wallpaper\Library\wallpapers\jako-desktop"
+if not exist "%LIB%\index.html" (
+  if not exist "%LIB%" mkdir "%LIB%"
+  xcopy /y /q "jako\desktop\*" "%LIB%\" >nul
+)
+tasklist /fi "imagename eq Lively.exe" | find /i "Lively.exe" >nul || (start "" "%LIVELY%" & timeout /t 15 /nobreak >nul)
+"%LIVELY%" setwp --file "%LIB%"
 exit /b 0

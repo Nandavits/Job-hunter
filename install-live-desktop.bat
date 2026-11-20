@@ -29,5 +29,5 @@ exit /b 0
 
 :findlively
 set "LIVELY="
-for %%P in ("%LOCALAPPDATA%\Programs\Lively Wallpaper\Lively.exe" "%ProgramFiles%\Lively Wallpaper\Lively.exe" "%ProgramFiles(x86)%\Lively Wallpaper\Lively.exe") do if exist "%%~P" set "LIVELY=%%~P"
+for %%P in ("%ProgramFiles%\Lively Wallpaper\Lively.exe" "%LOCALAPPDATA%\Programs\Lively Wallpaper\Lively.exe" "%ProgramFiles(x86)%\Lively Wallpaper\Lively.exe") do if exist "%%~P" set "LIVELY=%%~P"
 exit /b 0
