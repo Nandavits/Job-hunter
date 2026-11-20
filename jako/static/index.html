@@ -115,7 +115,9 @@
 
 <script>
 // ================================================================== state
-const WAKE = /\b(hey|hi|hello|hallo|okay|ok)[\s,]+(jako|jacko|jakko|yako|jaco|jacob|jaku|jago)\b[\s,.!?]*/i;
+// "Jako …", "Hey Jako …", "Hello Jako, wake up" — plus names speech recognition often hears instead of Jako
+const NAMES = 'jako|jacko|jakko|jacco|yako|yacko|jaco|jacob|jakob|jaku|jago|chako|jako\'s|jack o|jacuzzi';
+const WAKE = new RegExp('(?:^|\\b(hey|hi|hello|hallo|okay|ok)[\\s,]+)(' + NAMES + ')\\b[\\s,.!?]*', 'i');
 const $ = id => document.getElementById(id);
 const statusEl = $('status'), whoEl = $('who'), captionEl = $('caption'), logEl = $('log'), langSel = $('lang');
 let TEAM = { jako:{ name:'Jako', color:'#5b8cff', emoji:'🔵', prefer:[], pitch:1, rate:1.03 } };
@@ -427,7 +429,7 @@ function handleFinal(text) {
   const m = text.match(WAKE);
   if (m) {
     const rest = text.slice(m.index + m[0].length).trim();
-    if (/^(wake up|aufwachen)\b/i.test(rest) || (!rest && /^hello$/i.test(m[1]))) { awake = false; ask('wake up'); }
+    if (/^(wake up|wakeup|wake|aufwachen|roll call)\b/i.test(rest) || (!rest && /^hello$/i.test(m[1] || ''))) { awake = false; ask('wake up'); }
     else if (rest.split(/\s+/).length >= 2) { awake = false; ask(rest); } else { chime(); goAwake(); }
   } else if (awake) { awake = false; clearTimeout(awakeTimer); ask(text); }
 }
@@ -438,7 +440,8 @@ function startRec() {
   stopRec(); rec = new SR(); rec.lang = langSel.value; rec.continuous = true; rec.interimResults = true;
   rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript;
     if (e.results[i].isFinal) handleFinal(t);
-    else { if (awake || WAKE.test(t)) captionEl.textContent = t; if (WAKE.test(t) && !awake) setState('listening', 'Yes?'); } } };
+    else { if (awake || WAKE.test(t)) captionEl.textContent = t; if (WAKE.test(t) && !awake) setState('listening', 'Yes?');
+           else if (!awake) statusEl.textContent = 'Heard: “' + t.trim().slice(-60) + '”'; } } };
   rec.onerror = e => { if (e.error === 'not-allowed') { running = false; setState('idle', 'Allow the microphone (icon in the address bar), then click the core.'); } };
   rec.onend = () => { if (running && !speaking && !busy) setTimeout(startRec, 250); };
   try { rec.start(); if (!awake) setState('listening', 'Say “Hey Jako …” or clap twice'); } catch (e) {}
@@ -467,6 +470,11 @@ setInterval(async () => {
 }, 15000);
 speechSynthesis && speechSynthesis.getVoices();
 drawMembers();
+let pageVersion = null;                                     // reload by itself after an update
+setInterval(async () => {
+  try { const v = (await (await fetch('/api/version')).json()).version;
+        if (pageVersion && v !== pageVersion && !busy && !speaking) location.reload(); pageVersion = v; } catch (e) {}
+}, 30000);
 </script>
 </body>
 </html>

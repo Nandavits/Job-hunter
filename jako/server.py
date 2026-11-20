@@ -87,6 +87,10 @@ def create_app(brain: Brain) -> FastAPI:
             items.append({"who": who, "text": text})
         return {"items": items}
 
+    @app.get("/api/version")
+    def version():
+        return {"version": int((STATIC / "index.html").stat().st_mtime)}
+
     @app.get("/api/health")
     def health():
         return {"ok": True}
