@@ -419,7 +419,7 @@ function speak(text, who) {
   who = who || 'jako';
   return new Promise(resolve => {
     if (!('speechSynthesis' in window) || !text) return resolve();
-    speaking = true; setState('speaking', '', who); captionEl.textContent = text; stopRec();
+    speaking = true; setState('speaking', '', who); captionEl.textContent = text; startBargeIn();
     const a = TEAM[who] || TEAM.jako, u = new SpeechSynthesisUtterance(text.replace(/[*_#`]/g, ''));
     u.lang = langSel.value; u.rate = a.rate || 1; u.pitch = a.pitch || 1;
     const v = pickVoice(who); if (v) { u.voice = v; u.lang = v.lang; }
@@ -432,10 +432,10 @@ function speak(text, who) {
 $('unlock').onclick = () => { $('unlock').style.display = 'none'; if (audioCtx) audioCtx.resume();
                               speechSynthesis.speak(new SpeechSynthesisUtterance('')); };
 async function say(parts) {
-  speechSynthesis.cancel();
-  for (const p of parts) { add('bot', p.text, p.who); await speak(p.text, p.who); }
+  speechSynthesis.cancel(); hush = false;
+  for (const p of parts) { if (hush) break; add('bot', p.text, p.who); await speak(p.text, p.who); }
   setTimeout(() => { if (!speaking) captionEl.textContent = ''; }, 5000);
-  setState(running ? 'listening' : 'idle', running ? 'Say “Hey Jako …” or clap twice' : 'Paused');
+  setState(running ? 'listening' : 'idle', !running ? 'Paused' : hush ? 'Stopped. Say “Hey Jako …” when you need me.' : 'Say “Hey Jako …” or clap twice');
   startRec(); refreshHud();
 }
 
@@ -443,7 +443,7 @@ async function say(parts) {
 async function ask(text) {
   if (!text.trim() || busy) return;
   busy = true; add('me', text); captionEl.textContent = '“' + text + '”'; setState('thinking', 'Working on it…');
-  const ctl = new AbortController();
+  const ctl = new AbortController(); askCtl = ctl; hush = false; startBargeIn();
   const slow = setTimeout(() => setState('thinking', 'Still working on it — the team is checking…'), 12000);
   const stop = setTimeout(() => ctl.abort(), 120000);
   try {
@@ -451,8 +451,9 @@ async function ask(text) {
     busy = false; await say(data.parts && data.parts.length ? data.parts : [{ who:'jako', text:data.reply }]);
   } catch (e) {
     busy = false;
+    if (hush) { startRec(); return; }                                   // the user said "stop" while Jako was working
     await say([{ who:'jako', text: e.name === 'AbortError' ? 'Sorry, that took too long. Please ask me again.' : 'I could not reach my brain. Is Jako running?' }]);
-  } finally { clearTimeout(slow); clearTimeout(stop); }
+  } finally { clearTimeout(slow); clearTimeout(stop); askCtl = null; }
 }
 function goAwake(msg) {
   awake = true; setState('listening', msg || 'Listening — what can I do for you?'); clearTimeout(awakeTimer);
@@ -480,12 +481,40 @@ function startRec() {
   rec.onend = () => { if (running && !speaking && !busy) setTimeout(startRec, 250); };
   try { rec.start(); if (!awake) setState('listening', 'Say “Hey Jako …” or clap twice'); } catch (e) {}
 }
+// ---- "stop": interrupt Jako while it speaks or works (say stop / enough / quiet, press Esc, or click the core)
+const STOP = /\b(stop|stopp|enough|quiet|silence|shut up|cancel|halt|ruhe|hör auf|aufhören)\b/i;
+let hush = false, askCtl = null;
+function shutUp() {
+  if (!speaking && !busy) return;
+  hush = true; if (askCtl) askCtl.abort();
+  speechSynthesis.cancel(); speaking = false; stopRec(); captionEl.textContent = '';
+  setState('listening', 'Stopped. Say “Hey Jako …” when you need me.');
+  setTimeout(() => { if (!busy) startRec(); }, 400);
+}
+function heardStop(t) {
+  const m = t.match(STOP); if (!m) return false;
+  // Jako may hear its own voice: a stop word that Jako itself is saying only counts together with "Jako".
+  return !captionEl.textContent.toLowerCase().includes(m[0].toLowerCase()) || WAKE.test(t);
+}
+function startBargeIn() {
+  if (quiet || !running) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR || (rec && rec.barge)) return;
+  stopRec(); rec = new SR(); rec.barge = true; rec.lang = langSel.value; rec.continuous = true; rec.interimResults = true;
+  rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++)
+                          if (heardStop(e.results[i][0].transcript)) { shutUp(); return; } };
+  rec.onerror = () => {};
+  rec.onend = () => { if (rec && rec.barge) rec = null; if (speaking || busy) setTimeout(startBargeIn, 250); };
+  try { rec.start(); } catch (e) {}
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') shutUp(); });
 function stopRec() { if (rec) { rec.onend = null; try { rec.stop(); } catch (e) {} rec = null; } }
 function restart() { stopRec(); startRec(); }
 
 cv.onclick = e => {
   if (Math.hypot(e.clientX - L.cx, e.clientY - L.cy) > L.R) return;                                   // only the core toggles listening
   if (audioCtx) audioCtx.resume();
+  if (speaking || busy) { shutUp(); return; }
   if (running) { running = false; stopRec(); setState('idle', 'Paused — click the core to listen again.'); }
   else { running = true; startMic(); startRec(); }
 };
