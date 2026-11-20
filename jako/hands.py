@@ -634,6 +634,56 @@ def create_app(token: str, hands: Hands | None = None):
     return app
 
 
+BROWSERS = [r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe", r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+            r"%ProgramFiles%\Google\Chrome\Application\chrome.exe", r"%LocalAppData%\Google\Chrome\Application\chrome.exe"]
+PAUSE_FLAG = ROOT / "data" / "jako-stopped.flag"
+
+
+def jako_window_open() -> bool:
+    import psutil
+    for p in psutil.process_iter(["name", "cmdline"]):
+        try:
+            if (p.info["name"] or "").lower() in ("msedge.exe", "chrome.exe") and \
+                    any("jako-window" in (a or "") for a in (p.info["cmdline"] or [])):
+                return True
+        except psutil.Error:
+            continue
+    return False
+
+
+def open_jako_window(base: str, minimized: bool = True) -> bool:
+    """Open Jako's own window (fixed browser command, our own address)."""
+    for raw in BROWSERS:
+        exe = os.path.expandvars(raw)
+        if os.path.isfile(exe):
+            args = [exe, f"--app={base}", f"--user-data-dir={ROOT / 'data' / 'jako-window'}",
+                    "--autoplay-policy=no-user-gesture-required", "--no-first-run", "--no-default-browser-check",
+                    "--start-minimized" if minimized else "--start-maximized"]
+            subprocess.Popen(args, cwd=str(ROOT))  # nosec B603 - fixed program and arguments
+            return True
+    return False
+
+
+def watch_window(base: str, check=None, opener=None, healthy=None) -> str:
+    """If Jako runs but its window was closed, open it again (minimised), unless Jako was stopped on purpose."""
+    if PAUSE_FLAG.exists():
+        return "stopped"
+    if (check or jako_window_open)():
+        return "open"
+    if not (healthy or _jako_healthy)(base):
+        return "jako not running"
+    return "reopened" if (opener or open_jako_window)(base) else "no browser"
+
+
+def _jako_healthy(base: str) -> bool:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"{base}/api/health", timeout=3):  # nosec B310 - local Jako address
+            return True
+    except Exception:
+        return False
+
+
 def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None) -> bool:
     """Ask Jako for one job, do it, send the result back. Returns True if there was a job."""
     import json
@@ -685,8 +735,19 @@ def main() -> None:
             except Exception as exc:                    # never stop the link because of a sample
                 print(time.strftime("%H:%M:%S"), f"performance sample failed: {exc}", flush=True)
             time.sleep(600)
+    def watchdog():
+        time.sleep(90)                                   # give Jako time to start after sign-in
+        while True:
+            try:
+                if watch_window(base) == "reopened":
+                    print(time.strftime("%H:%M:%S"), "Jako window was closed - opened it again (minimised)", flush=True)
+            except Exception as exc:
+                print(time.strftime("%H:%M:%S"), f"window check failed: {exc}", flush=True)
+            time.sleep(60)
     import threading
     threading.Thread(target=sampler, daemon=True).start()
+    if sys.platform == "win32":
+        threading.Thread(target=watchdog, daemon=True).start()
     print(time.strftime("%H:%M:%S"), f"Jako laptop link started on {computer}, talking to {base}", flush=True)
     while True:
         try:

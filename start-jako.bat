@@ -6,6 +6,7 @@ if not exist logs mkdir logs
 if not exist data mkdir data
 set "BOOT="
 if /i "%~1"=="--boot" set "BOOT=1"
+if exist data\jako-stopped.flag del data\jako-stopped.flag
 
 rem --- 1. Secret key for the laptop link (created once, stays in .env) ---
 findstr /b "JAKO_HANDS_TOKEN=" .env >nul 2>&1
@@ -16,6 +17,10 @@ if not defined BOOT if not exist data\jako-autostart.done (
   powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\Jako.lnk'); $s.TargetPath='%~f0'; $s.Arguments='--boot'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=7; $s.Description='Start Jako'; $s.Save()"
   echo done> data\jako-autostart.done
   echo Jako will now start by itself when you sign in to Windows. To stop that, run jako-autostart-off.bat.
+)
+if not exist data\jako-shortcut.done (
+  powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\Jako.lnk'); $s.TargetPath='%CD%\open-jako.bat'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=7; $s.IconLocation='%SystemRoot%\System32\shell32.dll,13'; $s.Description='Open Jako'; $s.Save()"
+  echo done> data\jako-shortcut.done
 )
 if not defined BOOT if not exist data\jako-wallpaper.done (
   powershell -NoProfile -ExecutionPolicy Bypass -File jako\set-wallpaper.ps1 "%CD%\jako\static\wallpaper.jpg"
@@ -35,7 +40,9 @@ if not exist .venv-hands\Scripts\pythonw.exe (
   echo Setting up the laptop link ^(first time only^)...
   %PY% -m venv .venv-hands
 )
-.venv-hands\Scripts\python -m pip install -q --disable-pip-version-check -r requirements-hands.txt > logs\jako-hands-setup.log 2>&1
+fc /b requirements-hands.txt .venv-hands\installed.txt >nul 2>&1 || (
+  .venv-hands\Scripts\python -m pip install -q --disable-pip-version-check -r requirements-hands.txt > logs\jako-hands-setup.log 2>&1 && copy /y requirements-hands.txt .venv-hands\installed.txt >nul
+)
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" | Where-Object { $_.CommandLine -like '*jako.hands*' } | ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }"
 powershell -NoProfile -Command "Start-Process -FilePath '.venv-hands\Scripts\pythonw.exe' -ArgumentList '-m','jako.hands' -WorkingDirectory '%CD%' -WindowStyle Hidden -RedirectStandardError 'logs\jako-hands.log'"
 
