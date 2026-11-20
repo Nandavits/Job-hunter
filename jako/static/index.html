@@ -75,7 +75,16 @@
   #unlock { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9;
             background:rgba(3,5,9,.78); font-size:18px; letter-spacing:1px; cursor:pointer; text-align:center; line-height:1.6; }
   @media (max-width: 1150px) { .panel { display:none; } }
-  body.desktop .tools, body.desktop form, body.desktop #log, body.desktop #unlock { display:none !important; }
+  body.desktop .tools, body.desktop form, body.desktop #log, body.desktop #unlock, body.desktop #enrol { display:none !important; }
+  #enrol { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10; background:rgba(3,6,14,.86); }
+  #enrol.open { display:flex; }
+  #enrol .card { width:min(560px, 92vw); background:var(--card); border:1px solid var(--glow); border-radius:8px; padding:26px 28px;
+                 box-shadow:0 0 40px rgba(91,140,255,.25); color:var(--text); text-align:center; }
+  #enrol h3 { margin:0 0 6px; letter-spacing:.2em; font-size:14px; color:#9fb6ff; }
+  #enrol .say { font-size:22px; line-height:1.4; margin:18px 0; color:#fff; min-height:62px; }
+  #enrol .bar { height:6px; background:#18223a; border-radius:3px; overflow:hidden; margin:10px 0 16px; }
+  #enrol .bar i { display:block; height:100%; width:0; background:var(--glow); transition:width .1s linear; }
+  #enrol small { color:#7a88a3; } #enrol .row { display:flex; gap:10px; justify-content:center; margin-top:14px; }
   body.desktop #center { pointer-events:none; }
   body.desktop .brand b { font-size:30px; }
   body.desktop header { left:auto; right:0; text-align:right; }
@@ -92,6 +101,7 @@
   <div class="brand"><b>J·A·K·O</b><span id="sub">Personal assistant · online</span></div>
   <div class="tools">
     <span id="clapbtn" class="btn on" title="Clap twice to wake Jako">👏 CLAP ×2</span>
+    <span id="voicebtn" class="btn" title="Teach Jako your voice so it listens only to you">🎙 MY VOICE</span>
     <span id="logbtn" class="btn" title="Show the conversation">💬 LOG</span>
     <select id="lang" title="Language Jako listens for"><option value="en-US">EN</option><option value="de-DE">DE</option></select>
   </div>
@@ -119,6 +129,13 @@
 <canvas id="bars"></canvas>
 <div id="log"></div>
 <form id="form"><input id="text" placeholder="Type to Jako — or say “Hey Jako …” — or clap twice" autocomplete="off"><button class="send">SEND</button></form>
+<div id="enrol"><div class="card">
+  <h3>🎙 TEACH JAKO YOUR VOICE</h3>
+  <div id="enrol-msg"><small>Jako will then answer only you. Read 3 short sentences out loud in your normal voice.<br>Your voice stays on this laptop.</small></div>
+  <div class="say" id="enrol-say"></div>
+  <div class="bar"><i id="enrol-bar"></i></div>
+  <div class="row"><span class="btn on" id="enrol-go">START</span><span class="btn" id="enrol-forget">FORGET MY VOICE</span><span class="btn" id="enrol-close">CLOSE</span></div>
+</div></div>
 <div id="unlock">🔊 Click anywhere once so Jako can speak.<br><small style="color:#7a88a3">Opening Jako with start-jako.bat skips this.</small></div>
 
 <script>
@@ -380,10 +397,73 @@ async function startMic() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const src = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; src.connect(analyser);
+    keepAudio(src);
     buf = new Float32Array(analyser.fftSize); freq = new Uint8Array(analyser.frequencyBinCount);
     setInterval(listenLevel, 20);
   } catch (e) {}
 }
+// ---- voice memory: the last 8 seconds of microphone sound (16 kHz), only ever sent to Jako on this laptop
+const VRATE = 16000, ring = new Float32Array(VRATE * 8); let ringPos = 0;
+function keepAudio(src) {
+  const proc = audioCtx.createScriptProcessor(4096, 1, 1), step = audioCtx.sampleRate / VRATE, mute = audioCtx.createGain();
+  let t = 0; mute.gain.value = 0;
+  proc.onaudioprocess = e => {
+    const x = e.inputBuffer.getChannelData(0);
+    for (; t < x.length; t += step) { const i = t | 0, f = t - i; ring[ringPos] = x[i] * (1 - f) + (x[i + 1] || x[i]) * f; ringPos = (ringPos + 1) % ring.length; }
+    t -= x.length;
+  };
+  src.connect(proc); proc.connect(mute); mute.connect(audioCtx.destination);
+}
+function grabAudio(sec) {
+  const n = Math.min(ring.length, Math.round(sec * VRATE)), out = new Int16Array(n);
+  for (let k = 0; k < n; k++) { const v = ring[(ringPos - n + k + ring.length) % ring.length]; out[k] = Math.max(-1, Math.min(1, v)) * 32767; }
+  let bin = ''; const b = new Uint8Array(out.buffer);
+  for (let k = 0; k < b.length; k += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(k, k + 0x8000));
+  return btoa(bin);
+}
+let voiceOn = false, enrolling = false;
+async function loadVoice() { try { voiceOn = (await (await fetch('/api/voice')).json()).enrolled; } catch (e) {}
+                             $('voicebtn').classList.toggle('on', voiceOn);
+                             $('voicebtn').title = voiceOn ? 'Jako listens only to your voice (click to re-record)' : 'Teach Jako your voice so it listens only to you'; }
+async function isOwner(kind) {
+  if (!voiceOn || !analyser) return true;
+  try {
+    const r = await (await fetch('/api/voice/check', { method:'POST', headers:{'Content-Type':'application/json'},
+                                                     body: JSON.stringify({ audio: grabAudio(kind === 'stop' ? 3 : 6), kind }) })).json();
+    if (!r.ok) setState('listening', 'Ignored — that didn’t sound like you' + (r.score != null ? ' (match ' + Math.round(r.score * 100) + '%)' : '') + '.');
+    return r.ok;
+  } catch (e) { return true; }
+}
+// enrolment: three sentences, five seconds each
+const SENTENCES = ['Hey Jako, what is on my calendar today and is there any new email for me?',
+                   'Jako, open GitHub and LinkedIn, and tell Hawkeye to show me the best new jobs.',
+                   'Stop. That is enough for now, thank you. Jako, wake up and tell me the team status.'];
+$('voicebtn').onclick = () => { $('enrol').classList.add('open'); $('enrol-say').textContent = ''; $('enrol-bar').style.width = '0';
+  $('enrol-msg').innerHTML = voiceOn ? '<small>Jako already knows your voice. Record again if it ignores you too often.</small>'
+                                     : '<small>Jako will then answer only you. Read 3 short sentences out loud in your normal voice.<br>Your voice stays on this laptop.</small>'; };
+$('enrol-close').onclick = () => { if (!enrolling) $('enrol').classList.remove('open'); };
+$('enrol-forget').onclick = async () => { if (enrolling) return; await fetch('/api/voice', { method:'DELETE' }); await loadVoice();
+  $('enrol-msg').innerHTML = '<small>Forgotten. Jako listens to everyone again.</small>'; };
+$('enrol-go').onclick = async () => {
+  if (enrolling) return; enrolling = true; if (audioCtx) audioCtx.resume(); await startMic();
+  if (!analyser) { $('enrol-msg').innerHTML = '<small>I need the microphone first: allow it and try again.</small>'; enrolling = false; return; }
+  speechSynthesis.cancel(); const clips = [];
+  for (let k = 0; k < SENTENCES.length; k++) {
+    $('enrol-msg').innerHTML = '<small>Sentence ' + (k + 1) + ' of ' + SENTENCES.length + ' — read it out loud now:</small>';
+    $('enrol-say').textContent = SENTENCES[k];
+    for (let ms = 0; ms <= 6000; ms += 100) { $('enrol-bar').style.width = (ms / 60) + '%'; await new Promise(r => setTimeout(r, 100)); }
+    clips.push(grabAudio(6));
+  }
+  $('enrol-say').textContent = ''; $('enrol-msg').innerHTML = '<small>Learning your voice…</small>';
+  try {
+    const r = await (await fetch('/api/voice/enroll', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ clips }) })).json();
+    $('enrol-msg').innerHTML = r.ok ? '<b>Done.</b> <small>Jako now listens only to you. Other voices are ignored.</small>'
+                                    : '<small>' + (r.error || 'That did not work. Please try again.') + '</small>';
+  } catch (e) { $('enrol-msg').innerHTML = '<small>Could not reach Jako. Is it running?</small>'; }
+  enrolling = false; await loadVoice();
+};
+if (!DESKTOP) loadVoice();
+
 function listenLevel() {
   analyser.getFloatTimeDomainData(buf);
   let peak = 0, sum = 0;
@@ -459,9 +539,11 @@ function goAwake(msg) {
   awake = true; setState('listening', msg || 'Listening — what can I do for you?'); clearTimeout(awakeTimer);
   awakeTimer = setTimeout(() => { awake = false; if (!busy && !speaking) setState('listening', 'Say “Hey Jako …” or clap twice'); }, 8000);
 }
-function handleFinal(text) {
-  text = text.trim(); if (!text) return;
+async function handleFinal(text) {
+  text = text.trim(); if (!text || enrolling) return;
   const m = text.match(WAKE);
+  if (!m && !awake) return;                                             // not for Jako: nothing to check
+  if (!(await isOwner('command'))) { awake = false; return; }           // someone else's voice: ignore it
   if (m) {
     const rest = text.slice(m.index + m[0].length).trim();
     if (/^(wake up|wakeup|wake|aufwachen|roll call)\b/i.test(rest) || (!rest && /^hello$/i.test(m[1] || ''))) { awake = false; ask('wake up'); }
@@ -483,7 +565,7 @@ function startRec() {
 }
 // ---- "stop": interrupt Jako while it speaks or works (say stop / enough / quiet, press Esc, or click the core)
 const STOP = /\b(stop|stopp|enough|quiet|silence|shut up|cancel|halt|ruhe|hör auf|aufhören)\b/i;
-let hush = false, askCtl = null;
+let hush = false, askCtl = null, checkingStop = false;
 function shutUp() {
   if (!speaking && !busy) return;
   hush = true; if (askCtl) askCtl.abort();
@@ -501,8 +583,10 @@ function startBargeIn() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR || (rec && rec.barge)) return;
   stopRec(); rec = new SR(); rec.barge = true; rec.lang = langSel.value; rec.continuous = true; rec.interimResults = true;
-  rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++)
-                          if (heardStop(e.results[i][0].transcript)) { shutUp(); return; } };
+  rec.onresult = async e => { for (let i = e.resultIndex; i < e.results.length; i++)
+                          if (heardStop(e.results[i][0].transcript) && !checkingStop) {
+                            checkingStop = true; const mine = await isOwner('stop'); checkingStop = false;
+                            if (mine) shutUp(); return; } };
   rec.onerror = () => {};
   rec.onend = () => { if (rec && rec.barge) rec = null; if (speaking || busy) setTimeout(startBargeIn, 250); };
   try { rec.start(); } catch (e) {}

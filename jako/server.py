@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from .brain import Brain, as_text
 from .team import voices
+from .voice import VoiceGate, decode
 
 STATIC = Path(__file__).parent / "static"
 
@@ -22,11 +23,46 @@ class Ask(BaseModel):
     text: str
 
 
+class Clip(BaseModel):
+    audio: str                      # 16 kHz mono 16-bit, base64 (a few seconds, not kept)
+    kind: str = "command"
+
+
+class Enrol(BaseModel):
+    clips: list[str]
+
+
 log = logging.getLogger("jako.server")
 
 
-def create_app(brain: Brain) -> FastAPI:
+def create_app(brain: Brain, voice: VoiceGate | None = None) -> FastAPI:
     app = FastAPI(title="Jako", docs_url=None, redoc_url=None)
+    cfg = getattr(brain, "cfg", None)
+    voice = voice or VoiceGate(getattr(cfg, "data_dir", Path("data")))
+
+    # ---- voice check: Jako acts only on its owner's voice
+    @app.get("/api/voice")
+    def voice_status():
+        return voice.status()
+
+    @app.post("/api/voice/check")
+    def voice_check(body: Clip):
+        try:
+            return voice.check(decode(body.audio[:2_000_000]), body.kind)
+        except Exception as exc:
+            log.exception("voice check failed")
+            return {"ok": True, "score": None, "reason": f"check failed: {exc}"}
+
+    @app.post("/api/voice/enroll")
+    def voice_enroll(body: Enrol):
+        if not voice.available():
+            return {"ok": False, "error": "The voice model is missing. Run restart-jako.bat once to install it."}
+        return voice.enroll([decode(c[:2_000_000]) for c in body.clips[:6]])
+
+    @app.delete("/api/voice")
+    def voice_forget():
+        voice.forget()
+        return voice.status()
 
     @app.get("/")
     def page():
