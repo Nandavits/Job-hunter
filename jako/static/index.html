@@ -5,180 +5,346 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jako</title>
 <style>
-  :root { --bg:#0f1115; --panel:#181b22; --text:#e9ecf1; --muted:#8a93a3; --accent:#5b8cff; --ok:#33c481; --warn:#f5a524; }
+  :root { --bg:#05070c; --panel:rgba(16,22,34,.78); --text:#e8eef8; --muted:#7f8ba1; --glow:#5b8cff; }
   * { box-sizing:border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text);
-         display:flex; flex-direction:column; align-items:center; min-height:100vh; }
-  header { width:100%; max-width:760px; padding:28px 20px 8px; display:flex; justify-content:space-between; align-items:center; }
-  h1 { margin:0; font-size:28px; letter-spacing:.5px; }
-  #lang { background:var(--panel); color:var(--text); border:1px solid #2a2f3a; border-radius:8px; padding:6px 8px; }
-  #orb { width:150px; height:150px; border-radius:50%; margin:26px 0 10px; background:radial-gradient(circle at 35% 35%, #7aa2ff, #2b4dbf);
-         box-shadow:0 0 0 0 rgba(91,140,255,.0); transition:transform .2s; cursor:pointer; border:none; }
-  #orb.idle { opacity:.55; }
-  #orb.listening { animation:pulse 1.4s infinite; opacity:1; }
-  #orb.thinking { animation:spin 1s linear infinite; background:conic-gradient(#5b8cff, #33c481, #5b8cff); }
-  #orb.speaking { background:radial-gradient(circle at 35% 35%, #6fe3ae, #1f8a5b); animation:pulse 0.9s infinite; }
-  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(91,140,255,.45)} 100%{box-shadow:0 0 0 28px rgba(91,140,255,0)} }
-  @keyframes spin { to { transform:rotate(360deg) } }
-  #status { color:var(--muted); min-height:22px; text-align:center; padding:0 20px; }
-  #log { width:100%; max-width:760px; padding:16px 20px 120px; display:flex; flex-direction:column; gap:10px; }
-  .msg { padding:12px 14px; border-radius:12px; max-width:85%; line-height:1.45; white-space:pre-wrap; }
-  .me { align-self:flex-end; background:#243154; }
-  .jako { align-self:flex-start; background:var(--panel); border:1px solid #232835; border-left:4px solid var(--who, #5b8cff); }
-  .who { display:block; font-size:12px; font-weight:600; letter-spacing:.3px; margin-bottom:3px; color:var(--who, #5b8cff); }
-  #team { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; max-width:760px; padding:0 20px; }
-  .chip { font-size:12px; padding:4px 9px; border-radius:999px; background:var(--panel); border:1px solid #2a2f3a; color:var(--muted); }
-  .chip.on { color:var(--text); border-color:var(--who); box-shadow:0 0 0 1px var(--who) inset; }
-  form { position:fixed; bottom:0; width:100%; max-width:760px; padding:14px 20px 20px; background:linear-gradient(transparent, var(--bg) 30%);
-         display:flex; gap:8px; }
-  input { flex:1; background:var(--panel); color:var(--text); border:1px solid #2a2f3a; border-radius:10px; padding:12px 14px; font-size:15px; }
-  button.send { background:var(--accent); color:white; border:none; border-radius:10px; padding:0 18px; font-size:15px; cursor:pointer; }
-  .hint { color:var(--muted); font-size:13px; text-align:center; margin-top:2px; }
+  html, body { height:100%; }
+  body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; color:var(--text); overflow:hidden;
+         background: radial-gradient(ellipse at 50% 40%, #0c1424 0%, var(--bg) 62%); }
+  #grid { position:fixed; inset:0; pointer-events:none; opacity:.18;
+          background-image: linear-gradient(rgba(91,140,255,.18) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(91,140,255,.18) 1px, transparent 1px);
+          background-size: 48px 48px; mask-image: radial-gradient(circle at 50% 42%, black 0%, transparent 70%); }
+  header { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:center;
+           padding:16px 22px; z-index:3; }
+  h1 { margin:0; font-size:20px; letter-spacing:6px; font-weight:600; text-transform:uppercase; color:#cfe0ff; }
+  .tools { display:flex; gap:8px; align-items:center; }
+  select, .toggle { background:var(--panel); color:var(--text); border:1px solid #243049; border-radius:8px;
+                    padding:6px 9px; font-size:13px; cursor:pointer; }
+  .toggle.on { border-color:var(--glow); box-shadow:0 0 0 1px var(--glow) inset; }
+  #stage { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  #core { width:min(62vh, 78vw); height:min(62vh, 78vw); cursor:pointer; }
+  #who { margin-top:6px; font-size:15px; letter-spacing:4px; text-transform:uppercase; color:var(--glow);
+         text-shadow:0 0 12px var(--glow); min-height:20px; transition:color .3s; }
+  #status { margin-top:6px; color:var(--muted); font-size:14px; min-height:20px; text-align:center; padding:0 20px; }
+  #caption { margin-top:10px; max-width:min(760px, 90vw); text-align:center; font-size:18px; line-height:1.45;
+             min-height:52px; color:#dfe8f7; }
+  #team { position:fixed; left:0; right:0; bottom:74px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;
+          padding:0 20px; z-index:2; }
+  .chip { font-size:12px; padding:5px 10px; border-radius:999px; background:var(--panel); border:1px solid #243049;
+          color:var(--muted); transition:all .25s; }
+  .chip.on { color:#fff; border-color:var(--who); box-shadow:0 0 14px var(--who), 0 0 0 1px var(--who) inset; }
+  form { position:fixed; bottom:0; left:0; right:0; padding:14px 22px 18px; display:flex; gap:8px; z-index:3;
+         max-width:820px; margin:0 auto; }
+  input { flex:1; background:var(--panel); color:var(--text); border:1px solid #243049; border-radius:10px;
+          padding:12px 14px; font-size:15px; outline:none; }
+  input:focus { border-color:var(--glow); }
+  button.send { background:var(--glow); color:white; border:none; border-radius:10px; padding:0 18px; font-size:15px;
+                cursor:pointer; }
+  #logbtn { position:fixed; right:22px; bottom:84px; z-index:4; }
+  #log { position:fixed; top:58px; right:14px; bottom:120px; width:min(420px, 92vw); overflow-y:auto; z-index:4;
+         background:var(--panel); border:1px solid #243049; border-radius:14px; padding:12px; display:none;
+         backdrop-filter: blur(8px); }
+  #log.open { display:flex; flex-direction:column; gap:8px; }
+  .msg { padding:9px 11px; border-radius:10px; line-height:1.4; white-space:pre-wrap; font-size:14px; }
+  .me { align-self:flex-end; background:#1f2c4d; max-width:85%; }
+  .bot { align-self:flex-start; background:rgba(10,14,22,.7); border-left:3px solid var(--who, #5b8cff); max-width:95%; }
+  .name { display:block; font-size:11px; font-weight:600; letter-spacing:.5px; margin-bottom:2px; color:var(--who, #5b8cff); }
+  #unlock { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9;
+            background:rgba(3,5,9,.72); font-size:18px; letter-spacing:1px; cursor:pointer; text-align:center; }
 </style>
 </head>
 <body>
+<div id="grid"></div>
 <header>
   <h1>Jako</h1>
-  <select id="lang" title="Language Jako listens for">
-    <option value="en-US">English</option>
-    <option value="de-DE">Deutsch</option>
-  </select>
+  <div class="tools">
+    <span id="clapbtn" class="toggle on" title="Clap twice to wake Jako">👏 Clap ×2</span>
+    <select id="lang" title="Language Jako listens for">
+      <option value="en-US">English</option>
+      <option value="de-DE">Deutsch</option>
+    </select>
+  </div>
 </header>
-<button id="orb" class="idle" title="Click to start listening"></button>
-<div id="status">Click the circle once to start. Then just say “Hey Jako …”.</div>
-<div class="hint">Works in Chrome or Edge. Your microphone is only used while this page is open.</div>
+
+<div id="stage">
+  <canvas id="core" title="Click to pause or resume listening"></canvas>
+  <div id="who">Jako</div>
+  <div id="status">Starting…</div>
+  <div id="caption"></div>
+</div>
 <div id="team"></div>
-<div class="hint">Say “Hello Jako, wake up” and the whole team reports in.</div>
+<span id="logbtn" class="toggle" title="Show the conversation">💬 Chat</span>
 <div id="log"></div>
-<form id="form"><input id="text" placeholder="Or type to Jako…" autocomplete="off"><button class="send">Send</button></form>
+<form id="form"><input id="text" placeholder="Type to Jako, or say “Hey Jako …”, or clap twice" autocomplete="off"><button class="send">Send</button></form>
+<div id="unlock">🔊 Click anywhere once so Jako can speak.<br><small style="color:#7f8ba1">Opening Jako with start-jako.bat skips this.</small></div>
 
 <script>
+// ------------------------------------------------------------------ setup
 const WAKE = /\b(hey|hi|hello|hallo|okay|ok)[\s,]+(jako|jacko|jakko|yako|jaco|jacob|jaku|jago)\b[\s,.!?]*/i;
-let TEAM = { jako: { name:'Jako', color:'#5b8cff', prefer:[], pitch:1, rate:1.03 } };
+const $ = id => document.getElementById(id);
+const statusEl = $('status'), whoEl = $('who'), captionEl = $('caption'), logEl = $('log'), langSel = $('lang');
+let TEAM = { jako: { name:'Jako', color:'#5b8cff', emoji:'🔵', prefer:[], pitch:1, rate:1.03 } };
+let rec = null, running = false, awake = false, awakeTimer = null, busy = false, speaking = false;
+let state = 'idle', current = 'jako', micLevel = 0, wordPulse = 0, clapOn = true;
+
+try { langSel.value = localStorage.getItem('jako-lang') || 'en-US'; clapOn = localStorage.getItem('jako-clap') !== 'off'; } catch (e) {}
+$('clapbtn').classList.toggle('on', clapOn);
+langSel.onchange = () => { try { localStorage.setItem('jako-lang', langSel.value); } catch (e) {} restart(); };
+$('clapbtn').onclick = () => { clapOn = !clapOn; $('clapbtn').classList.toggle('on', clapOn);
+                               try { localStorage.setItem('jako-clap', clapOn ? 'on' : 'off'); } catch (e) {} };
+$('logbtn').onclick = () => logEl.classList.toggle('open');
+
 fetch('/api/team').then(r => r.json()).then(t => { TEAM = t; drawTeam(); }).catch(() => {});
+function color(who) { return (TEAM[who] || TEAM.jako).color; }
 function drawTeam(active) {
-  const box = document.getElementById('team'); box.innerHTML = '';
+  const box = $('team'); box.innerHTML = '';
   for (const [key, a] of Object.entries(TEAM)) {
     const c = document.createElement('span'); c.className = 'chip' + (key === active ? ' on' : '');
     c.style.setProperty('--who', a.color); c.textContent = (a.emoji || '') + ' ' + a.name; box.appendChild(c);
   }
 }
-const orb = document.getElementById('orb'), statusEl = document.getElementById('status');
-const logEl = document.getElementById('log'), langSel = document.getElementById('lang');
-let rec = null, running = false, awake = false, awakeTimer = null, busy = false, speaking = false;
-
-try { langSel.value = localStorage.getItem('jako-lang') || 'en-US'; } catch (e) {}
-langSel.onchange = () => { try { localStorage.setItem('jako-lang', langSel.value); } catch (e) {} restart(); };
-
-function setState(s, text) { orb.className = s; if (text !== undefined) statusEl.textContent = text; }
+function setState(s, text, who) {
+  state = s; if (text !== undefined) statusEl.textContent = text;
+  current = who || (s === 'speaking' ? current : 'jako');
+  const a = TEAM[current] || TEAM.jako;
+  whoEl.textContent = a.name; whoEl.style.color = a.color; whoEl.style.textShadow = '0 0 14px ' + a.color;
+  document.documentElement.style.setProperty('--glow', a.color);
+}
 function add(cls, text, who) {
   const d = document.createElement('div'); d.className = 'msg ' + cls;
   if (who) {
     const a = TEAM[who] || TEAM.jako; d.style.setProperty('--who', a.color);
-    const n = document.createElement('span'); n.className = 'who'; n.textContent = (a.emoji || '') + ' ' + a.name;
+    const n = document.createElement('span'); n.className = 'name'; n.textContent = (a.emoji || '') + ' ' + a.name;
     d.appendChild(n);
   }
-  d.appendChild(document.createTextNode(text));
-  logEl.appendChild(d); window.scrollTo(0, document.body.scrollHeight);
-}
-function pickVoice(who) {
-  const all = speechSynthesis.getVoices(), lang = langSel.value, a = TEAM[who] || TEAM.jako;
-  const sameLang = all.filter(v => v.lang.replace('_', '-').startsWith(lang.slice(0, 2)));
-  if (lang.startsWith('en')) {
-    for (const want of (a.prefer || [])) { const v = all.find(v => v.name.includes(want)); if (v) return v; }
-  }
-  const keys = Object.keys(TEAM), i = Math.max(0, keys.indexOf(who));      // spread members over the voices we have
-  const nice = sameLang.filter(v => /Google|Natural|Online/.test(v.name));
-  const pool = nice.length > 1 ? nice : sameLang;
-  return pool.length ? pool[i % pool.length] : null;
+  d.appendChild(document.createTextNode(text)); logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
 }
 
+// ------------------------------------------------------------------ the energy core (canvas)
+const cv = $('core'), ctx = cv.getContext('2d');
+function resize() { const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+                    cv.width = r.width * d; cv.height = r.height * d; }
+window.addEventListener('resize', resize); resize();
+function hexA(hex, a) { const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
+let t0 = performance.now(), energy = 0.3;
+function frame(now) {
+  const t = (now - t0) / 1000, W = cv.width, H = cv.height, cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 * 0.92;
+  const c = color(current);
+  let target = { idle:0.25, listening:0.45 + micLevel * 2.2, thinking:0.7, speaking:0.75 + wordPulse * 0.6 }[state] || 0.3;
+  if (awake) target += 0.25;
+  energy += (Math.min(target, 1.6) - energy) * 0.12; wordPulse *= 0.9;
+  const spin = { idle:0.15, listening:0.35, thinking:1.6, speaking:0.6 }[state] || 0.2;
+  ctx.clearRect(0, 0, W, H);
+
+  // soft outer glow
+  let g = ctx.createRadialGradient(cx, cy, R * 0.1, cx, cy, R * 1.05);
+  g.addColorStop(0, hexA(c, 0.22 * energy)); g.addColorStop(0.55, hexA(c, 0.08 * energy)); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R * 1.05, 0, Math.PI * 2); ctx.fill();
+  ctx.lineCap = 'round';
+
+  // outer tick ring
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(t * 0.05 * spin);
+  for (let i = 0; i < 120; i++) {
+    const a = i / 120 * Math.PI * 2, long = i % 10 === 0;
+    ctx.strokeStyle = hexA(c, long ? 0.75 : 0.28); ctx.lineWidth = long ? R * 0.008 : R * 0.004;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * 0.94, Math.sin(a) * R * 0.94);
+    ctx.lineTo(Math.cos(a) * R * (long ? 0.88 : 0.91), Math.sin(a) * R * (long ? 0.88 : 0.91)); ctx.stroke();
+  }
+  ctx.restore();
+
+  // segmented rings, turning in opposite directions
+  const rings = [ { r:0.80, n:12, w:0.035, dir: 1, gap:0.10, a:0.85 },
+                  { r:0.68, n:3,  w:0.016, dir:-1.6, gap:0.55, a:0.6 },
+                  { r:0.58, n:24, w:0.05,  dir: 0.8, gap:0.18, a:0.55 } ];
+  for (const ring of rings) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(t * spin * 0.35 * ring.dir);
+    const seg = Math.PI * 2 / ring.n;
+    for (let i = 0; i < ring.n; i++) {
+      const lit = 0.45 + 0.55 * Math.max(0, Math.sin(t * 3 + i * 0.9)) * Math.min(1, energy);
+      ctx.strokeStyle = hexA(c, ring.a * lit); ctx.lineWidth = R * ring.w;
+      ctx.shadowColor = c; ctx.shadowBlur = R * 0.04 * energy;
+      ctx.beginPath(); ctx.arc(0, 0, R * ring.r, i * seg + seg * ring.gap / 2, (i + 1) * seg - seg * ring.gap / 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // voice ring: a wave around the core while listening or speaking
+  ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = hexA(c, 0.9); ctx.lineWidth = R * 0.012;
+  ctx.shadowColor = c; ctx.shadowBlur = R * 0.06; ctx.beginPath();
+  const amp = (state === 'speaking' ? 0.025 + wordPulse * 0.06 : state === 'listening' ? micLevel * 0.25 : 0.006);
+  for (let i = 0; i <= 180; i++) {
+    const a = i / 180 * Math.PI * 2;
+    const rr = R * (0.46 + amp * (Math.sin(a * 6 + t * 7) * 0.6 + Math.sin(a * 11 - t * 5) * 0.4));
+    i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.stroke(); ctx.restore();
+
+  // inner triangle frame and bright core
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-t * spin * 0.2);
+  ctx.strokeStyle = hexA(c, 0.5); ctx.lineWidth = R * 0.01; ctx.beginPath();
+  for (let i = 0; i <= 3; i++) { const a = i / 3 * Math.PI * 2 - Math.PI / 2;
+    i ? ctx.lineTo(Math.cos(a) * R * 0.36, Math.sin(a) * R * 0.36) : ctx.moveTo(Math.cos(a) * R * 0.36, Math.sin(a) * R * 0.36); }
+  ctx.stroke(); ctx.restore();
+  const coreR = R * (0.2 + 0.05 * Math.sin(t * 2.2) * energy + wordPulse * 0.05);
+  g = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR * 1.6);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.35, hexA(c, 0.9)); g.addColorStop(1, hexA(c, 0));
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, coreR * 1.6, 0, Math.PI * 2); ctx.fill();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ------------------------------------------------------------------ microphone: level for the core + double-clap
+let audioCtx = null, analyser = null, buf = null, lastPeak = 0, lastClap = 0, floor = 0.01;
+async function startMic() {
+  if (analyser) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:false } });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024; src.connect(analyser);
+    buf = new Float32Array(analyser.fftSize);
+    setInterval(listenLevel, 20);
+  } catch (e) { /* no mic: the core still animates */ }
+}
+function listenLevel() {
+  analyser.getFloatTimeDomainData(buf);
+  let peak = 0, sum = 0;
+  for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i]); sum += v * v; if (v > peak) peak = v; }
+  const rms = Math.sqrt(sum / buf.length);
+  micLevel += (rms - micLevel) * 0.3;
+  floor = floor * 0.995 + Math.min(rms, 0.05) * 0.005;
+  // a clap: a sharp, loud spike well above the room's noise, rising fast from quiet
+  const now = performance.now();
+  if (clapOn && !speaking && peak > 0.45 && peak > floor * 14 && lastPeak < peak * 0.35 && now - lastClap > 120) {
+    if (now - lastClap < 800 && now - lastClap > 180) { lastClap = 0; onDoubleClap(); }
+    else lastClap = now;
+  }
+  lastPeak = peak;
+}
+function chime() {
+  if (!audioCtx) return;
+  const n = audioCtx.currentTime;
+  for (const [f, d] of [[660, 0], [990, 0.09]]) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.value = f; o.type = 'sine';
+    g.gain.setValueAtTime(0.0001, n + d); g.gain.exponentialRampToValueAtTime(0.12, n + d + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, n + d + 0.22); o.connect(g).connect(audioCtx.destination);
+    o.start(n + d); o.stop(n + d + 0.25);
+  }
+}
+function onDoubleClap() { if (busy || speaking) return; chime(); goAwake('Clap heard. What can I do for you?'); }
+
+// ------------------------------------------------------------------ speaking with each member's voice
+function pickVoice(who) {
+  const all = speechSynthesis.getVoices(), lang = langSel.value, a = TEAM[who] || TEAM.jako;
+  const same = all.filter(v => v.lang.replace('_', '-').startsWith(lang.slice(0, 2)));
+  if (lang.startsWith('en')) for (const want of (a.prefer || [])) { const v = same.find(v => v.name.includes(want)); if (v) return v; }
+  const keys = Object.keys(TEAM), i = Math.max(0, keys.indexOf(who));
+  const nice = same.filter(v => /Natural|Online|Google/.test(v.name));
+  const pool = nice.length > 1 ? nice : same;
+  return pool.length ? pool[i % pool.length] : null;
+}
+let unlocked = true;
 function speak(text, who) {
   who = who || 'jako';
   return new Promise(resolve => {
     if (!('speechSynthesis' in window) || !text) return resolve();
-    speaking = true; setState('speaking', (TEAM[who] || TEAM.jako).name + ' is speaking…'); drawTeam(who);
-    stopRec();
+    speaking = true; setState('speaking', '', who); drawTeam(who); captionEl.textContent = text; stopRec();
     const a = TEAM[who] || TEAM.jako;
     const u = new SpeechSynthesisUtterance(text.replace(/[*_#`]/g, ''));
     u.lang = langSel.value; u.rate = a.rate || 1; u.pitch = a.pitch || 1;
-    const voice = pickVoice(who); if (voice) { u.voice = voice; u.lang = voice.lang; }
-    u.onend = u.onerror = () => { speaking = false; drawTeam(); resolve(); };
+    const v = pickVoice(who); if (v) { u.voice = v; u.lang = v.lang; }
+    u.onboundary = () => { wordPulse = 1; };
+    u.onend = () => { speaking = false; drawTeam(); resolve(); };
+    u.onerror = e => { speaking = false; drawTeam();
+                       if (e.error === 'not-allowed') { unlocked = false; $('unlock').style.display = 'flex'; }
+                       resolve(); };
     speechSynthesis.speak(u);
   });
 }
+$('unlock').onclick = () => { unlocked = true; $('unlock').style.display = 'none';
+                              if (audioCtx) audioCtx.resume(); speechSynthesis.speak(new SpeechSynthesisUtterance('')); };
 async function say(parts) {
   speechSynthesis.cancel();
-  for (const p of parts) { add('jako', p.text, p.who); await speak(p.text, p.who); }
+  for (const p of parts) { add('bot', p.text, p.who); await speak(p.text, p.who); }
+  setTimeout(() => { if (!speaking) captionEl.textContent = ''; }, 4000);
+  setState(running ? 'listening' : 'idle', running ? 'Say “Hey Jako …” or clap twice' : 'Paused');
   startRec();
 }
 
+// ------------------------------------------------------------------ talking to Jako
 async function ask(text) {
   if (!text.trim() || busy) return;
-  busy = true; add('me', text); setState('thinking', 'Thinking…');
+  busy = true; add('me', text); captionEl.textContent = '“' + text + '”'; setState('thinking', 'Thinking…');
   try {
     const r = await fetch('/api/ask', { method:'POST', headers:{'Content-Type':'application/json'},
                                         body: JSON.stringify({ text }) });
-    const data = await r.json();
+    const data = await r.json(); busy = false;
     await say(data.parts && data.parts.length ? data.parts : [{ who:'jako', text:data.reply }]);
   } catch (e) {
-    add('jako', 'I could not reach my brain. Is Jako running?', 'jako');
-  } finally { busy = false; if (!speaking) setState(running ? 'listening' : 'idle', running ? 'Say “Hey Jako …”' : ''); }
+    busy = false; await say([{ who:'jako', text:'I could not reach my brain. Is Jako running?' }]);
+  }
 }
-
-function goAwake() {
-  awake = true; setState('listening', 'Listening… what can I do for you?');
-  clearTimeout(awakeTimer); awakeTimer = setTimeout(() => { awake = false; if (!busy && !speaking) setState('listening', 'Say “Hey Jako …”'); }, 8000);
+function goAwake(msg) {
+  awake = true; setState('listening', msg || 'Listening… what can I do for you?');
+  clearTimeout(awakeTimer);
+  awakeTimer = setTimeout(() => { awake = false; if (!busy && !speaking) setState('listening', 'Say “Hey Jako …” or clap twice'); }, 8000);
 }
-
 function handleFinal(text) {
-  text = text.trim();
-  if (!text) return;
+  text = text.trim(); if (!text) return;
   const m = text.match(WAKE);
   if (m) {
     const rest = text.slice(m.index + m[0].length).trim();
     if (/^(wake up|aufwachen)\b/i.test(rest) || (!rest && /^hello$/i.test(m[1]))) { awake = false; ask('wake up'); }
-    else if (rest.split(/\s+/).length >= 2) { awake = false; ask(rest); } else { goAwake(); }
-  } else if (awake) {
-    awake = false; clearTimeout(awakeTimer); ask(text);
-  }
+    else if (rest.split(/\s+/).length >= 2) { awake = false; ask(rest); }
+    else { chime(); goAwake(); }
+  } else if (awake) { awake = false; clearTimeout(awakeTimer); ask(text); }
 }
-
 function startRec() {
   if (!running || speaking || busy) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { setState('idle', 'Voice needs Chrome or Edge. You can still type below.'); return; }
+  stopRec();
   rec = new SR(); rec.lang = langSel.value; rec.continuous = true; rec.interimResults = true;
   rec.onresult = e => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
       if (e.results[i].isFinal) handleFinal(t);
-      else if (WAKE.test(t) && !awake) setState('listening', 'Yes?');
+      else { if (awake || WAKE.test(t)) captionEl.textContent = t; if (WAKE.test(t) && !awake) setState('listening', 'Yes?'); }
     }
   };
-  rec.onerror = e => { if (e.error === 'not-allowed') { running = false; setState('idle', 'Please allow the microphone, then click the circle.'); } };
-  rec.onend = () => { if (running && !speaking && !busy) setTimeout(startRec, 300); };
-  try { rec.start(); setState('listening', awake ? 'Listening…' : 'Say “Hey Jako …”'); } catch (e) {}
+  rec.onerror = e => { if (e.error === 'not-allowed') { running = false; setState('idle', 'Please allow the microphone (icon in the address bar), then click the core.'); } };
+  rec.onend = () => { if (running && !speaking && !busy) setTimeout(startRec, 250); };
+  try { rec.start(); if (!awake) setState('listening', 'Say “Hey Jako …” or clap twice'); } catch (e) {}
 }
 function stopRec() { if (rec) { rec.onend = null; try { rec.stop(); } catch (e) {} rec = null; } }
 function restart() { stopRec(); startRec(); }
 
-orb.onclick = () => {
-  if (running) { running = false; stopRec(); setState('idle', 'Paused. Click the circle to listen again.'); }
-  else { running = true; startRec(); }
+$('core').onclick = () => {
+  if (audioCtx) audioCtx.resume();
+  if (running) { running = false; stopRec(); setState('idle', 'Paused. Click the core to listen again.'); }
+  else { running = true; startMic(); startRec(); }
 };
-document.getElementById('form').onsubmit = e => {
-  e.preventDefault(); const i = document.getElementById('text'); const t = i.value; i.value = ''; ask(t);
-};
+$('form').onsubmit = e => { e.preventDefault(); const i = $('text'); const t = i.value; i.value = ''; ask(t); };
 
-// Reminders and the morning greeting are spoken here when this page is open.
+// Start listening by itself when the microphone was allowed before (no click needed).
+(async () => {
+  let granted = false;
+  try { granted = (await navigator.permissions.query({ name:'microphone' })).state === 'granted'; } catch (e) {}
+  if (granted) { running = true; await startMic(); startRec(); }
+  else setState('idle', 'Click the core once and allow the microphone. After that Jako starts by itself.');
+})();
+
+// Reminders and the morning greeting are spoken when they come in.
 setInterval(async () => {
+  if (busy || speaking) return;
   try {
-    const r = await fetch('/api/outbox'); const items = (await r.json()).items || [];
-    if (items.length && !busy && !speaking) await say(items.map(t => typeof t === 'string' ? { who:'jako', text:t } : t));
+    const items = (await (await fetch('/api/outbox')).json()).items || [];
+    if (items.length) await say(items.map(t => typeof t === 'string' ? { who:'jako', text:t } : t));
   } catch (e) {}
-}, 20000);
+}, 15000);
 speechSynthesis && speechSynthesis.getVoices();
+drawTeam();
 </script>
 </body>
 </html>

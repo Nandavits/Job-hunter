@@ -134,7 +134,7 @@ def test_web_page_and_api(cfg, mem):
     brain = SimpleNamespace(talk=lambda text, channel: [{"who": "thor", "text": f"heard {text} via {channel}"}],
                             mem=mem)
     client = TestClient(create_app(brain))
-    assert "Hello Jako, wake up" in client.get("/").text
+    assert "clap twice" in client.get("/").text
     data = client.post("/api/ask", json={"text": "hi"}).json()
     assert data["parts"] == [{"who": "thor", "text": "heard hi via voice"}]
     assert data["reply"].startswith("⚡ Thor:")

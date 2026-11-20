@@ -40,8 +40,24 @@ if errorlevel 1 (
   exit /b 1
 )
 timeout /t 5 /nobreak >nul
-start "" "http://localhost:8765"
+call :openjako
 echo.
-echo Jako is running. Click the circle on the page once, then say "Hello Jako, wake up".
+echo Jako is running in its own window. Say "Hello Jako, wake up" or clap twice.
+echo The very first time, allow the microphone once. After that Jako starts listening by itself.
 echo Iron Man can use this laptop while this computer is on. Changes always wait for your "yes".
 pause
+exit /b 0
+
+:openjako
+rem Own window, own profile: Jako may speak without a click, and the microphone choice is remembered.
+set "BROWSER="
+if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+if not defined BROWSER if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+if not defined BROWSER if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "BROWSER=%LocalAppData%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER (
+  start "" "http://localhost:8765"
+  exit /b 0
+)
+start "" "%BROWSER%" --app=http://localhost:8765 --user-data-dir="%CD%\data\jako-window" --autoplay-policy=no-user-gesture-required --window-size=1200,860 --no-first-run --no-default-browser-check
+exit /b 0
