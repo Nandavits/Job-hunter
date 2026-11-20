@@ -14,6 +14,15 @@ from .telegram_bot import Telegram
 
 def main() -> None:
     cfg = config.load()
+    from .whatsapp import mask_numbers                      # older logs may hold phone numbers: mask them once
+    for f in sorted(cfg.data_dir.glob("jako.log*")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+            clean = mask_numbers(text)
+            if clean != text:
+                f.write_text(clean, encoding="utf-8")
+        except OSError:
+            pass
     from logging.handlers import RotatingFileHandler
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S",
                         handlers=[logging.StreamHandler(),

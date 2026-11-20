@@ -72,6 +72,25 @@ TEAM_STATUS = re.compile(r"\b(?:team|avengers|everyone|everybody)\b.*\b(?:status
                          r"\b(?:status|report|update)\b.*\b(?:team|avengers|everyone|everybody)\b", re.I)
 
 
+SAVE_CONTACT = re.compile(
+    r"\bsave\s+(?:(?:the\s+)?(?:whatsapp\s+)?(?:number|contact)\s+(?P<num1>(?:\+|00)?\d[\d \-/().]{6,}\d)\s+(?:as|for)\s+"
+    r"(?P<name1>[^\d+,.!?]{1,40}?)|(?P<name2>[^\d+,.!?]{1,40}?)(?:'s|’s|s')?\s+(?:whatsapp\s+)?(?:phone\s+)?(?:number|contact)"
+    r"\s*(?:is|as|:)?\s*(?P<num2>(?:\+|00)?\d[\d \-/().]{6,}\d))\s*[.!]?\s*$", re.I)
+
+
+def save_contact_request(text: str) -> tuple[str, str] | None:
+    """'save Mahir's WhatsApp number plus 49 170 1234567' -> ('Mahir', '+49 170 1234567'). Handled on the laptop:
+    the number never goes to the AI."""
+    t = re.sub(r"\bplus\s*(?=\d)", "+", text.strip(), flags=re.I)
+    t = re.sub(r"^\W*(?:hey |hi |ok )?jako\W+", "", t, flags=re.I)
+    m = SAVE_CONTACT.search(t)
+    if not m:
+        return None
+    name = (m.group("name1") or m.group("name2") or "").strip(" '’")
+    name = re.sub(r"^(?:my\s+|the\s+)", "", name, flags=re.I).strip()
+    return (name, m.group("num1") or m.group("num2")) if name else None
+
+
 def is_roll_call(text: str) -> bool:
     """Short requests about the team's status get the instant report (no AI, answers in seconds)."""
     return bool(ROLL_CALL.match(text) or (TEAM_STATUS.search(text) and len(text.split()) <= 9))
@@ -118,6 +137,13 @@ class Brain:
         gated = self._confirmation(text, channel)
         if gated is not None:
             return gated
+        saved = save_contact_request(text)
+        if saved:                                     # straight to the laptop: the number never goes to the AI
+            out = self.team.hands.do("whatsapp_save_contact", {"name": saved[0], "number": saved[1]})
+            said = out.get("text") or out.get("error") or "Done."
+            self.mem.add_message(channel, "user", text)
+            self.mem.add_message(channel, "assistant", f"Iron Man: {said}")
+            return [{"who": "iron_man", "text": said}]
         kind = meeting.intent(text)
         if kind:                                      # the daily team meeting: Jako tells what the team reported
             parts = meeting.answer(self, kind, "German" if re.search(r"\b(ich|bitte|mein|was|wie)\b", text, re.I) else "English")

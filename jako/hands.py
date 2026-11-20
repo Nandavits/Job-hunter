@@ -637,6 +637,11 @@ def whatsapp_save_contact(name: str, number: str) -> str:
         return str(exc)
 
 
+def whatsapp_forget_contact(name: str) -> str:
+    from .whatsapp import forget_contact
+    return forget_contact(name)
+
+
 def whatsapp_contacts() -> str:
     from .whatsapp import list_contacts
     return list_contacts()
@@ -658,7 +663,8 @@ SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "fin
         "system_info": system_info, "lock_screen": lock_screen, "top_processes": top_processes,
         "disk_report": disk_report, "old_files": old_files, "hardware_health": hardware_health,
         "close_app": _do_close_app, "whatsapp_message": whatsapp_message, "whatsapp_call": whatsapp_call,
-        "whatsapp_save_contact": whatsapp_save_contact, "whatsapp_contacts": whatsapp_contacts}
+        "whatsapp_save_contact": whatsapp_save_contact, "whatsapp_contacts": whatsapp_contacts,
+        "whatsapp_forget_contact": whatsapp_forget_contact}
 
 
 def describe(action: str, args: dict) -> str:

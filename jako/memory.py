@@ -29,6 +29,15 @@ class Memory:
         self.lock = threading.Lock()
         with self.lock:
             self.db.executescript(SCHEMA)
+        self._scrub_numbers()
+
+    def _scrub_numbers(self) -> None:
+        """Mask phone numbers that an older version kept in the conversation."""
+        from .whatsapp import mask_numbers
+        for r in self._q("select id, content from messages"):
+            clean = mask_numbers(r["content"])
+            if clean != r["content"]:
+                self._q("update messages set content = ? where id = ?", (clean, r["id"]))
 
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
         with self.lock:
@@ -81,6 +90,9 @@ class Memory:
 
     # conversation history per channel (laptop / telegram)
     def add_message(self, channel: str, role: str, content) -> None:
+        from .whatsapp import mask_numbers                  # phone numbers are never kept in the conversation
+        if isinstance(content, str):
+            content = mask_numbers(content)
         self._q("insert into messages (channel, role, content, at) values (?, ?, ?, ?)",
                 (channel, role, json.dumps(content), _now()))
 
