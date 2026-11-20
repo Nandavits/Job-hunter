@@ -287,6 +287,7 @@ def top_processes(count: int = 8) -> str:
         except psutil.Error:
             continue
     merged: dict = {}
+    rows = [r for r in rows if r[0] not in ("System Idle Process", "System", "Idle", "Registry", "Memory Compression")]
     for name, rss, cpu in rows:                          # one line per program (Chrome has many processes)
         m = merged.setdefault(name, [0, 0.0, 0])
         m[0] += rss
