@@ -4,7 +4,7 @@ cd /d "%~dp0"
 if not exist logs mkdir logs
 echo Restarting Jako...
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' OR Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*jako-window*' } | ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }"
-docker compose restart jako > logs\jako-restart.log 2>&1
+docker compose up -d --build jako > logs\jako-restart.log 2>&1
 call jako-laptop-link.bat
 for /l %%i in (1,1,30) do (
   powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing http://localhost:8765/api/health -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }" && goto up

@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -r
 WORKDIR /app
 COPY requirements.txt requirements-jako.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-jako.txt
+# speaker-recognition model for the voice check (26 MB, runs on this computer)
+RUN mkdir -p /models && python -c "import urllib.request as u; u.urlretrieve('https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx', '/models/speaker.onnx')"
 
 COPY jobhunter ./jobhunter
 COPY jako ./jako
