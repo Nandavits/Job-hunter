@@ -35,6 +35,10 @@ def hardware_alerts(brain: Brain, telegram: Telegram, clock: float | None = None
     hands = getattr(getattr(brain, "team", None), "hands", None)
     if hands is not None and hands.online():
         out = hands.do("hardware_health", {})
+        if out.get("error"):
+            log.warning("Hulk's hardware check failed: %s", out["error"])
+        else:
+            log.info("Hulk's hardware check: %s", (out.get("text") or "").replace("\n", " | ")[:600])
         for line in (out.get("text") or "").splitlines():
             m = re.match(r"WARNING \[(\w+)\]: (.+)", line.strip())
             if m:
