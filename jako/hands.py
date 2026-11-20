@@ -870,11 +870,14 @@ def _inspect_whatsapp_if_asked() -> None:
         return
     try:
         flag.unlink()
+        import comtypes
+        comtypes.CoInitializeEx()                               # this runs in its own thread
         from .whatsapp import inspect
         inspect(ROOT / "logs" / "whatsapp-ui.txt")
         print(time.strftime("%H:%M:%S"), "WhatsApp controls written to logs/whatsapp-ui.txt", flush=True)
     except Exception as exc:                                  # noqa: BLE001
-        (ROOT / "logs" / "whatsapp-ui.txt").write_text(f"inspect failed: {exc!r}", encoding="utf-8")
+        p = ROOT / "logs" / "whatsapp-ui.txt"
+        p.write_text((p.read_text(encoding="utf-8") if p.exists() else "") + f"\ninspect failed: {exc!r}", encoding="utf-8")
 
 
 def main() -> None:
@@ -911,7 +914,7 @@ def main() -> None:
         threading.Thread(target=watchdog, daemon=True).start()
     print(time.strftime("%H:%M:%S"), f"Jako laptop link started on {computer}, talking to {base}", flush=True)
     if sys.platform == "win32":
-        _inspect_whatsapp_if_asked()
+        threading.Thread(target=_inspect_whatsapp_if_asked, daemon=True).start()   # never blocks Iron Man
     while True:
         try:
             serve_once(hands, base, token, computer)

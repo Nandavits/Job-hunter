@@ -78,10 +78,10 @@ def _start_whatsapp():
     return w
 
 
-def _find(w, names: tuple, control_type: str | None = None, timeout: float = 6):
+def _find(w, names: tuple, control_type: str = "Button", timeout: float = 6):
     end = time.time() + timeout
     while time.time() < end:
-        for el in w.descendants(control_type=control_type) if control_type else w.descendants():
+        for el in w.descendants(control_type=control_type):        # filtered by Windows: fast
             n = _norm(el.window_text())
             if n and any(n == x or n.startswith(x) for x in names):
                 return el
@@ -140,7 +140,7 @@ def call(contact: str, video: bool = False) -> str:
         if menu is not None:
             menu.click_input()
             time.sleep(0.8)
-            btn = _find(_window(), names, None, timeout=3)
+            btn = _find(_window(), names, "MenuItem", timeout=3) or _find(_window(), names, "Button", timeout=2)
     if btn is None:
         raise WhatsAppError(f"I opened the chat with {name} but couldn't find the {'video' if video else 'voice'} call button.")
     btn.click_input()
@@ -150,21 +150,31 @@ def call(contact: str, video: bool = False) -> str:
 # ---------------------------------------------------------------- one-time look at WhatsApp's controls
 def inspect(out: Path) -> None:
     """Write the names of WhatsApp's buttons and boxes to a file (chat names and messages are hidden)."""
+    lines: list[str] = []
+    def note(s):
+        lines.append(s)
+        out.write_text("\n".join(lines), encoding="utf-8")         # saved as it goes
+    t0 = time.time()
+    note("starting")
     w = _start_whatsapp()
-    lines = [f"window: {w.window_text()!r}"]
+    note(f"window: {w.window_text()!r} after {time.time() - t0:.1f}s")
     def dump(when):
-        lines.append(f"--- {when}")
-        for el in w.descendants():
-            ct = el.element_info.control_type
-            name = el.window_text() or ""
-            if ct in ("Button", "Edit", "MenuItem", "TabItem", "Hyperlink", "ComboBox"):
-                lines.append(f"{ct:10} {name[:60]!r} id={el.element_info.automation_id!r}")
-            elif ct in ("ListItem", "Text", "Document", "List", "Pane", "Group"):
-                lines.append(f"{ct:10} <{len(name)} chars>")
-    dump("main window")
-    first = next((el for el in w.descendants(control_type="ListItem") if el.window_text()), None)
+        note(f"--- {when}")
+        for ct in ("Edit", "Button", "MenuItem"):
+            t = time.time()
+            els = w.descendants(control_type=ct)
+            note(f"{ct}: {len(els)} found in {time.time() - t:.1f}s")
+            for el in els[:80]:
+                note(f"  {ct:8} {(el.window_text() or '')[:60]!r} id={el.element_info.automation_id!r}")
+        t = time.time()
+        items = w.descendants(control_type="ListItem")
+        note(f"ListItem: {len(items)} found in {time.time() - t:.1f}s (text hidden: lengths only)")
+        note("  " + ", ".join(str(len(el.window_text() or "")) for el in items[:30]))
+        return items
+    items = dump("main window")
+    first = next((el for el in items if el.window_text()), None)
     if first is not None:                                   # open the top chat (nothing is sent) to see its buttons
         first.click_input()
         time.sleep(1.5)
         dump("inside a chat")
-    out.write_text("\n".join(lines), encoding="utf-8")
+    note(f"done in {time.time() - t0:.1f}s")
