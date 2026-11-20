@@ -485,6 +485,8 @@ cv.onclick = e => {
 };
 $('form').onsubmit = e => { e.preventDefault(); const i = $('text'); const t = i.value; i.value = ''; ask(t); };
 
+// The microphone permission belongs to localhost; 127.0.0.1 counts as another site, so move there.
+if (!DESKTOP && location.hostname === '127.0.0.1') location.replace(location.href.replace('//127.0.0.1', '//localhost'));
 // Only one Jako window listens: when a new one opens, the older ones go quiet (no double answers).
 let quiet = false;
 if (!DESKTOP && 'BroadcastChannel' in window) {

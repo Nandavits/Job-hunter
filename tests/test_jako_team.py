@@ -353,3 +353,9 @@ def test_closed_window_comes_back_unless_stopped(tmp_path, monkeypatch):
     (tmp_path / "jako-stopped.flag").write_text("x")
     assert H.watch_window("http://x", check=lambda: False, opener=opened.append, healthy=up) == "stopped"
     assert opened == ["http://x"]
+
+
+def test_window_opens_on_localhost_where_the_microphone_is_allowed():
+    from jako import hands as H
+    assert H.window_url("http://127.0.0.1:8765") == "http://localhost:8765/"
+    assert H.window_url("http://localhost:8765/") == "http://localhost:8765/"

@@ -651,12 +651,17 @@ def jako_window_open() -> bool:
     return False
 
 
+def window_url(base: str) -> str:
+    """The window must use localhost: the microphone permission is saved for localhost, not 127.0.0.1."""
+    return base.replace("://127.0.0.1", "://localhost").rstrip("/") + "/"
+
+
 def open_jako_window(base: str, minimized: bool = True) -> bool:
     """Open Jako's own window (fixed browser command, our own address)."""
     for raw in BROWSERS:
         exe = os.path.expandvars(raw)
         if os.path.isfile(exe):
-            args = [exe, f"--app={base}", f"--user-data-dir={ROOT / 'data' / 'jako-window'}",
+            args = [exe, f"--app={window_url(base)}", f"--user-data-dir={ROOT / 'data' / 'jako-window'}",
                     "--autoplay-policy=no-user-gesture-required", "--no-first-run", "--no-default-browser-check",
                     "--start-minimized" if minimized else "--start-maximized"]
             subprocess.Popen(args, cwd=str(ROOT))  # nosec B603 - fixed program and arguments
