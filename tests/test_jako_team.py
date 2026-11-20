@@ -82,7 +82,7 @@ def test_jako_gives_task_to_iron_man_who_reports_in_own_voice(cfg, mem):
     parts = make(cfg, mem, client, hands).talk("open notepad", channel="voice")
     assert parts == [{"who": "iron_man", "text": "Notepad is open."}]
     assert hands.done == [("open_app", {"name": "notepad"})]
-    assert [t["name"] for t in client.calls[0]["tools"]] == ["remember", "forget", "ask_team"]
+    assert [t["name"] for t in client.calls[0]["tools"]] == ["remember", "forget", "ask_team", "team_meeting"]
     assert "Iron Man" in client.calls[1]["system"] and client.calls[1]["tools"][0]["name"] == "open_app"
 
 

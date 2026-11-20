@@ -344,6 +344,42 @@ class Team:
         parts.append({"who": "jako", "text": "Everyone is ready. What should we do?"})
         return parts
 
+    def meeting_reports(self, seconds: float = 75) -> dict:
+        """The daily team meeting: every member reports to Jako on their area (no AI, real numbers)."""
+        def iron_man():
+            text = self._iron_man().removeprefix("Iron Man here. ")
+            if self.hands.online():
+                top = self.hands.do("top_processes", {"count": 3}).get("text", "")
+                if top:
+                    text += " Busiest programs right now: " + "; ".join(top.splitlines()[:4])
+            return text
+
+        def hulk():
+            text = performance_report(self.cfg.data_dir / "perf.csv", 1)
+            if self.hands.online():
+                hw = self.hands.do("hardware_health", {})
+                text += " Hardware check: " + (hw.get("text") or hw.get("error") or "no answer").replace("\n", " ")
+            return text
+
+        checks = {"iron_man": iron_man, "hulk": hulk,
+                  "black_widow": lambda: self._black_widow().removeprefix("Black Widow here. "),
+                  "hawkeye": lambda: self._hawkeye().removeprefix("Hawkeye here. "),
+                  "captain_america": lambda: self._captain().removeprefix("Captain America here. "),
+                  "thor": lambda: self._thor().removeprefix("Thor here. "),
+                  "vision": lambda: "No screen review was asked for today. I look at your screen only when you ask."}
+        pool = ThreadPoolExecutor(max_workers=len(checks))
+        futures = {a: pool.submit(fn) for a, fn in checks.items()}
+        deadline = time.monotonic() + seconds
+        out = {}
+        for a, fut in futures.items():
+            try:
+                out[a] = fut.result(timeout=max(0.1, deadline - time.monotonic()))
+            except Exception as exc:
+                log.warning("meeting: %s could not report: %r", a, exc)
+                out[a] = "Couldn't finish my check in time for the meeting."
+        pool.shutdown(wait=False, cancel_futures=True)
+        return out
+
     def status_lines(self) -> dict:
         """Short live lines for the screen's side panels (same checks as the roll call, without the greeting)."""
         out = {}

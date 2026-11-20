@@ -97,6 +97,16 @@ def tick(brain: Brain, telegram: Telegram, now: datetime | None = None) -> list[
             telegram.send(f"💪 Hulk: Laptop health today. {report}")
             mem.say_later(f"[hulk] Laptop health today. {report}")
             said.append(report)
+    meet_stamp = cfg.data_dir / "jako_last_meeting.txt"
+    last_meet = meet_stamp.read_text().strip() if meet_stamp.is_file() else ""
+    if now.strftime("%H:%M") >= cfg.meeting_time and last_meet != today and hasattr(brain, "meetings"):
+        meet_stamp.write_text(today)                      # the daily team meeting (quietly: Jako tells when asked)
+        try:
+            from .meeting import hold
+            m = hold(brain)
+            said.append(m["summary"])
+        except Exception as exc:
+            log.warning("Team meeting failed: %s", exc)
     try:
         said += hardware_alerts(brain, telegram)
     except Exception as exc:
