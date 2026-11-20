@@ -15,6 +15,7 @@ from .config import JakoConfig
 from .memory import Memory
 from .skills import TOOLS, Skills
 from .team import AGENTS, DELEGATE_TOOL, Team
+from . import meeting
 
 log = logging.getLogger("jako")
 
@@ -33,6 +34,8 @@ Your team (use the ask_team tool):
 - thor: web search, news, facts, prices, rules, anything current, and the weather
 - hulk: laptop health (performance today and day to day, busiest programs, disk space, old unused files, cleaning up)
 - vision: looks at the screen and reviews the user's work (code, pipelines, SQL, documents, errors) when asked
+You are the boss: every day the team holds a team meeting and reports to you (team_meeting tool). When {name}
+asks what's going on, what the team reported, or for the daily report, use it and tell them what matters.
 
 How to work:
 - Small talk, opinions, explanations and things you know well: answer yourself.
@@ -55,7 +58,12 @@ STYLES = {
     "telegram": "Your answer is read on a phone: short paragraphs or a short list, plain text, no markdown tables.",
 }
 
-OWN_TOOLS = [t for t in TOOLS if t["name"] in ("remember", "forget")] + [DELEGATE_TOOL]
+MEETING_TOOL = {"name": "team_meeting", "description": (
+    "The daily team meeting, where every member reports to you on the laptop, health, email, jobs, plans and weather. "
+    "action 'latest' gives the last meeting's summary and reports, 'run' holds a new meeting now (takes up to a "
+    "minute). Use it when the user asks what the team reported, what's going on today, or for the daily report."),
+    "input_schema": {"type": "object", "properties": {"action": {"type": "string", "enum": ["latest", "run"]}}}}
+OWN_TOOLS = [t for t in TOOLS if t["name"] in ("remember", "forget")] + [DELEGATE_TOOL, MEETING_TOOL]
 
 ROLL_CALL = re.compile(r"^\W*(?:(?:hello|hi|hey|hallo|ok(?:ay)?)\W+)?(?:jako\W+)?(?:wake up|roll call|team status|"
                        r"status report|avengers,? assemble|everyone report|team,? report|who is (?:awake|there))\W*$",
@@ -88,6 +96,7 @@ class Brain:
         self.team = team or Team(cfg, self.skills)
         self.client = client
         self.pending: dict[str, dict] = {}            # channel -> {"code", "summary", "at"}
+        self.meetings = meeting.Meetings(memory)
 
     def _client(self):
         if self.client is None:
@@ -109,6 +118,13 @@ class Brain:
         gated = self._confirmation(text, channel)
         if gated is not None:
             return gated
+        kind = meeting.intent(text)
+        if kind:                                      # the daily team meeting: Jako tells what the team reported
+            parts = meeting.answer(self, kind, "German" if re.search(r"\b(ich|bitte|mein|was|wie)\b", text, re.I) else "English")
+            if remember:
+                self.mem.add_message(channel, "user", text)
+                self.mem.add_message(channel, "assistant", as_text(parts))
+            return parts
         if is_roll_call(text):
             return self.team.roll_call()
         if not self.cfg.api_key and self.client is None:
@@ -139,6 +155,11 @@ class Brain:
                     log.info("%s reports: %s", AGENTS[member]["name"], report[:150])
                     reports.append({"who": member, "text": report})
                     out = f"{AGENTS[member]['name']} reported (already spoken to the user): {report}"
+                elif call.name == "team_meeting":
+                    m = meeting.hold(self, lang) if args.get("action") == "run" or not self.meetings.latest() \
+                        else self.meetings.latest()
+                    out = (f"Team meeting of {m['day']}. Your summary then: {m['summary']}\nReports:\n" +
+                           "\n".join(f"- {AGENTS[a]['name']}: {r}" for a, r in m["reports"].items()))
                 else:
                     out = self.skills.run(call.name, args)
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": out[:8000]})
