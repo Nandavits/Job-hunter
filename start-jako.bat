@@ -74,7 +74,8 @@ for /l %%i in (1,1,30) do (
   timeout /t 2 /nobreak >nul
 )
 :jakoup
-call :openjako
+powershell -NoProfile -Command "if (Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' OR Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*jako-window*' }) { exit 0 } else { exit 1 }"
+if errorlevel 1 call :openjako
 call :livedesktop
 if defined BOOT exit /b 0
 echo.
