@@ -214,12 +214,61 @@ def test_hands_api_needs_the_token(home):
 def test_hands_starts_without_a_console(home, monkeypatch, tmp_path):
     """pythonw has no stdout/stderr; the helper must still start (this crashed on the real laptop)."""
     import sys
-    seen = {}
     monkeypatch.setattr(H, "ROOT", tmp_path)
     monkeypatch.setattr(H, "read_token", lambda: "k" * 32)
     monkeypatch.setattr(sys, "stdout", None)
     monkeypatch.setattr(sys, "stderr", None)
+
+    def stop(*a, **kw):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(H, "serve_once", stop)
+    with pytest.raises(KeyboardInterrupt):
+        H.main()
+    assert "laptop link started" in (tmp_path / "logs" / "jako-hands-run.log").read_text()
+
+
+def test_laptop_link_end_to_end(home, cfg, mem):
+    """Jako (server) <- helper polls -> reads a real file -> Iron Man gets the text. Also: wrong token is refused."""
+    import socket
+    import threading
+    import urllib.error
     import uvicorn
-    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw, out=sys.stdout))
-    H.main()
-    assert seen["log_config"] is None and seen["out"] is not None
+    from jako.server import create_app
+    from jako.team import HandsClient
+    skills = Skills(cfg, mem)
+    bridge = HandsClient(cfg)
+    brain = SimpleNamespace(cfg=cfg, mem=mem, team=Team(cfg, skills, hands=bridge))
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    server = uvicorn.Server(uvicorn.Config(create_app(brain), port=port, log_level="error"))
+    threading.Thread(target=server.run, daemon=True).start()
+    import time
+    for _ in range(50):
+        if server.started:
+            break
+        time.sleep(0.1)
+    base = f"http://127.0.0.1:{port}"
+    with pytest.raises(urllib.error.HTTPError):
+        H.serve_once(H.Hands(), base, "wrong-token-wrong-token", "PC")
+    assert bridge.do("read_file", {"path": "x"})["error"].startswith("I can't reach the laptop")
+    stop = threading.Event()
+
+    def helper():
+        hands = H.Hands()
+        while not stop.is_set():
+            try:
+                H.serve_once(hands, base, cfg.hands_token, "LAPTOP-TEST")
+            except Exception:
+                time.sleep(0.1)
+    threading.Thread(target=helper, daemon=True).start()
+    time.sleep(0.5)
+    assert bridge.do("read_file", {"path": "Documents/notes.txt"}) == {"text": "hello"}
+    assert bridge.status()["computer"] == "LAPTOP-TEST"
+    pending = bridge.do("delete", {"path": "Documents/notes.txt"})
+    assert "pending" in pending and (home / "Documents" / "notes.txt").exists()
+    assert bridge.cancel(pending["pending"]) == {"text": "Cancelled."}
+    assert "LAPTOP-TEST" in Team(cfg, skills, hands=bridge)._iron_man()
+    stop.set()
+    server.should_exit = True

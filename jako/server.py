@@ -5,7 +5,9 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI
+import secrets
+
+from fastapi import Body, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -53,6 +55,23 @@ def create_app(brain: Brain) -> FastAPI:
                     hud["data"] = {"error": str(exc)}
                 hud["at"] = time.time()
             return hud["data"]
+
+    # ---- the laptop helper (jako/hands.py on Windows) collects Iron Man's jobs here
+    def _hands(token: str | None):
+        hands = getattr(getattr(brain, "team", None), "hands", None)
+        want = getattr(getattr(brain, "cfg", None), "hands_token", "")
+        if hands is None or not want or not token or not secrets.compare_digest(token, want):
+            raise HTTPException(status_code=401, detail="wrong token")
+        return hands
+
+    @app.get("/api/hands/poll")
+    def hands_poll(computer: str = "", x_jako_token: str | None = Header(default=None)):
+        return _hands(x_jako_token).poll(computer[:80])
+
+    @app.post("/api/hands/result")
+    def hands_result(body: dict = Body(...), x_jako_token: str | None = Header(default=None)):
+        _hands(x_jako_token).deliver(str(body.get("id", "")), body.get("result") or {})
+        return {"ok": True}
 
     @app.get("/api/team")
     def team():

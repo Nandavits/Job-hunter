@@ -1,7 +1,7 @@
 """Jako's hands: a small helper that runs directly on Windows (not in Docker) so Iron Man can use the laptop.
 
 Safety rules, enforced here and not by the AI:
-- Only answers requests that carry the secret JAKO_HANDS_TOKEN, and only listens on this computer (127.0.0.1).
+- Only takes jobs from Jako on this computer, using the secret JAKO_HANDS_TOKEN.
 - Safe actions run at once: open an app, website or document, find/list/read files, screenshot, volume,
   system info, lock the screen.
 - Everything that changes something (run a command, write/move/delete a file, close an app, open a program file)
@@ -9,7 +9,9 @@ Safety rules, enforced here and not by the AI:
 - Files: only inside your user folder, never secret folders (.ssh, browser profiles, password files, .env ...).
 - Deleting moves to the Recycle Bin, so it can be undone.
 
-Start: start-jako.bat does it for you (python -m jako.hands).
+It talks to Jako by asking http://127.0.0.1:8765 for jobs (Docker can't connect into the laptop, so the
+helper calls out instead; nothing on the laptop listens on the network).
+Start: start-jako.bat or jako-laptop-link.bat does it for you (python -m jako.hands).
 """
 from __future__ import annotations
 
@@ -402,15 +404,59 @@ def create_app(token: str, hands: Hands | None = None):
     return app
 
 
+def serve_once(hands: Hands, base: str, token: str, computer: str, opener=None) -> bool:
+    """Ask Jako for one job, do it, send the result back. Returns True if there was a job."""
+    import json
+    import urllib.parse
+    import urllib.request
+    opener = opener or urllib.request.urlopen
+    req = urllib.request.Request(f"{base}/api/hands/poll?computer={urllib.parse.quote(computer)}",
+                                 headers={"X-Jako-Token": token})
+    with opener(req, timeout=40) as r:  # nosec B310 - fixed local Jako address
+        job = json.loads(r.read() or b"{}")
+    if not job.get("id"):
+        return False
+    kind = job.get("kind")
+    if kind == "do":
+        result = hands.do(str(job.get("action", "")), job.get("args") or {})
+    elif kind == "confirm":
+        result = hands.confirm(str(job.get("code", "")))
+    elif kind == "cancel":
+        result = hands.cancel(str(job.get("code", "")))
+    elif kind == "status":
+        hands._expire()
+        result = {"ok": True, "computer": computer, "pending": len(hands.pending)}
+    else:
+        result = {"error": f"Unknown job {kind}"}
+    body = json.dumps({"id": job["id"], "result": result}).encode()
+    post = urllib.request.Request(f"{base}/api/hands/result", data=body, method="POST",
+                                  headers={"X-Jako-Token": token, "Content-Type": "application/json"})
+    with opener(post, timeout=30):  # nosec B310
+        pass
+    return True
+
+
 def main() -> None:
-    import uvicorn
     if sys.stdout is None or sys.stderr is None:      # started hidden (pythonw): no console to write to
         (ROOT / "logs").mkdir(exist_ok=True)
         log = open(ROOT / "logs" / "jako-hands-run.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
         sys.stdout = sys.stdout or log
         sys.stderr = sys.stderr or log
-    host = os.environ.get("JAKO_HANDS_BIND", "127.0.0.1")
-    uvicorn.run(create_app(read_token()), host=host, port=8766, log_level="warning", log_config=None)
+    token = read_token()
+    if len(token) < 16:
+        raise SystemExit("JAKO_HANDS_TOKEN is missing or too short in .env. start-jako.bat creates one.")
+    base = os.environ.get("JAKO_URL", "http://127.0.0.1:8765").rstrip("/")
+    hands, computer, quiet = Hands(), platform.node(), 0
+    print(time.strftime("%H:%M:%S"), f"Jako laptop link started on {computer}, talking to {base}", flush=True)
+    while True:
+        try:
+            serve_once(hands, base, token, computer)
+            quiet = 0
+        except Exception as exc:                        # Jako not up yet, or restarting: try again soon
+            if quiet == 0:
+                print(time.strftime("%H:%M:%S"), f"waiting for Jako: {exc}", flush=True)
+            quiet += 1
+            time.sleep(5)
 
 
 if __name__ == "__main__":
