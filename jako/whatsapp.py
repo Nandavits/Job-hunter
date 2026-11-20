@@ -241,8 +241,69 @@ def send_message(contact: str, text: str) -> str:
     return f"Sent to {name} on WhatsApp: “{text.strip()}”"
 
 
+VOICE = ("voice call", "audio call", "sprachanruf", "audioanruf")
+VIDEO = ("video call", "videoanruf")
+CALL_MENU = ("call", "anrufen", "start call")
+
+
+def _header_buttons(win) -> list:
+    """Visible buttons in the open chat's top bar (right part, top strip of the window), never the left side tabs."""
+    r = win.rectangle()
+    top, left = r.top + max(140, int(r.height() * 0.16)), r.left + int(r.width() * 0.35)
+    seen, out = set(), []
+    for el in win.descendants(control_type="Button"):
+        try:
+            b = el.rectangle()
+            if b.width() < 3 or b.height() < 3 or b.top > top or b.left < left:
+                continue
+            key = (b.left, b.top, el.window_text())
+            if key not in seen:
+                seen.add(key)
+                out.append(el)
+        except Exception:
+            continue
+    return out
+
+
+def _named(buttons, names):
+    for el in buttons:
+        n = _norm(el.window_text())
+        if any(n == x or n.startswith(x + " ") for x in names):
+            return el
+    return None
+
+
+def call_click(video: bool) -> None:
+    """Click the call button in the open chat's top bar."""
+    from pywinauto import Desktop
+    win = Desktop(backend="uia").window(title="WhatsApp", control_type="Window").wrapper_object()
+    buttons = _header_buttons(win)
+    btn = _named(buttons, VIDEO if video else VOICE)
+    if btn is None:                                         # newer WhatsApp: one "Call" button that opens a small menu
+        menu = _named(buttons, CALL_MENU)
+        if menu is not None:
+            menu.click_input()
+            time.sleep(1.0)
+            for ct in ("MenuItem", "Button", "ListItem"):
+                for el in win.descendants(control_type=ct):
+                    n = _norm(el.window_text())
+                    if any(n == x or n.startswith(x) for x in (VIDEO if video else VOICE)):
+                        btn = el
+                        break
+                if btn is not None:
+                    break
+    if btn is None:
+        names = sorted({(b.window_text() or "")[:40] for b in buttons})
+        (ROOT / "logs").mkdir(exist_ok=True)
+        (ROOT / "logs" / "whatsapp-ui.txt").write_text("chat top-bar buttons: " + repr(names), encoding="utf-8")
+        raise WhatsAppError("I opened the chat but couldn't find WhatsApp's call button, so no call was started.")
+    if _foreground_title() != "WhatsApp":
+        raise WhatsAppError("WhatsApp lost focus, so I didn't press anything.")
+    btn.click_input()
+
+
 def call(contact: str, video: bool = False) -> str:
     name, phone = find(contact)
     _open_chat(phone)
-    _press("^+v" if video else "^+c")
+    call_click(video)
     return f"Calling {name} on WhatsApp ({'video' if video else 'voice'} call)."
