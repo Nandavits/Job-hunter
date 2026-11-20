@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
+import uuid
 from datetime import datetime
 
 from .config import JakoConfig
@@ -33,7 +35,9 @@ Your team (use the ask_team tool):
 - captain_america: reminders, to-dos, planning the day
 - thor: web search, news, facts, prices, rules, anything current, and the weather
 - hulk: laptop health (performance today and day to day, busiest programs, disk space, old unused files, cleaning up)
-- vision: looks at the screen and reviews the user's work (code, pipelines, SQL, documents, errors) when asked
+- vision: looks at the screen and reviews the user's work (code, pipelines, SQL, documents, errors) when asked.
+  Vision is also Jako's engineer: he reads, searches and edits Jako's own code (the job-hunter folder) and restarts
+  Jako. When the user asks to change, fix or improve Jako, its agents or its screen, give the whole task to vision.
 You are the boss: every day the team holds a team meeting and reports to you (team_meeting tool). When {name}
 asks what's going on, what the team reported, or for the daily report, use it and tell them what matters.
 
@@ -91,6 +95,11 @@ def save_contact_request(text: str) -> tuple[str, str] | None:
     return (name, m.group("num1") or m.group("num2")) if name else None
 
 
+WORKING = re.compile(r"\bwhat are you (?:doing|working on|busy with)\b|\bare you (?:still )?(?:busy|working|there)\b|"
+                     r"\bwhat'?s (?:running|happening) (?:right )?now\b|\b(?:status|progress) of (?:my|the|your) "
+                     r"(?:task|job|request|work)s?\b|\bis it done\b|\bare you done\b", re.I)
+
+
 def is_roll_call(text: str) -> bool:
     """Short requests about the team's status get the instant report (no AI, answers in seconds)."""
     return bool(ROLL_CALL.match(text) or (TEAM_STATUS.search(text) and len(text.split()) <= 9))
@@ -116,6 +125,54 @@ class Brain:
         self.client = client
         self.pending: dict[str, dict] = {}            # channel -> {"code", "summary", "at"}
         self.meetings = meeting.Meetings(memory)
+        self.jobs: dict[str, dict] = {}               # questions still being worked on
+        self._jobs_lock = threading.Lock()
+
+    # ---------- always answer: long jobs keep running in the background ----------
+    def talk_soon(self, text: str, channel: str = "voice", wait: float = 20.0) -> list[dict]:
+        """Like talk(), but never keeps the user waiting: after `wait` seconds Jako says it's still working, the job
+        goes on, and the result is spoken (outbox) when it's ready. Meanwhile Jako keeps answering new questions."""
+        if WORKING.search(text) and len(text.split()) <= 10:
+            return self.working_now()
+        jid, holder, done = uuid.uuid4().hex[:8], {}, threading.Event()
+
+        def run():
+            try:
+                holder["parts"] = self.talk(text, channel)
+            except Exception:
+                log.exception("ask failed: %s", text[:80])
+                holder["parts"] = [{"who": "jako", "text": "Sorry, something went wrong on my side. Please ask me again."}]
+            done.set()
+            with self._jobs_lock:
+                job = self.jobs.pop(jid, None)
+            if job and job.get("detached"):
+                for p in holder["parts"]:
+                    self.mem.say_later(f"[{p['who']}] {p['text']}")
+                log.info("Finished in the background: %s", text[:80])
+
+        with self._jobs_lock:
+            self.jobs[jid] = {"text": text, "started": time.time(), "detached": False}
+        threading.Thread(target=run, daemon=True, name=f"jako-{jid}").start()
+        if done.wait(wait):
+            return holder["parts"]
+        with self._jobs_lock:
+            if jid not in self.jobs:                    # finished just now
+                return holder.get("parts") or []
+            self.jobs[jid]["detached"] = True
+        short = text if len(text) < 60 else text[:57] + "..."
+        return [{"who": "jako", "text": f"I'm on it: “{short}”. It takes a little longer, so keep talking to me. "
+                                        "I'll tell you as soon as it's done."}]
+
+    def working_now(self) -> list[dict]:
+        with self._jobs_lock:
+            jobs = [j for j in self.jobs.values() if j.get("detached")]
+        if not jobs:
+            return [{"who": "jako", "text": "Nothing is running right now. I'm free. What can I do for you?"}]
+        bits = []
+        for j in sorted(jobs, key=lambda j: j["started"]):
+            mins = int((time.time() - j["started"]) // 60)
+            bits.append(f"“{j['text'][:60]}” for {mins} minute{'s' if mins != 1 else ''}" if mins else f"“{j['text'][:60]}”, just started")
+        return [{"who": "jako", "text": "I'm working on " + "; and ".join(bits) + ". I'll tell you when it's done."}]
 
     def _client(self):
         if self.client is None:

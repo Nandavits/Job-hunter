@@ -67,8 +67,10 @@ JOBS = {
              "replace the drive), the busiest programs, "
              "disk space, big old files that are not used any more, and cleaning up (temporary files, Recycle Bin, "
              "old files). Cleaning always needs the user's yes, which Jako handles."),
-    "vision": ("looks at the screen and reviews what the user is working on when asked: code, data pipelines, SQL, "
-               "notebooks, documents, error messages. Can also read the code files on the laptop."),
+    "vision": ("Jako's engineer and reviewer. Reviews what the user works on (code, data pipelines, SQL, notebooks, "
+               "documents, errors on screen). Also improves Jako itself: reads, searches and edits Jako's own code in the "
+               "job-hunter folder (jako/*.py, jako/static/index.html, the .bat files) and restarts Jako so changes "
+               "take effect. Every edit is backed up and can be undone."),
 }
 
 TOOLS_BY_AGENT = {
@@ -85,10 +87,31 @@ HANDS_TOOLS = {
                  "whatsapp_forget_contact"],
     "hulk": ["system_info", "hardware_health", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
              "find_files", "list_folder"],
-    "vision": ["screenshot", "read_file", "find_files", "list_folder"],
+    "vision": ["screenshot", "read_file", "find_files", "list_folder",
+               "code_list", "code_read", "code_search", "code_edit", "code_write", "code_undo", "restart_jako"],
 }
 
 LAPTOP_TOOLS = [
+    {"name": "code_list", "description": "List the files of Jako's project (the job-hunter folder), optionally one folder like 'jako'.",
+     "input_schema": {"type": "object", "properties": {"folder": {"type": "string"}}}},
+    {"name": "code_read", "description": "Read a project file with line numbers, e.g. jako/team.py. Long files: read in "
+     "parts with start (line number) and lines (up to 400).",
+     "input_schema": {"type": "object", "required": ["path"], "properties": {
+         "path": {"type": "string"}, "start": {"type": "integer", "default": 1}, "lines": {"type": "integer", "default": 200}}}},
+    {"name": "code_search", "description": "Find lines in the project that contain a text (function names, settings...).",
+     "input_schema": {"type": "object", "required": ["text"], "properties": {"text": {"type": "string"}, "folder": {"type": "string"}}}},
+    {"name": "code_edit", "description": "Change a project file: replace one exact piece of text (old, copied exactly from "
+     "code_read without the line-number prefix, appearing once) with new text. Backed up; Python/JSON that would break "
+     "is refused. Prefer several small edits over rewriting a file.",
+     "input_schema": {"type": "object", "required": ["path", "old", "new"], "properties": {
+         "path": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"}}}},
+    {"name": "code_write", "description": "Create a new project file (or replace a small one completely). Backed up.",
+     "input_schema": {"type": "object", "required": ["path", "content"], "properties": {
+         "path": {"type": "string"}, "content": {"type": "string"}}}},
+    {"name": "code_undo", "description": "Undo the last code change (puts the file back as it was).",
+     "input_schema": {"type": "object", "properties": {}}},
+    {"name": "restart_jako", "description": "Restart Jako so code changes take effect (about a minute). Use once, after all edits.",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "open_app", "description": "Open an app by name, e.g. notepad, chrome, excel, spotify, settings.",
      "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
     {"name": "open_url", "description": "Open a web address in the default browser (for websites like GitHub, LinkedIn, "
@@ -214,8 +237,10 @@ class HandsClient:
         result = self.waiting.pop(job_id, [None, None])[1]
         return result if isinstance(result, dict) else {"error": "The laptop didn't answer in time."}
 
+    SLOW = {"whatsapp_call": 120, "whatsapp_message": 90, "hardware_health": 90, "code_search": 60, "code_list": 60}
+
     def do(self, action: str, args: dict) -> dict:
-        return self._call("do", {"action": action, "args": args})
+        return self._call("do", {"action": action, "args": args}, timeout=self.SLOW.get(action, 40))
 
     def confirm(self, code: str) -> dict:
         return self._call("confirm", {"code": code})
@@ -277,7 +302,7 @@ class Team:
         self.cfg, self.skills = cfg, skills
         self.hands = hands or HandsClient(cfg)
         self.roll_call_seconds = 20      # the whole roll call answers within this time
-        self.member_seconds = 75         # one member's job (AI + tools) gets at most this long
+        self.member_seconds = 600        # a member's job may take long (code changes): Jako answers meanwhile
 
     def run_many(self, client, jobs: list[tuple[str, str]], lang: str, pending: list, channel: str = "voice") -> list[str]:
         """Run several members at the same time; a member that takes too long is reported, not waited for."""
@@ -305,8 +330,9 @@ class Team:
                                      city=self.cfg.city, lang=lang, style=style)
         messages = [{"role": "user", "content": task}]
         report = ""
-        for _ in range(6):
-            msg = client.messages.create(model=self.cfg.team_model, max_tokens=1500, system=system,
+        rounds, tokens = (30, 8000) if agent == "vision" else (8, 1500)      # Vision may need many steps to change code
+        for _ in range(rounds):
+            msg = client.messages.create(model=self.cfg.team_model, max_tokens=tokens, system=system,
                                          tools=tools_for(agent), messages=messages)
             report = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text").strip()
             if msg.stop_reason == "pause_turn":
@@ -337,7 +363,8 @@ class Team:
                     {"type": "text", "text": text},
                     {"type": "image", "source": {"type": "base64", "media_type": "image/png",
                                                  "data": out["image_b64"]}}]}
-            return {"type": "tool_result", "tool_use_id": call.id, "content": text[:8000]}
+            return {"type": "tool_result", "tool_use_id": call.id,
+                    "content": text[:30000 if call.name.startswith("code_") else 8000]}
         if call.name not in TOOLS_BY_AGENT.get(agent, []):
             return {"type": "tool_result", "tool_use_id": call.id, "content": "Not your tool.", "is_error": True}
         out = self.skills.run(call.name, args)

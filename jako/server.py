@@ -74,7 +74,7 @@ def create_app(brain: Brain, voice: VoiceGate | None = None) -> FastAPI:
         if not text:
             return {"reply": "", "parts": []}
         try:
-            parts = brain.talk(text, channel="voice")
+            parts = (getattr(brain, "talk_soon", None) or brain.talk)(text, channel="voice")
         except Exception as exc:
             log.exception("ask failed: %s", text[:80])
             parts = [{"who": "jako", "text": "Sorry, something went wrong on my side. Please ask me again."}]
