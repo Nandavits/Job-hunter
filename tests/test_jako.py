@@ -103,7 +103,7 @@ def test_telegram_setup_shows_chat_id(cfg, mem):
     cfg.telegram_chat_id = ""
     http = FakeHTTP({})
     Telegram(cfg, SimpleNamespace(mem=mem), http).handle({"chat": {"id": 777}, "text": "hi"})
-    assert "TELEGRAM_CHAT_ID=777" in [c[1] for c in http.calls if isinstance(c, tuple)][-1]["text"]
+    assert "my Telegram chat id is 777" in [c[1] for c in http.calls if isinstance(c, tuple)][-1]["text"]
 
 
 def test_due_reminder_is_announced_once(cfg, mem):

@@ -68,6 +68,11 @@ def create_app(brain: Brain, voice: VoiceGate | None = None) -> FastAPI:
     def page():
         return FileResponse(STATIC / "index.html")
 
+    @app.post("/api/stop")
+    def stop():
+        fn = getattr(brain, "stop_all", None)
+        return {"text": fn() if fn else "Nothing was running."}
+
     @app.post("/api/ask")
     def ask(body: Ask):
         text = body.text.strip()[:2000]

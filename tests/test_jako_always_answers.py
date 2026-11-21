@@ -140,3 +140,76 @@ def test_closing_edge_keeps_jakos_window(monkeypatch):
     monkeypatch.setattr(psutil, "process_iter", lambda attrs: [browser, jako])
     assert "Jako's own window stays open" in H._do_close_app("msedge")
     assert browser.done and not jako.done
+
+
+def test_stop_ends_background_work(brain, monkeypatch):
+    gate = threading.Event()
+    seen = {}
+
+    def talk(text, channel="voice"):
+        gen = brain._stop_gen
+        gate.wait(5)
+        seen["stopped"] = brain._stop_gen != gen
+        return [{"who": "jako", "text": "half done"}]
+    monkeypatch.setattr(brain, "talk", talk)
+    brain.talk_soon("fill in the form on the website", wait=0.2)
+    assert brain.talk_soon("Jako, stop", wait=2)[0]["text"] == "Stopped 1 job."
+    gate.set()
+    time.sleep(0.4)
+    assert seen["stopped"] and brain.mem.take_outbox() == []              # nothing half-finished is announced
+    assert brain.talk_soon("cancel that", wait=2)[0]["text"] == "Nothing was running."
+    from jako.brain import STOP_TASK
+    assert not STOP_TASK.match("stop the music in spotify and play jazz")
+
+
+def test_old_screenshots_are_dropped():
+    from jako.team import prune_images
+    shot = lambda i: {"role": "user", "content": [{"type": "tool_result", "tool_use_id": str(i), "content": [
+        {"type": "text", "text": f"shot {i}"}, {"type": "image", "source": {"type": "base64", "data": "x"}}]}]}
+    msgs = [{"role": "user", "content": "go"}] + [shot(i) for i in range(6)]
+    out = prune_images(msgs, keep=3)
+    kinds = [c["type"] for m in out[1:] for c in m["content"][0]["content"]]
+    assert kinds.count("image") == 3 and out[-1]["content"][0]["content"][1]["type"] == "image"
+    assert out[1]["content"][0]["content"][1] == {"type": "text", "text": "[older screenshot removed]"}
+
+
+def test_jako_sends_email_with_a_cv(tmp_path, monkeypatch):
+    import smtplib
+    from jako.skills import Skills
+    cfg = JakoConfig(api_key="t", data_dir=tmp_path / "data", hands_token="t" * 32,
+                     gmail_address="nan@gmail.com", gmail_password="app-pass")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "output").mkdir()
+    (tmp_path / "output" / "CV_Nan.pdf").write_bytes(b"%PDF-1.4")
+    (tmp_path / "data" / ".env").write_text("SECRET")
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=0): sent["host"] = host
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self, user, pw): sent["login"] = user
+        def send_message(self, msg): sent["msg"] = msg
+    monkeypatch.setattr(smtplib, "SMTP_SSL", FakeSMTP)
+    s = Skills(cfg, Memory(tmp_path / "data" / "j.db"))
+    out = s.send_email("hr@company.de", "Application", "Hello", attachments=["C:\\\\Users\\\\HP\\\\Documents\\\\job-hunter\\\\output\\\\CV_Nan.pdf"])
+    assert out == "Sent to hr@company.de: “Application” with CV_Nan.pdf."
+    assert sent["host"] == "smtp.gmail.com" and sent["login"] == "nan@gmail.com"
+    assert [p.get_filename() for p in sent["msg"].iter_attachments()] == ["CV_Nan.pdf"]
+    assert "only" in s.run("send_email", {"to": "a@b.de", "subject": "x", "body": "y", "attachments": ["data/.env"]})
+    assert "check the address" in s.send_email("not-an-address", "x", "y")
+
+
+def test_jako_saves_calendar_and_telegram_settings(tmp_path):
+    from jako.skills import Skills
+    cfg = JakoConfig(api_key="t", data_dir=tmp_path, hands_token="t" * 32)
+    s = Skills(cfg, Memory(tmp_path / "j.db"))
+    url = "https://calendar.google.com/calendar/ical/nan%40gmail.com/private-abc123/basic.ics"
+    assert s.save_setting("calendar_ics_url", url) == "Setting calendar_ics_url: saved (hidden)."
+    assert cfg.calendar_ics_url == url                                   # works straight away
+    assert "isn't a Google Calendar" in s.save_setting("calendar_ics_url", "https://evil.example/x.ics")
+    assert "restart_jako" in s.save_setting("telegram_token", "123456789:AAH" + "x" * 32)
+    assert s.save_setting("telegram_chat_id", "987654321").startswith("Setting telegram_chat_id: 987654321.")
+    assert "can't change" in s.save_setting("gmail_password", "x")
+    profile = json.loads((tmp_path / "jako-profile.json").read_text())
+    assert profile["calendar_ics_url"] == url and profile["telegram_chat_id"] == "987654321"

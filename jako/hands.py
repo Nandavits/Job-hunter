@@ -262,17 +262,118 @@ def read_file(path: str) -> str:
     return p.read_text(encoding="utf-8", errors="replace")[:20000]
 
 
-def screenshot() -> dict:
+SCREEN_W = 1366                                            # Jako sees and points in this many pixels across
+
+
+def _dpi_aware() -> None:
+    """Real screen pixels for screenshots and clicks (Windows display scaling otherwise shifts every click)."""
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)           # type: ignore[attr-defined]
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()            # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+
+def _grab():
     from PIL import ImageGrab
     img = ImageGrab.grab()
-    folder = HOME / "Pictures" / "Jako"
-    folder.mkdir(parents=True, exist_ok=True)
-    saved = folder / time.strftime("screen_%Y%m%d_%H%M%S.png")
-    img.save(saved)
-    img.thumbnail((1400, 1400))
+    scale = img.width / SCREEN_W
+    small = img.resize((SCREEN_W, round(img.height / scale)))
+    return img, small, scale
+
+
+def _jpeg_b64(img) -> str:
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return {"text": f"Screenshot saved to {saved}.", "image_b64": base64.b64encode(buf.getvalue()).decode()}
+    img.convert("RGB").save(buf, format="JPEG", quality=70)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def screenshot(save: bool = False) -> dict:
+    img, small, _ = _grab()
+    text = f"The screen now ({small.width}x{small.height}; use these coordinates for clicks)."
+    if save:
+        folder = HOME / "Pictures" / "Jako"
+        folder.mkdir(parents=True, exist_ok=True)
+        saved = folder / time.strftime("screen_%Y%m%d_%H%M%S.png")
+        img.save(saved)
+        text += f" Saved to {saved}."
+    return {"text": text, "image_b64": _jpeg_b64(small), "media_type": "image/jpeg"}
+
+
+# ---------------------------------------------------------------- mouse and keyboard (any app, like a person)
+def _real(x, y) -> tuple[int, int]:
+    from PIL import ImageGrab
+    w = ImageGrab.grab().width                               # cheap enough and always right after a display change
+    scale = w / SCREEN_W
+    return round(float(x) * scale), round(float(y) * scale)
+
+
+def _after(what: str, wait: float = 0.8) -> dict:
+    time.sleep(wait)
+    out = screenshot()
+    out["text"] = f"{what} {out['text']}"
+    return out
+
+
+def click(x: float, y: float, button: str = "left", double: bool = False) -> dict:
+    from pywinauto import mouse
+    pos = _real(x, y)
+    if button not in ("left", "right", "middle"):
+        raise Refused("button is left, right or middle.")
+    (mouse.double_click if double else mouse.click)(button=button, coords=pos)
+    return _after(f"{'Double-clicked' if double else 'Clicked'} ({button}) at {x},{y}.")
+
+
+def drag(x1: float, y1: float, x2: float, y2: float) -> dict:
+    from pywinauto import mouse
+    a, b = _real(x1, y1), _real(x2, y2)
+    mouse.press(coords=a)
+    for i in range(1, 11):
+        mouse.move(coords=(a[0] + (b[0] - a[0]) * i // 10, a[1] + (b[1] - a[1]) * i // 10))
+        time.sleep(0.03)
+    mouse.release(coords=b)
+    return _after(f"Dragged from {x1},{y1} to {x2},{y2}.")
+
+
+def scroll(x: float, y: float, amount: int = -5) -> dict:
+    from pywinauto import mouse
+    mouse.scroll(coords=_real(x, y), wheel_dist=int(amount))
+    return _after(f"Scrolled {'up' if int(amount) > 0 else 'down'} at {x},{y}.", 0.6)
+
+
+def type_text(text: str) -> dict:
+    """Type text where the cursor is (any characters, also German/Indian letters and emoji)."""
+    from pywinauto.keyboard import send_keys
+    import re as _re
+    safe = _re.sub(r"([+^%~(){}\[\]])", r"{\1}", text or "").replace("\n", "{ENTER}").replace("\t", "{TAB}")
+    send_keys(safe, with_spaces=True, with_tabs=True, with_newlines=True, pause=0.01)
+    return _after(f"Typed {len(text or '')} characters.", 0.5)
+
+
+KEY_NAMES = {"enter": "{ENTER}", "tab": "{TAB}", "esc": "{ESC}", "escape": "{ESC}", "backspace": "{BACKSPACE}",
+             "delete": "{DELETE}", "del": "{DELETE}", "up": "{UP}", "down": "{DOWN}", "left": "{LEFT}", "right": "{RIGHT}",
+             "home": "{HOME}", "end": "{END}", "pageup": "{PGUP}", "pagedown": "{PGDN}", "space": " ", "win": "{VK_LWIN}",
+             **{f"f{i}": f"{{F{i}}}" for i in range(1, 13)}}
+MODS = {"ctrl": "^", "control": "^", "shift": "+", "alt": "%"}
+
+
+def press_keys(keys: str) -> dict:
+    """Keyboard shortcuts, e.g. 'ctrl+s', 'alt+tab', 'enter', 'ctrl+shift+esc', 'win+d'."""
+    from pywinauto.keyboard import send_keys
+    out = []
+    for combo in (keys or "").lower().replace(" ", "").split(","):
+        parts = combo.split("+")
+        mods, key = parts[:-1], parts[-1]
+        if "win" in mods:
+            send_keys("{VK_LWIN down}" + KEY_NAMES.get(key, key) + "{VK_LWIN up}")
+            out.append(combo)
+            continue
+        prefix = "".join(MODS.get(m, "") for m in mods)
+        send_keys(prefix + KEY_NAMES.get(key, key if len(key) == 1 else "{" + key.upper() + "}"))
+        out.append(combo)
+    return _after(f"Pressed {', '.join(out)}.", 0.6)
 
 
 def volume(direction: str, steps: int = 5) -> str:
@@ -852,7 +953,8 @@ SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "fin
         "whatsapp_save_contact": whatsapp_save_contact, "whatsapp_contacts": whatsapp_contacts,
         "whatsapp_forget_contact": whatsapp_forget_contact,
         "code_list": code_list, "code_read": code_read, "code_search": code_search, "code_edit": code_edit,
-        "code_write": code_write, "code_undo": code_undo, "restart_jako": restart_jako}
+        "code_write": code_write, "code_undo": code_undo, "restart_jako": restart_jako,
+        "click": click, "drag": drag, "scroll": scroll, "type_text": type_text, "press_keys": press_keys}
 
 
 def describe(action: str, args: dict) -> str:
@@ -1130,6 +1232,8 @@ def main() -> None:
         except Exception as exc:                                # noqa: BLE001
             print(time.strftime("%H:%M:%S"), f"contacts check failed: {exc}", flush=True)
     from concurrent.futures import ThreadPoolExecutor
+    if sys.platform == "win32":
+        _dpi_aware()
     pool = ThreadPoolExecutor(max_workers=6, initializer=_com_init)
     while True:
         try:

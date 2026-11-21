@@ -47,6 +47,7 @@ services:
       - ./jako:/app/jako
       - ./jobhunter:/app/jobhunter
       - ./data:/app/data
+      - ./output:/app/output:ro        # CVs and cover letters Jako may attach to emails
       - ./.env:/app/.env:ro
     depends_on:
       db:
