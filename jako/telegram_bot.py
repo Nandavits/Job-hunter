@@ -51,8 +51,8 @@ class Telegram:
     def handle(self, message: dict) -> None:
         chat_id = str(message["chat"]["id"])
         if not self.cfg.telegram_chat_id:
-            self.send(f"Hi! I'm Jako. To make me answer only you, put this line in the .env file:\n\n"
-                      f"TELEGRAM_CHAT_ID={chat_id}", chat_id)
+            self.send(f"Hi! I'm Jako. To make me answer only you, tell Jako on your laptop:\n\n"
+                      f"\"Jako, my Telegram chat id is {chat_id}\"", chat_id)
             return
         if chat_id != str(self.cfg.telegram_chat_id):
             log.warning("Ignored a message from an unknown chat %s", chat_id)

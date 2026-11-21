@@ -16,7 +16,7 @@ from datetime import datetime
 from .config import JakoConfig
 from .memory import Memory
 from .skills import TOOLS, Skills
-from .team import AGENTS, DELEGATE_TOOL, LAPTOP_TOOLS, WEB_SEARCH, Team
+from .team import AGENTS, DELEGATE_TOOL, LAPTOP_TOOLS, WEB_SEARCH, Team, prune_images
 from . import meeting
 
 log = logging.getLogger("jako")
@@ -29,7 +29,9 @@ Right now it is {now} ({tz}).
 
 You can do the work yourself. You have every tool: the whole laptop (open apps and websites, find, read, write,
 move and delete files anywhere, run PowerShell commands, take screenshots, volume, lock, close apps, system health,
-clean-up), WhatsApp calls and messages, email and calendar (read), the Job Hunter, reminders and to-dos, weather,
+clean-up), the mouse and keyboard in any app or website (screenshot, click, type_text, press_keys, scroll, drag),
+WhatsApp calls and messages, email (read and send, with attachments) and calendar, the Job Hunter, reminders and
+to-dos, weather,
 web search, your own code (code_* tools, restart_jako) and memory. Nothing needs {name}'s permission except the few
 commands that could wreck the laptop (formatting, wiping disks, registry deletes, shutting down); the tool tells you.
 
@@ -40,6 +42,11 @@ How a senior person works:
   or reading a file back after writing it), and fix what went wrong. Keep going until the task is done.
 - If one way fails, try another way (another tool, a PowerShell command, a different file or app) before giving up.
   When you really can't, say exactly what blocked you and what {name} can do.
+- Working on screen: screenshot first, then click/type at the coordinates you see, and check every new screenshot.
+  Prefer a direct tool (open_url, run_command, files) when one exists; use the mouse when only the screen works.
+  Never type passwords and never solve CAPTCHAs: ask {name} to do just that step, then carry on.
+- Job applications: when {name} asks you to apply for a job, fill in the form with {name}'s real details and CV
+  (output folder) and submit it. Never invent facts about {name}.
 - Never claim something was done unless a tool confirmed it.
 - Your team (ask_team) can work in parallel: iron_man (laptop, WhatsApp), black_widow (email, calendar),
   hawkeye (jobs), captain_america (reminders, plans), thor (web, weather), hulk (laptop health), vision (screen
@@ -96,6 +103,8 @@ def save_contact_request(text: str) -> tuple[str, str] | None:
     return (name, m.group("num1") or m.group("num2")) if name else None
 
 
+STOP_TASK = re.compile(r"^\W*(?:(?:hey|ok|okay)\W+)?(?:jako\W+)?(?:stop|cancel|abort|halt)\b(?:\W+(?:it|that|this|now|"
+                       r"everything|all|the task|the job|what you are doing|working|please)){0,3}\W*$", re.I)
 WORKING = re.compile(r"\bwhat are you (?:doing|working on|busy with)\b|\bare you (?:still )?(?:busy|working|there)\b|"
                      r"\bwhat'?s (?:running|happening) (?:right )?now\b|\b(?:status|progress) of (?:my|the|your) "
                      r"(?:task|job|request|work)s?\b|\bis it done\b|\bare you done\b", re.I)
@@ -127,12 +136,15 @@ class Brain:
         self.pending: dict[str, dict] = {}            # channel -> {"code", "summary", "at"}
         self.meetings = meeting.Meetings(memory)
         self.jobs: dict[str, dict] = {}               # questions still being worked on
+        self._stop_gen = 0                            # goes up when Nan says stop: running work ends at its next step
         self._jobs_lock = threading.Lock()
 
     # ---------- always answer: long jobs keep running in the background ----------
     def talk_soon(self, text: str, channel: str = "voice", wait: float = 20.0) -> list[dict]:
         """Like talk(), but never keeps the user waiting: after `wait` seconds Jako says it's still working, the job
         goes on, and the result is spoken (outbox) when it's ready. Meanwhile Jako keeps answering new questions."""
+        if STOP_TASK.match(text):
+            return [{"who": "jako", "text": self.stop_all()}]
         if WORKING.search(text) and len(text.split()) <= 10:
             return self.working_now()
         jid, holder, done = uuid.uuid4().hex[:8], {}, threading.Event()
@@ -163,6 +175,18 @@ class Brain:
         short = text if len(text) < 60 else text[:57] + "..."
         return [{"who": "jako", "text": f"I'm on it: “{short}”. It takes a little longer, so keep talking to me. "
                                         "I'll tell you as soon as it's done."}]
+
+    def stop_all(self) -> str:
+        """Nan said stop: every running job ends at its next step."""
+        self._stop_gen += 1
+        with self._jobs_lock:
+            n = len(self.jobs)
+            for j in self.jobs.values():
+                j["detached"] = False                 # don't announce half-finished results
+        if hasattr(self.team, "stop_gen"):
+            self.team.stop_gen += 1
+        log.info("Stop: %d running job(s) stopped", n)
+        return f"Stopped {n} job{'s' if n != 1 else ''}." if n else "Nothing was running."
 
     def working_now(self) -> list[dict]:
         with self._jobs_lock:
@@ -220,7 +244,11 @@ class Brain:
         new_pending: list[dict] = []
         reply = ""
         system = self.system(channel)                 # fixed for the whole question: the AI rejects a follow-up call
-        for _ in range(25):                           # whose instructions changed (e.g. the clock moved a minute)
+        gen = self._stop_gen
+        for _ in range(60):                           # whose instructions changed (e.g. the clock moved a minute)
+            if self._stop_gen != gen:                 # Nan said stop
+                reply = "Stopped."
+                break
             msg = self._client().messages.create(model=self.cfg.model, max_tokens=4000, system=system,
                                                  tools=JAKO_TOOLS, messages=messages)
             reply = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text").strip()
@@ -254,7 +282,8 @@ class Brain:
                 else:
                     out = self.skills.run(call.name, args)
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": out[:8000]})
-            messages = messages + [{"role": "assistant", "content": msg.content}, {"role": "user", "content": results}]
+            messages = prune_images(messages + [{"role": "assistant", "content": msg.content},
+                                                {"role": "user", "content": results}])
 
         if new_pending:                                   # only the latest request can be approved
             self.pending[channel] = {**new_pending[-1], "at": time.time()}

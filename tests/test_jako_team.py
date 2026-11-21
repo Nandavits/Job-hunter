@@ -84,7 +84,7 @@ def test_jako_gives_task_to_iron_man_who_reports_in_own_voice(cfg, mem):
     assert hands.done == [("open_app", {"name": "notepad"})]
     jako_tools = [t["name"] for t in client.calls[0]["tools"]]
     assert {"remember", "ask_team", "team_meeting", "run_command", "whatsapp_call", "read_email", "web_search"} <= set(jako_tools)
-    assert "Iron Man" in client.calls[1]["system"] and client.calls[1]["tools"][0]["name"] == "open_app"
+    assert "Iron Man" in client.calls[1]["system"] and "open_app" in [t["name"] for t in client.calls[1]["tools"]]
 
 
 def test_members_only_get_their_own_tools(cfg, mem):

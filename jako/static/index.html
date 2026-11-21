@@ -814,6 +814,7 @@ let hush = false, askCtl = null, checkingStop = false;
 function shutUp() {
   if (!speaking && !busy) return;
   hush = true; if (askCtl) askCtl.abort();
+  fetch('/api/stop', { method: 'POST' }).catch(() => {});                // background work stops too
   speechSynthesis.cancel(); speaking = false; stopRec(); captionEl.textContent = '';
   setState('listening', 'Stopped. Say “Hey Jako …” when you need me.');
   setTimeout(() => { if (!busy) startRec(); }, 400);
