@@ -271,7 +271,18 @@ def prune_images(messages: list, keep: int = 3) -> list:
                 new.append(b if b is not None else block)
             m = {**m, "content": new}
         out.append(m)
-    return list(reversed(out))
+    out = list(reversed(out))
+    if seen > keep:                         # the history changed: the AI's earlier "thinking" notes no longer match it,
+        out = [_without_thinking(m) for m in out]       # so they are left out (the API refuses mismatched ones)
+    return out
+
+
+def _without_thinking(m: dict) -> dict:
+    if m.get("role") != "assistant" or not isinstance(m.get("content"), list):
+        return m
+    def kind(b):
+        return b.get("type") if isinstance(b, dict) else getattr(b, "type", "")
+    return {**m, "content": [b for b in m["content"] if kind(b) not in ("thinking", "redacted_thinking")]}
 
 
 class HandsClient:
