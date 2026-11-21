@@ -232,3 +232,19 @@ def test_calendar_events_open_filled_in_for_the_right_account(tmp_path, monkeypa
     assert "dates=20261224%2F20261225" in opened[-1]
     assert "Tue 24 Nov 2026" in H.calendar_open("2026-11-24") and opened[-1].startswith(
         "https://calendar.google.com/calendar/r/day/2026/11/24?authuser=nandavits586@gmail.com")
+
+
+def test_pruning_screenshots_also_drops_stale_thinking():
+    from types import SimpleNamespace as NS
+    from jako.team import prune_images
+    shot = lambda i: {"role": "user", "content": [{"type": "tool_result", "tool_use_id": str(i), "content": [
+        {"type": "image", "source": {"type": "base64", "data": "x"}}]}]}
+    think = lambda i: {"role": "assistant", "content": [NS(type="thinking", thinking="..."), NS(type="tool_use", id=str(i))]}
+    msgs = [{"role": "user", "content": "go"}]
+    for i in range(5):
+        msgs += [think(i), shot(i)]
+    out = prune_images(msgs, keep=3)
+    assert all(getattr(b, "type", "") != "thinking" for m in out if m["role"] == "assistant" for b in m["content"])
+    assert all(any(getattr(b, "type", "") == "tool_use" for b in m["content"]) for m in out if m["role"] == "assistant")
+    few = prune_images(msgs[:5], keep=3)                         # nothing removed: thinking stays as it was
+    assert any(getattr(b, "type", "") == "thinking" for b in few[1]["content"])
