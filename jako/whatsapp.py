@@ -1,7 +1,7 @@
 """WhatsApp on the Windows laptop: send a message, or start a voice or video call.
 
 How it works (fast and reliable, no hunting for buttons):
-- Jako keeps Nanda's WhatsApp contacts (name, number) in data/whatsapp-contacts.csv on the laptop. They are added
+- Jako keeps Nan's WhatsApp contacts (name, number) in data/whatsapp-contacts.csv on the laptop. They are added
   by saying e.g. "Jako, save Mahir's WhatsApp number +49 170 1234567" (or by editing that file).
 - A message opens the exact chat with  whatsapp://send?phone=<number>&text=<message>  and presses Enter.
 - A call opens the chat the same way and presses WhatsApp's own shortcut: Ctrl+Shift+C (voice), Ctrl+Shift+V (video).
