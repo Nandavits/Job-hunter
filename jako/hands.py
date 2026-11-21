@@ -205,6 +205,59 @@ def open_url(url: str) -> str:
     return f"Opened {url} in your browser."
 
 
+# ---------------------------------------------------------------- Google Calendar: add / change / delete events
+def _calendar_account() -> str:
+    """The Google account of the connected calendar (from Jako's profile), so the right account opens."""
+    import json
+    import urllib.parse
+    try:
+        url = json.loads((ROOT / "data" / "jako-profile.json").read_text(encoding="utf-8")).get("calendar_ics_url", "")
+        m = re.search(r"/ical/([^/]+)/", url)
+        return urllib.parse.unquote(m.group(1)) if m else ""
+    except Exception:
+        return ""
+
+
+def _gcal_time(text: str, all_day: bool) -> str:
+    from datetime import datetime as _dt, timedelta as _td
+    t = (text or "").strip().replace(" ", "T")
+    d = _dt.fromisoformat(t)
+    return d.strftime("%Y%m%d") if all_day else d.strftime("%Y%m%dT%H%M%S")
+
+
+def calendar_add(title: str, start: str, end: str = "", details: str = "", location: str = "",
+                 all_day: bool = False) -> str:
+    """Open Google Calendar's new-event form, already filled in. Then click Save on the screen."""
+    import urllib.parse
+    from datetime import datetime as _dt, timedelta as _td
+    s = _dt.fromisoformat(start.strip().replace(" ", "T"))
+    e = _dt.fromisoformat(end.strip().replace(" ", "T")) if end else (s + (_td(days=1) if all_day else _td(hours=1)))
+    if all_day and not end:
+        e = s + _td(days=1)
+    fmt = "%Y%m%d" if all_day else "%Y%m%dT%H%M%S"
+    q = {"action": "TEMPLATE", "text": title, "dates": f"{s.strftime(fmt)}/{e.strftime(fmt)}",
+         "ctz": "Europe/Berlin", "details": details, "location": location}
+    account = _calendar_account()
+    if account:
+        q["authuser"] = account
+    url = "https://calendar.google.com/calendar/render?" + urllib.parse.urlencode({k: v for k, v in q.items() if v})
+    _start(url)
+    when = s.strftime("%a %d %b %Y") + ("" if all_day else s.strftime(", %H:%M") + e.strftime("-%H:%M"))
+    return (f"The new-event form for “{title}” ({when}) is open in the browser. Take a screenshot, check it, "
+            "and click Save. If Google asks which account, pick " + (account or "Nan's") + ".")
+
+
+def calendar_open(date: str = "") -> str:
+    """Open Google Calendar on a day (YYYY-MM-DD), to change or delete events with the mouse."""
+    from datetime import date as _date
+    d = _date.fromisoformat(date) if date else _date.today()
+    account = _calendar_account()
+    url = f"https://calendar.google.com/calendar/r/day/{d.year}/{d.month}/{d.day}" + (f"?authuser={account}" if account else "")
+    _start(url)
+    return (f"Google Calendar is open on {d:%a %d %b %Y}. Take a screenshot, click the event, then use the pencil "
+            "(edit) or the bin (delete) icon, and Save.")
+
+
 def open_path(path: str) -> str:
     p = safe_path(path)
     _start(str(p))
@@ -954,7 +1007,8 @@ SAFE = {"open_app": open_app, "open_url": open_url, "open_path": open_path, "fin
         "whatsapp_forget_contact": whatsapp_forget_contact,
         "code_list": code_list, "code_read": code_read, "code_search": code_search, "code_edit": code_edit,
         "code_write": code_write, "code_undo": code_undo, "restart_jako": restart_jako,
-        "click": click, "drag": drag, "scroll": scroll, "type_text": type_text, "press_keys": press_keys}
+        "click": click, "drag": drag, "scroll": scroll, "type_text": type_text, "press_keys": press_keys,
+        "calendar_add": calendar_add, "calendar_open": calendar_open}
 
 
 def describe(action: str, args: dict) -> str:
