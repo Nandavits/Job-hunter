@@ -82,7 +82,8 @@ def test_jako_gives_task_to_iron_man_who_reports_in_own_voice(cfg, mem):
     parts = make(cfg, mem, client, hands).talk("open notepad", channel="voice")
     assert parts == [{"who": "iron_man", "text": "Notepad is open."}]
     assert hands.done == [("open_app", {"name": "notepad"})]
-    assert [t["name"] for t in client.calls[0]["tools"]] == ["remember", "forget", "ask_team", "team_meeting"]
+    jako_tools = [t["name"] for t in client.calls[0]["tools"]]
+    assert {"remember", "ask_team", "team_meeting", "run_command", "whatsapp_call", "read_email", "web_search"} <= set(jako_tools)
     assert "Iron Man" in client.calls[1]["system"] and client.calls[1]["tools"][0]["name"] == "open_app"
 
 
@@ -162,39 +163,48 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_paths_stay_inside_home_and_out_of_secrets(home):
+def test_whole_laptop_but_never_secrets_or_system_folders(home):
     assert H.safe_path("Documents/notes.txt") == home / "Documents" / "notes.txt"
-    for bad in ["/etc/passwd", "../outside.txt", ".ssh/id_rsa", "Documents/.env", "passwords.txt",
-                "AppData/Local/Google/Chrome/User Data/Default/Login Data"]:
+    assert H.safe_path("/tmp", must_exist=False)                       # outside the user folder is fine now
+    for bad in [".ssh/id_rsa", "Documents/.env", "passwords.txt", "AppData/Local/Google/Chrome/User Data/Default/Login Data"]:
         with pytest.raises(H.Refused):
             H.safe_path(bad, must_exist=False)
+    from pathlib import Path
+    for bad in [Path("/"), home, Path("/windows/system32/x.dll"), Path("/program files/app/x.exe")]:
+        with pytest.raises(H.Refused):
+            H.changeable(bad)
 
 
-def test_safe_actions_run_and_risky_ones_wait(home, monkeypatch):
+def test_actions_run_straight_away_only_catastrophic_commands_wait(home, monkeypatch):
     hands = H.Hands()
     assert hands.do("read_file", {"path": "Documents/notes.txt"}) == {"text": "hello"}
     assert "notes.txt" in hands.do("find_files", {"name": "notes"})["text"]
-    out = hands.do("delete", {"path": "Documents/notes.txt"})
-    assert "pending" in out and "Recycle Bin" in out["text"]
-    assert (home / "Documents" / "notes.txt").exists()            # nothing happened yet
-    assert "error" in hands.do("delete", {"path": "/etc/hosts"})  # refused before even asking
     monkeypatch.setitem(H.RISKY, "delete", lambda path: f"recycled {path}")
-    assert hands.confirm(out["pending"]) == {"text": "recycled Documents/notes.txt"}
+    assert hands.do("delete", {"path": "Documents/notes.txt"}) == {"text": "recycled Documents/notes.txt"}
+    monkeypatch.setitem(H.RISKY, "run_command", lambda command: f"ran {command}")
+    assert hands.do("run_command", {"command": "Get-Date"}) == {"text": "ran Get-Date"}
+    for wreck in ["Format-Volume -DriveLetter D", "format d: /q", "diskpart", "reg delete HKLM\\Software\\X /f",
+                  "Remove-Item -Recurse -Force C:\\", "rd /s /q C:\\", "shutdown /s /t 0", "Stop-Computer"]:
+        out = hands.do("run_command", {"command": wreck})
+        assert "pending" in out, wreck
+    assert hands.confirm(out["pending"]) == {"text": "ran Stop-Computer"}
     assert "expired" in hands.confirm(out["pending"])["error"]    # a code works once
 
 
-def test_opening_a_program_file_needs_yes(home):
+def test_opening_a_program_file_runs_it(home, monkeypatch):
     (home / "Downloads").mkdir()
     (home / "Downloads" / "setup.exe").write_bytes(b"MZ")
-    out = H.Hands().do("open_path", {"path": "Downloads/setup.exe"})
-    assert "pending" in out and "start the program" in out["text"]
+    started = []
+    monkeypatch.setattr(H, "_start", lambda target: started.append(target))
+    assert H.Hands().do("open_path", {"path": "Downloads/setup.exe"}) == {"text": "Started setup.exe."}
+    assert started and started[0].endswith("setup.exe")
 
 
 def test_urls_and_app_names_are_checked(home):
     hands = H.Hands()
     assert "error" in hands.do("open_url", {"url": "file:///C:/Windows/System32/cmd.exe"})
     assert "error" in hands.do("open_url", {"url": "javascript:alert(1)"})
-    assert "pending" in hands.do("run_command", {"command": "Get-Date"})
+    assert "pending" in hands.do("run_command", {"command": "format c:"})
     with pytest.raises(H.Refused):
         H._do_close_app("chrome & del *")
 
@@ -266,8 +276,8 @@ def test_laptop_link_end_to_end(home, cfg, mem):
     time.sleep(0.5)
     assert bridge.do("read_file", {"path": "Documents/notes.txt"}) == {"text": "hello"}
     assert bridge.status()["computer"] == "LAPTOP-TEST"
-    pending = bridge.do("delete", {"path": "Documents/notes.txt"})
-    assert "pending" in pending and (home / "Documents" / "notes.txt").exists()
+    pending = bridge.do("run_command", {"command": "diskpart"})
+    assert "pending" in pending
     assert bridge.cancel(pending["pending"]) == {"text": "Cancelled."}
     assert "LAPTOP-TEST" in Team(cfg, skills, hands=bridge)._iron_man()
     stop.set()
@@ -314,7 +324,7 @@ def test_hulk_reads_the_performance_log(cfg, mem, tmp_path):
     assert "Hulk here. CPU 30%" in Team(cfg, Skills(cfg, mem), hands=FakeHands())._hulk()
 
 
-def test_cleanup_waits_for_yes(home, monkeypatch, tmp_path):
+def test_cleanup_runs_when_asked(home, monkeypatch, tmp_path):
     temp = tmp_path / "Temp"
     temp.mkdir()
     old = temp / "old.tmp"
@@ -324,8 +334,7 @@ def test_cleanup_waits_for_yes(home, monkeypatch, tmp_path):
     monkeypatch.setattr(H, "_temp_dir", lambda: temp)
     hands = H.Hands()
     out = hands.do("clean_temp", {"days": 7})
-    assert "pending" in out and "1 temporary files" in out["text"] and old.exists()
-    assert "Removed 1 temporary files" in hands.confirm(out["pending"])["text"] and not old.exists()
+    assert "Removed 1 temporary files" in out["text"] and not old.exists()
 
 
 def test_hawkeye_roll_call_uses_light_queries(cfg, mem):
@@ -409,3 +418,25 @@ def test_file_search_skips_program_folders_and_stops_on_time(home, monkeypatch):
     clock = iter([0, 100, 100, 100, 100])                       # the clock jumps past the 8-second limit
     monkeypatch.setattr(H.time, "time", lambda: next(clock, 100))
     assert "stopped after 8 seconds" in H.find_files("nothing-like-this")
+
+
+def test_jako_does_the_work_himself(cfg, mem):
+    client = Script(use("open_app", name="notepad"), use("run_command", command="Get-Date"), say("Done, Nan."))
+    hands = FakeHands()
+    parts = make(cfg, mem, client, hands).talk("open notepad and tell me the date", channel="voice")
+    assert parts == [{"who": "jako", "text": "Done, Nan."}]
+    assert [a for a, _ in hands.done] == ["open_app", "run_command"]       # no member in between, no yes needed
+    assert len(client.calls) == 3
+
+
+def test_jako_calls_the_owner_nan_and_thinks_with_opus(tmp_path, monkeypatch):
+    from jako import config
+    for k in ("JAKO_OWNER_NAME", "JAKO_MODEL", "JAKO_TEAM_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(config, "_load_env", lambda: None)
+    monkeypatch.setenv("JOBHUNTER_DATA_DIR", str(tmp_path))
+    c = config.load()
+    assert c.owner_name == "Nan" and c.model == "claude-opus-5-5" and c.team_model == "claude-sonnet-5-5"
+    monkeypatch.setenv("JAKO_OWNER_NAME", "Nanda")                          # an old .env setting...
+    (tmp_path / "jako-profile.json").write_text('{"owner_name": "Nan", "model": "claude-opus-5-5"}')
+    assert config.load().owner_name == "Nan"                                # ...loses to the profile

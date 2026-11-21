@@ -113,14 +113,40 @@ def safe_path(raw: str, must_exist: bool = True) -> Path:
     if not p.is_absolute():
         p = HOME / p
     p = p.resolve()
-    if p != HOME and HOME not in p.parents:
-        raise Refused(f"I only work inside your user folder ({HOME}).")
-    parts = {x.lower() for x in p.relative_to(HOME).parts}
-    if parts & BLOCKED_PARTS or any(BLOCKED_NAMES.search(x) for x in p.relative_to(HOME).parts):
+    rel = p.relative_to(HOME).parts if (p == HOME or HOME in p.parents) else p.parts[1:]
+    parts = {x.lower() for x in rel}
+    if parts & BLOCKED_PARTS or any(BLOCKED_NAMES.search(x) for x in rel):
         raise Refused("That location may hold passwords or keys, so I keep out of it.")
     if must_exist and not p.exists():
         raise Refused(f"Not found: {p}")
     return p
+
+
+SYSTEM_DIRS = ("windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information",
+               "recovery", "boot")
+
+
+def changeable(p: Path) -> Path:
+    """Writing, moving and deleting: anywhere except Windows' own system folders, drive roots and your home folder itself."""
+    if p.parent == p or p == HOME or p == HOME.parent:
+        raise Refused(f"I won't change {p} as a whole: that's a drive or your whole user folder.")
+    top = p.parts[1].lower() if len(p.parts) > 1 else ""
+    if top in SYSTEM_DIRS:
+        raise Refused("That's a Windows system folder; changing it could break Windows, so I leave it alone.")
+    return p
+
+
+# Commands that could wreck the laptop: these still wait for a spoken or typed yes.
+CATASTROPHIC = re.compile(
+    r"\b(?:format-volume\b|format\s+[a-z]:|diskpart|clear-disk|initialize-disk|remove-partition|bcdedit|"
+    r"reg(?:\.exe)?\s+delete|remove-item\b[^|;]*\bhk(?:lm|cu|cr|u)\b|cipher\s+/w|vssadmin\s+delete|"
+    r"stop-computer|restart-computer|shutdown(?:\.exe)?\s|"
+    r"(?:rd|rmdir|del|erase)\s+(?:/[sq]\s+)+[a-z]:\\?\s*$|remove-item\b.*-recurse\b.*\s[\"']?[a-z]:\\?[\"']?\s*$|"
+    r"remove-item\b.*\s[\"']?[a-z]:\\?[\"']?\s.*-recurse)", re.I)
+
+
+def needs_yes(action: str, args: dict) -> bool:
+    return action == "run_command" and bool(CATASTROPHIC.search(args.get("command", "")))
 
 
 # ---------- safe actions ----------
@@ -439,14 +465,14 @@ def _do_run_command(command: str) -> str:
 
 
 def _do_write_file(path: str, text: str) -> str:
-    p = safe_path(path, must_exist=False)
+    p = changeable(safe_path(path, must_exist=False))
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
     return f"Saved {p}."
 
 
 def _do_move(source: str, target: str) -> str:
-    src, dst = safe_path(source), safe_path(target, must_exist=False)
+    src, dst = changeable(safe_path(source)), changeable(safe_path(target, must_exist=False))
     shutil.move(str(src), str(dst))
     return f"Moved {src.name} to {dst}."
 
@@ -465,9 +491,7 @@ def _recycle(p: Path) -> None:
 
 
 def _do_delete(path: str) -> str:
-    p = safe_path(path)
-    if p == HOME:
-        raise Refused("I won't delete your whole user folder.")
+    p = changeable(safe_path(path))
     _recycle(p)
     return f"Moved {p.name} to the Recycle Bin. You can restore it from there."
 
@@ -633,7 +657,7 @@ def hardware_health() -> str:
 
 
 def whatsapp_message(contact: str, text: str) -> str:
-    """Send a WhatsApp message (no yes needed: Nanda asked for it; only an exact single chat match is used)."""
+    """Send a WhatsApp message (no yes needed: Nan asked for it; only an exact single chat match is used)."""
     from .whatsapp import WhatsAppError, send_message
     try:
         return send_message(contact, text)
@@ -871,13 +895,9 @@ class Hands:
             if action in SAFE:
                 result = SAFE[action](**args)
                 return result if isinstance(result, dict) else {"text": result}
+            if action in RISKY and not needs_yes(action, args):    # Nan asked for it: just do it
+                return {"text": RISKY[action](**args)}
             if action in RISKY:
-                if action in ("write_file", "move", "delete", "open_program"):   # check paths before asking
-                    for key in ("path", "source"):
-                        if key in args:
-                            safe_path(args[key], must_exist=action != "write_file")
-                    if "target" in args:
-                        safe_path(args["target"], must_exist=False)
                 self._expire()
                 code = secrets.token_hex(4)
                 summary = describe(action, args)

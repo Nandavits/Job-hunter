@@ -347,17 +347,20 @@ class Team:
 
     def _tool(self, agent: str, call, pending: list) -> dict:
         args = dict(call.input)
-        if agent == "hulk" and call.name == "performance_report":
+        if call.name == "performance_report" and agent in ("hulk", "jako"):
             return {"type": "tool_result", "tool_use_id": call.id,
                     "content": performance_report(self.cfg.data_dir / "perf.csv", int(args.get("days", 1) or 1))}
-        if agent in HANDS_TOOLS:
-            if call.name not in HANDS_TOOLS[agent]:
+        allowed = {t["name"] for t in LAPTOP_TOOLS} if agent == "jako" else set(HANDS_TOOLS.get(agent, []))
+        if allowed and call.name in allowed or agent in HANDS_TOOLS:
+            if call.name not in allowed:
                 return {"type": "tool_result", "tool_use_id": call.id, "content": "Not your tool.", "is_error": True}
             out = self.hands.do(call.name, args)
             if out.get("pending"):
                 pending.append({"code": out["pending"], "summary": out.get("text", "")})
             text = out.get("error") or out.get("text") or "Done."
             log.info("%s %s -> %s", AGENTS[agent]["name"], call.name, mask_numbers(text[:120]).replace("\n", " "))
+            if out.get("pending"):
+                text += " (This one could seriously damage the laptop, so it waits for Nan's spoken or typed yes.)"
             if out.get("image_b64"):
                 return {"type": "tool_result", "tool_use_id": call.id, "content": [
                     {"type": "text", "text": text},
