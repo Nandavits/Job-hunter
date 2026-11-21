@@ -58,7 +58,8 @@ JOBS = {
     "iron_man": ("WhatsApp calls and messages, and the laptop: open apps (also Store apps like WhatsApp) and websites (GitHub, LinkedIn, Gmail ...), "
                  "open, find, list and read files, volume, lock the screen, close apps. Commands and writing, moving "
                  "or deleting files need the user's yes, which Jako handles."),
-    "black_widow": "email (Gmail: read, and send with attachments when Nan asks) and the Google Calendar.",
+    "black_widow": "email (Gmail: read, and send with attachments when Nan asks) and the Google Calendar (read; Jako "
+                   "and Iron Man add, change and delete events).",
     "hawkeye": "the Job Hunter: best open jobs, job details, and updating a job's status when the user says so.",
     "captain_america": "reminders, the to-do list and planning the day.",
     "thor": "web search: news, facts, prices, opening hours, rules, anything current; also the weather.",
@@ -84,7 +85,7 @@ HANDS_TOOLS = {
     "iron_man": ["open_app", "open_url", "open_path", "find_files", "list_folder", "read_file", "screenshot", "volume",
                  "lock_screen", "run_command", "write_file", "move", "delete", "close_app",
                  "whatsapp_message", "whatsapp_call", "whatsapp_save_contact", "whatsapp_contacts",
-                 "whatsapp_forget_contact", "click", "type_text", "press_keys", "scroll", "drag"],
+                 "whatsapp_forget_contact", "click", "type_text", "press_keys", "scroll", "drag", "calendar_add", "calendar_open"],
     "hulk": ["system_info", "hardware_health", "top_processes", "disk_report", "old_files", "clean_temp", "empty_recycle_bin", "delete",
              "find_files", "list_folder"],
     "vision": ["screenshot", "read_file", "find_files", "list_folder",
@@ -109,6 +110,18 @@ GUI_TOOLS = [
     {"name": "drag", "description": "Drag with the left mouse button from x1,y1 to x2,y2.",
      "input_schema": {"type": "object", "required": ["x1", "y1", "x2", "y2"], "properties": {
          "x1": {"type": "number"}, "y1": {"type": "number"}, "x2": {"type": "number"}, "y2": {"type": "number"}}}},
+]
+GUI_TOOLS += [
+    {"name": "calendar_add", "description": "Add an event to Nan's Google Calendar: opens the new-event form already "
+     "filled in; then take a screenshot and click Save. start/end like 2026-11-24 14:00 (local time); all_day for "
+     "whole days. Without an end, the event lasts an hour.",
+     "input_schema": {"type": "object", "required": ["title", "start"], "properties": {
+         "title": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string", "default": ""},
+         "details": {"type": "string", "default": ""}, "location": {"type": "string", "default": ""},
+         "all_day": {"type": "boolean", "default": False}}}},
+    {"name": "calendar_open", "description": "Open Nan's Google Calendar on a day (YYYY-MM-DD) to change or delete an "
+     "event with the mouse: screenshot, click the event, edit (pencil) or delete (bin), Save.",
+     "input_schema": {"type": "object", "properties": {"date": {"type": "string", "default": ""}}}},
 ]
 GUI_NAMES = [t["name"] for t in GUI_TOOLS]
 

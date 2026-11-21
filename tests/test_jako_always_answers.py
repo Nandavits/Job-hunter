@@ -213,3 +213,22 @@ def test_jako_saves_calendar_and_telegram_settings(tmp_path):
     assert "can't change" in s.save_setting("gmail_password", "x")
     profile = json.loads((tmp_path / "jako-profile.json").read_text())
     assert profile["calendar_ics_url"] == url and profile["telegram_chat_id"] == "987654321"
+
+
+def test_calendar_events_open_filled_in_for_the_right_account(tmp_path, monkeypatch):
+    import urllib.parse
+    opened = []
+    monkeypatch.setattr(H, "_start", lambda target: opened.append(target))
+    monkeypatch.setattr(H, "ROOT", tmp_path)
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "jako-profile.json").write_text(json.dumps(
+        {"calendar_ics_url": "https://calendar.google.com/calendar/ical/nandavits586%40gmail.com/private-x/basic.ics"}))
+    out = H.Hands().do("calendar_add", {"title": "Interview Flink", "start": "2026-11-24 14:00", "location": "Teams"})
+    assert "click Save" in out["text"] and "Tue 24 Nov 2026, 14:00-15:00" in out["text"]
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(opened[-1]).query)
+    assert q["dates"] == ["20261124T140000/20261124T150000"] and q["text"] == ["Interview Flink"]
+    assert q["authuser"] == ["nandavits586@gmail.com"] and q["ctz"] == ["Europe/Berlin"]
+    H.calendar_add("Holiday", "2026-12-24", all_day=True)
+    assert "dates=20261224%2F20261225" in opened[-1]
+    assert "Tue 24 Nov 2026" in H.calendar_open("2026-11-24") and opened[-1].startswith(
+        "https://calendar.google.com/calendar/r/day/2026/11/24?authuser=nandavits586@gmail.com")
