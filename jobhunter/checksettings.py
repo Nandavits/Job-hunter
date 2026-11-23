@@ -110,6 +110,9 @@ def check_text(text: str, name: str = "profile.yaml") -> tuple[bool, list[str]]:
         years = search.get("max_years_experience", 3)
         if not isinstance(years, int) or not 0 <= years <= 30:
             problems.append(f"search > max_years_experience must be a whole number like 2 (now: {years!r}).")
+        age = search.get("max_job_age_days", 0)
+        if not isinstance(age, int) or not 0 <= age <= 365:
+            problems.append(f"search > max_job_age_days must be a whole number like 7 (now: {age!r}).")
         score = search.get("min_score", 55)
         if not isinstance(score, (int, float)) or not 0 <= score <= 100:
             problems.append(f"search > min_score must be a number from 0 to 100 (now: {score!r}).")
