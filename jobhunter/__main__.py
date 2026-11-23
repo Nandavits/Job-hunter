@@ -44,8 +44,10 @@ def _need(store: Store, uid: str) -> dict:
 
 
 def cmd_run(args, settings):
-    from .config import DATA_DIR
+    from .config import DATA_DIR, OUTPUT_DIR
     from .pipeline import run
+    DATA_DIR.mkdir(parents=True, exist_ok=True)      # a fresh install has no data/ or output/ folder yet
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(DATA_DIR / "last-run.log", mode="w", encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%H:%M:%S"))
     logging.getLogger().addHandler(handler)          # data/last-run.log: what the latest run did
@@ -204,9 +206,14 @@ def cmd_fill(args, settings):
             print(f"\n{exc}\nPaste the company's application link next time at 'Application link'.")
             return
         except Exception as exc:                       # e.g. the browser window was closed early
-            if "closed" not in str(exc).lower():
-                raise
-            print("\nThe browser window closed before Job Hunter finished. If you applied anyway, answer y below.")
+            if "closed" in str(exc).lower():
+                print("\nThe browser window closed before Job Hunter finished. If you applied anyway, answer y below.")
+            else:                                      # an unusual form: never crash, let the person finish by hand
+                log.warning("Form filling stopped: %s", str(exc).splitlines()[0][:200])
+                print("\nJob Hunter could not fill this form completely (it is an unusual form)."
+                      "\nFinish it in the browser yourself: your CV and cover letter are in"
+                      f"\n  {cv.parent}\nand your standard answers are in form_answers.txt in the same folder."
+                      "\nIf you applied, answer y below.")
             report = None
     if report is not None:
         print("\nFilled:", *report.filled, sep="\n  ")

@@ -94,6 +94,16 @@ NO = re.compile(r"^\s*(no|nein|n)\b", re.I)
 PLACEHOLDER = re.compile(r"^\s*(select|choose|please|bitte|--|—|-|\.\.\.)|^\s*$", re.I)
 
 
+def _safe_info(el, timeout: int = 4000):
+    """Label/visibility of one form field. Returns None when the field disappears or changes while the
+    page is still loading (forms rebuild themselves), so one odd field never stops the whole fill."""
+    try:
+        return el.evaluate(LABEL_JS, timeout=timeout)
+    except Exception as exc:                     # Playwright errors: detached element, context destroyed, timeout
+        log.debug("Skipped a form field: %s", str(exc).splitlines()[0][:120])
+        return None
+
+
 def choose_option(label: str, options: list[str], values: dict[str, str]) -> str:
     """Pick the option to select for a dropdown / radio question, or '' to leave it to the person."""
     real = [o for o in options if not PLACEHOLDER.match(o)]
@@ -491,7 +501,9 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
         file_inputs = page.locator("input[type=file]")
         for i in range(file_inputs.count()):
             el = file_inputs.nth(i)
-            info = el.evaluate(LABEL_JS)
+            info = _safe_info(el)
+            if info is None:          # field vanished or changed while the page loaded
+                continue
             label = info["label"].lower()
             target = letter_file if re.search(r"cover|anschreiben|motivation", label) else cv_file
             if re.search(r"cover|anschreiben|motivation", label) or i == 0 or re.search(r"resume|cv|lebenslauf", label):
@@ -504,7 +516,9 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
                               "not([type=submit]):not([type=button]), textarea")
         for i in range(fields.count()):
             el = fields.nth(i)
-            info = el.evaluate(LABEL_JS)
+            info = _safe_info(el)
+            if info is None:          # field vanished or changed while the page loaded
+                continue
             if not info["visible"] or info["value"]:
                 continue
             key, value = match_field(info["label"], values)
@@ -541,7 +555,9 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
         selects = page.locator("select")
         for i in range(selects.count()):
             el = selects.nth(i)
-            info = el.evaluate(LABEL_JS)
+            info = _safe_info(el)
+            if info is None:          # field vanished or changed while the page loaded
+                continue
             if not info["visible"]:
                 continue
             options = el.evaluate("e => [...e.options].map(o => o.text.trim())")
@@ -590,13 +606,17 @@ def fill(job: dict, profile: dict, docs: dict, letter_paragraphs: list[str], hea
         # Required checkboxes are usually privacy / terms consent: that is your decision, so they stay for you.
         boxes = page.locator("input[type=checkbox][required]")
         for i in range(boxes.count()):
-            info = boxes.nth(i).evaluate(LABEL_JS)
+            info = _safe_info(boxes.nth(i))
+            if info is None:          # field vanished or changed while the page loaded
+                continue
             if info["visible"]:
                 report.needs_you.append(f"{info['label'][:60]} (tick yourself)")
         combos = page.locator("[role=combobox]:not(input)")
         for i in range(combos.count()):
             el = combos.nth(i)
-            info = el.evaluate(LABEL_JS)
+            info = _safe_info(el)
+            if info is None:          # field vanished or changed while the page loaded
+                continue
             if not info["visible"] or info["value"]:
                 continue
             choice = _choose_in_widget(page, el, info["label"], values) if info["label"] else ""

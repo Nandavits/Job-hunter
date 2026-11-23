@@ -121,3 +121,18 @@ def test_typing_mistake_in_settings_file_gives_a_plain_message(tmp_path, monkeyp
     message = str(err.value)
     assert "typing mistake in profile.yaml" in message and "line 3" in message
     assert "https://github.com/jane" in message
+
+
+def test_run_works_on_a_fresh_install_without_data_folder(settings, session, tmp_path, monkeypatch):
+    """A friend's first search: no data/ or output/ folder exists yet."""
+    import argparse
+    from jobhunter import __main__ as cli, config as cfg
+    fresh = tmp_path / "fresh"
+    monkeypatch.setattr(cfg, "DATA_DIR", fresh / "data")
+    monkeypatch.setattr(cfg, "OUTPUT_DIR", fresh / "output")
+    from jobhunter import pipeline
+    monkeypatch.setattr(pipeline, "DATA_DIR", fresh / "data")
+    monkeypatch.setattr(pipeline, "OUTPUT_DIR", fresh / "output")
+    monkeypatch.setattr(pipeline, "collect_all", lambda *a, **k: [])
+    cli.cmd_run(argparse.Namespace(no_digest=True, no_docs=False), settings)
+    assert (fresh / "data" / "last-run.log").exists()
