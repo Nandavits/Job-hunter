@@ -47,6 +47,21 @@ def _first(item: dict, *keys) -> str:
     return ""
 
 
+DATE_KEYS = ("datumErsteVeroeffentlichung", "aktuelleVeroeffentlichungsdatum", "veroeffentlichungsdatum",
+             "erstveroeffentlichungsdatum")
+
+
+def posted_date(item: dict) -> str:
+    """When the ad was first published (v6: datumErsteVeroeffentlichung; v4: aktuelleVeroeffentlichungsdatum)."""
+    for key in DATE_KEYS:
+        if item.get(key):
+            return str(item[key])[:10]
+    period = item.get("veroeffentlichungszeitraum")
+    if isinstance(period, dict) and period.get("von"):
+        return str(period["von"])[:10]
+    return ""
+
+
 def parse_search(data: dict) -> list[Job]:
     jobs = []
     for item in _job_list(data):
@@ -61,8 +76,7 @@ def parse_search(data: dict) -> list[Job]:
             url=f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
             apply_url=_specific(item.get("externeUrl") or ""),
             location=_location(item.get("arbeitsort") or (item.get("arbeitsorte") or [None])[0]),
-            posted_at=_first(item, "aktuelleVeroeffentlichungsdatum", "veroeffentlichungsdatum",
-                             "erstveroeffentlichungsdatum", "modifikationsTimestamp")[:10],
+            posted_at=posted_date(item),
             extra={"beruf": item.get("beruf", "")},
         ))
     return jobs
@@ -126,8 +140,7 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_det
         detail = fetch_detail(session, job.external_id)
         job.description = parse_detail(detail)
         if not job.posted_at:
-            job.posted_at = str(detail.get("aktuelleVeroeffentlichungsdatum") or detail.get(
-                "erstveroeffentlichungsdatum") or detail.get("veroeffentlichungsdatum") or "")[:10]
+            job.posted_at = posted_date(detail)
         if not job.apply_url:
             job.apply_url = detail.get("allianzpartnerUrl") or detail.get("externeUrl") or ""
     return jobs

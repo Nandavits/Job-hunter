@@ -336,3 +336,16 @@ def test_yourfirm_plain_text_alert_gives_company_location_and_clean_link():
         ("Chapter Lead (m/w/d) Data Reporting", "SIGNAL IDUNA Gruppe", "Dortmund, Hamburg"),
     ]
     assert jobs[0].url == "https://www.yourfirm.de/job/detail/YF-53087"
+
+
+def test_arbeitsagentur_v6_posting_date():
+    """Real v6 field names, checked against the live API on 23 Nov 2026."""
+    from jobhunter.collectors.arbeitsagentur import parse_search, posted_date
+    data = {"stellenangebote": [{"referenznummer": "10001-123-S", "stellenangebotsTitel": "Data Engineer (m/w/d)",
+                                 "firma": "Acme GmbH", "datumErsteVeroeffentlichung": "2026-11-23",
+                                 "aenderungsdatum": "2026-11-23T07:41:19.817"}]}
+    jobs = parse_search(data)
+    assert jobs and jobs[0].posted_at == "2026-11-23"
+    assert posted_date({"aktuelleVeroeffentlichungsdatum": "2026-11-20"}) == "2026-11-20"
+    assert posted_date({"veroeffentlichungszeitraum": {"von": "2026-11-19"}}) == "2026-11-19"
+    assert posted_date({"eintrittsdatum": "2027-01-01"}) == ""          # start date is not the posting date
