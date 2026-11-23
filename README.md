@@ -47,6 +47,7 @@ flowchart LR
 | Arbeitnow | English-speaking jobs in Germany | Public API |
 | Data Berlin (databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
 | LinkedIn, StepStone, XING, Indeed, Glassdoor | Jobs from my saved job alerts | Alert emails in Gmail (read-only) |
+| jobvector, yourfirm, Jobware, GOODJOBS, kimeta, Empfehlungsbund, Interamt, Karriere Familienunternehmen, joblift | Jobs from job alerts I set up on each board (STEM, Mittelstand, impact, public sector, family businesses) | Alert emails in Gmail (read-only) |
 
 For good matches from LinkedIn or StepStone, Job Hunter also looks for the same job on the company's own
 careers site, so I apply there instead of on the job board.

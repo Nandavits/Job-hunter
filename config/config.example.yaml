@@ -155,6 +155,17 @@ sources:
       - indeed
       - mail.xing.com
       - glassdoor.com
+      # Job boards: set up a job alert / Jobmail on each site with this Gmail address
+      - jobvector            # jobvector.de (Jobmail)
+      - yourfirm             # yourfirm.de (Job-Alarm)
+      - jobware              # jobware.de (Jobagent)
+      - goodjobs             # goodjobs.eu (Job-Alert)
+      - kimeta               # kimeta.de (Job-Alarm)
+      - empfehlungsbund      # empfehlungsbund.de and its portals (E-Mail-Jobabo)
+      - interamt             # interamt.de, public sector (Suchagent)
+      - karriere-familienunternehmen   # karriere-familienunternehmen.de
+      - joblift              # joblift.de (Job-Alarm)
+      - arbeitnow            # arbeitnow.com alerts (its public API is read as well)
 
 tailoring:
   # How many top new jobs get a tailored CV + cover letter each run.

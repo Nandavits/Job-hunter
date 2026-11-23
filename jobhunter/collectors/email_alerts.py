@@ -96,6 +96,63 @@ def parse_glassdoor_html(html: str) -> list[Job]:
     return list(jobs.values())
 
 
+# Job boards whose alert emails are read with the general parser below: sender-address part -> site name.
+BOARD_SENDERS = {
+    "jobvector": "jobvector", "yourfirm": "yourfirm", "jobware": "jobware", "goodjobs": "goodjobs",
+    "kimeta": "kimeta", "empfehlungsbund": "empfehlungsbund", "interamt": "interamt",
+    "karriere-familienunternehmen": "karriere-familienunternehmen", "joblift": "joblift",
+    "arbeitnow": "arbeitnow",
+}
+NOT_A_JOB_LINK = re.compile(
+    r"^(alle|weitere|mehr|more|all|show|see|view all|zur übersicht|übersicht|job ?mail|job ?alert|jobagent|"
+    r"such(auftrag|agent|profil)|abmelden|abbestellen|unsubscribe|einstellungen|settings|profil|profile|"
+    r"login|anmelden|registrieren|konto|datenschutz|privacy|impressum|imprint|agb|nutzungsbedingungen|terms|"
+    r"kontakt|contact|hilfe|help|faq|newsletter|app|download|facebook|instagram|linkedin|xing|twitter|youtube|"
+    r"tiktok|im browser|web ?version|online ansehen|hier klicken|click here|zur website|startseite|home|"
+    r"merken|speichern|teilen|share|feedback|ratgeber|karriere-?tipps|gehalt)", re.I)
+JOB_BUTTON = re.compile(r"^(zur (stelle|stellenanzeige|anzeige)|zum job|job ansehen|stelle ansehen|details|"
+                        r"anzeige (ansehen|öffnen)|mehr erfahren|jetzt bewerben|bewerben|view job|apply)\b", re.I)
+SOCIAL_HOSTS = re.compile(r"facebook\.|instagram\.|twitter\.|x\.com|youtube\.|tiktok\.|linkedin\.com/company|"
+                          r"xing\.com/pages|apps\.apple\.|play\.google\.", re.I)
+
+
+def board_for_sender(sender: str) -> str:
+    sender = (sender or "").lower()
+    return next((site for key, site in BOARD_SENDERS.items() if key in sender), "")
+
+
+def parse_board_html(html: str, site: str) -> list[Job]:
+    """General reader for job-board alert emails (jobvector, Jobware, kimeta, Interamt ...).
+    Each job is a link whose text is the job title (or a 'view job' button under the title);
+    company and location are the next lines in the same block. Navigation links are skipped."""
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    jobs: dict[str, Job] = {}
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if not href.startswith("http") or SOCIAL_HOSTS.search(href) or re.match(r"https?://[^/]+/?$", href):
+            continue                                       # social links and plain home-page links
+        label = re.sub(r"\s+", " ", a.get_text(" ", strip=True))
+        block = a.find_parent(["td", "tr", "div", "li", "table"]) or a
+        lines = [l for l in _lines(block) if not NOISE_LINE.match(l) and not JOB_BUTTON.match(l)]
+        if JOB_BUTTON.match(label):
+            title = lines[0] if lines else ""
+        else:
+            title = label
+        if not (8 <= len(title) <= 200) or NOT_A_JOB_LINK.match(title) or JOB_BUTTON.match(title) \
+                or not re.search(r"[A-Za-zÄÖÜäöüß]{3}", title) or URL_RE.match(title) \
+                or re.sub(r"[^a-z]", "", title.lower()) in (site.replace("-", ""), re.sub(r"[^a-z]", "", site + "de")):
+            continue
+        rest = [l for l in lines if l != title and not NOT_A_JOB_LINK.match(l)]
+        company = rest[0] if rest else ""
+        location = rest[1] if len(rest) > 1 else ""
+        key = _job_id(site, href, title, company)
+        jobs.setdefault(key, Job(source="email", external_id=key, company=company[:120], title=title[:200],
+                                 url=href, location=location[:120], extra={"site": site, "needs_review": True}))
+    return list(jobs.values())
+
+
 URL_RE = re.compile(r"https?://\S+")
 JOB_HOSTS = re.compile(r"linkedin\.com/(?:comm/)?jobs/view/|click\.stepstone\.de/|stepstone\.de/stellenangebote|"
                        r"indeed\.[a-z.]+/(?:rc/clk|viewjob|pagead)|xing\.com/(?:jobs/|m/)", re.I)
@@ -202,8 +259,12 @@ def fetch(cfg: dict, address: str, app_password: str) -> list[Job]:
                 msg = email.message_from_bytes(msg_data[0][1])
                 subject = str(make_header(decode_header(msg.get("Subject", ""))))
                 html_body = _body_html(msg)
-                found = parse_glassdoor_html(html_body) or parse_alert_text(_body_text(msg)) or \
-                    parse_alert_html(html_body)
+                board = board_for_sender(msg.get("From", "") or sender)
+                if board:
+                    found = parse_board_html(html_body, board)
+                else:
+                    found = parse_glassdoor_html(html_body) or parse_alert_text(_body_text(msg)) or \
+                        parse_alert_html(html_body)
                 for job in found:
                     job.extra["email_subject"] = subject
                     jobs.setdefault(job.external_id, job)

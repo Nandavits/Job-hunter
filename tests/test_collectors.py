@@ -231,3 +231,45 @@ def test_databerlin_page_parts_do_not_hide_german_ads():
             "and your saved CV. Report an issue Salary and Benefits " + "This role vs. typical in Berlin. " * 30)
     assert written_in_german(main_ad_text(page))
     assert "Tailor my CV" not in main_ad_text(page)
+
+
+# ---- job-board alert emails (jobvector, Jobware, kimeta, Interamt, ...) ----
+BOARD_EMAIL = """<html><body><table>
+<tr><td><a href="https://www.jobvector.de/">jobvector</a> <a href="https://www.jobvector.de/login">Login</a></td></tr>
+<tr><td><p>Hallo Nanda, hier sind 3 neue Jobs für deinen Suchauftrag:</p></td></tr>
+<tr><td><a href="https://click.jobvector.de/t/abc?u=job-1">Data Engineer (m/w/d)</a><br>Acme GmbH<br>Berlin<br>Vollzeit</td></tr>
+<tr><td><b>Analytics Engineer (m/w/d)</b><br>Beta AG<br>Hamburg<br>
+    <a href="https://www.jobvector.de/job/analytics-engineer-123">Zur Stellenanzeige</a></td></tr>
+<tr><td><a href="https://click.jobvector.de/t/def?u=job-3">BI Developer (m/w/d)</a><br>Gamma SE<br>Remote</td></tr>
+<tr><td><a href="https://www.jobvector.de/jobs/">Alle Jobs anzeigen</a> · <a href="https://www.jobvector.de/abmelden">Jobmail abbestellen</a>
+    · <a href="https://www.jobvector.de/datenschutz">Datenschutz</a> · <a href="https://www.facebook.com/jobvector">Facebook</a></td></tr>
+</table></body></html>"""
+
+
+def test_board_alert_email_finds_jobs_and_skips_navigation():
+    from jobhunter.collectors.email_alerts import board_for_sender, parse_board_html
+    assert board_for_sender("jobvector Jobmail <jobmail@jobvector.de>") == "jobvector"
+    assert board_for_sender("Interamt <noreply@interamt.de>") == "interamt"
+    assert board_for_sender("LinkedIn <jobalerts-noreply@linkedin.com>") == ""
+    jobs = {j.title: j for j in parse_board_html(BOARD_EMAIL, "jobvector")}
+    assert set(jobs) == {"Data Engineer (m/w/d)", "Analytics Engineer (m/w/d)", "BI Developer (m/w/d)"}
+    assert jobs["Data Engineer (m/w/d)"].company == "Acme GmbH"
+    assert jobs["Data Engineer (m/w/d)"].location == "Berlin"
+    assert jobs["Analytics Engineer (m/w/d)"].url.endswith("analytics-engineer-123")   # title above the button
+    assert jobs["BI Developer (m/w/d)"].extra == {"site": "jobvector", "needs_review": True}
+    assert all(j.source == "email" for j in jobs.values())
+
+
+def test_every_new_board_is_in_the_example_senders(config):
+    from jobhunter.collectors.email_alerts import BOARD_SENDERS
+    senders = " ".join(config["sources"]["email_alerts"]["senders"])
+    for key in BOARD_SENDERS:
+        assert key in senders, key
+
+
+def test_board_job_whose_link_contains_its_title_is_kept():
+    from jobhunter.collectors.email_alerts import parse_board_html
+    html = '<table><tr><td><a href="https://www.jobware.de/job/data-engineer-12345">Data Engineer</a>' \
+           '<br>Delta GmbH<br>Köln</td></tr></table>'
+    jobs = parse_board_html(html, "jobware")
+    assert [(j.title, j.company, j.location) for j in jobs] == [("Data Engineer", "Delta GmbH", "Köln")]
