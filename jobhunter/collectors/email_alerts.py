@@ -14,6 +14,7 @@ from email.header import decode_header, make_header
 
 from bs4 import BeautifulSoup
 
+from ..dates import normalize_date
 from ..models import Job
 from .base import log
 
@@ -303,8 +304,10 @@ def fetch(cfg: dict, address: str, app_password: str) -> list[Job]:
                 else:
                     found = parse_glassdoor_html(html_body) or parse_alert_text(_body_text(msg)) or \
                         parse_alert_html(html_body)
+                sent = normalize_date(msg.get("Date", ""))
                 for job in found:
                     job.extra["email_subject"] = subject
+                    job.posted_at = job.posted_at or sent      # alert emails list jobs from the last day
                     jobs.setdefault(job.external_id, job)
     log.info("Email alerts: %d jobs", len(jobs))
     return list(jobs.values())

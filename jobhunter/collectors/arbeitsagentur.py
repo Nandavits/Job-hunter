@@ -62,7 +62,7 @@ def parse_search(data: dict) -> list[Job]:
             apply_url=_specific(item.get("externeUrl") or ""),
             location=_location(item.get("arbeitsort") or (item.get("arbeitsorte") or [None])[0]),
             posted_at=_first(item, "aktuelleVeroeffentlichungsdatum", "veroeffentlichungsdatum",
-                             "eintrittsdatum")[:10],
+                             "erstveroeffentlichungsdatum", "modifikationsTimestamp")[:10],
             extra={"beruf": item.get("beruf", "")},
         ))
     return jobs
@@ -125,6 +125,9 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_det
     for job in jobs[:max_details]:
         detail = fetch_detail(session, job.external_id)
         job.description = parse_detail(detail)
+        if not job.posted_at:
+            job.posted_at = str(detail.get("aktuelleVeroeffentlichungsdatum") or detail.get(
+                "erstveroeffentlichungsdatum") or detail.get("veroeffentlichungsdatum") or "")[:10]
         if not job.apply_url:
             job.apply_url = detail.get("allianzpartnerUrl") or detail.get("externeUrl") or ""
     return jobs

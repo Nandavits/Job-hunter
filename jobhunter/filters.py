@@ -312,6 +312,22 @@ def score_job(job: Job, cfg: dict) -> int:
     return int(min(100, round(skill_part + title_part + exp_part + lang_part)))
 
 
+def job_too_old(job: Job, cfg: dict) -> str:
+    """'' if the job is recent enough for  max_job_age_days, else the reason.
+
+    The posting date is used when known; otherwise the day Job Hunter first saw the job
+    (a job first seen 10 days ago was posted at least 10 days ago)."""
+    from .dates import age_days, date_in_ad
+    limit = cfg.get("max_job_age_days")
+    if not limit:
+        return ""
+    posted = job.posted_at or date_in_ad(job.description)
+    age = age_days(posted) if posted else age_days(job.extra.get("collected_at", ""))
+    if age is not None and age > int(limit):
+        return f"posted {age} days ago (limit {limit})" if posted else f"first seen {age} days ago (limit {limit})"
+    return ""
+
+
 def evaluate(job: Job, cfg: dict) -> Job:
     """Fill in score / german_required / excluded_reason on the job."""
     job.excluded_reason = title_matches(job, cfg) or location_matches(job, cfg)
@@ -334,6 +350,11 @@ def evaluate(job: Job, cfg: dict) -> Job:
     years = min_years_required(job.description)
     if years is not None and years > cfg.get("max_years_experience", 99):
         job.excluded_reason = f"asks for {years}+ years experience"
+        return job
+
+    too_old = job_too_old(job, cfg)
+    if too_old:
+        job.excluded_reason = too_old
         return job
 
     job.score = score_job(job, cfg)

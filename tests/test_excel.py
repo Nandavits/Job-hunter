@@ -22,7 +22,7 @@ def _edit(path, sheet, uid, status=None, notes=None):
             if status:
                 row[1].value = status
             if notes:
-                row[11].value = notes
+                row[12].value = notes   # Notes column (after "Posted ago")
     wb.save(path)
 
 
@@ -104,7 +104,7 @@ def test_rows_typed_by_hand_are_imported(settings, tmp_path):
     wb = load_workbook(path)
     ws = wb["Applications"]
     ws.append([None, "applied", "15.11.2026", None, "Rabot Energy", "Analytics Engineer (m/w/d)", "Berlin",
-               None, "https://rabot.energy/jobs", None, None, "Sent by email"])
+               None, "https://rabot.energy/jobs", None, None, None, "Sent by email"])
     ws.append([None, None, None, None, "Only Company", None])          # incomplete: ignored
     wb.save(path)
     assert sync_from_excel(store, path) == 1
@@ -130,3 +130,11 @@ def test_applied_date_can_be_corrected(settings, tmp_path):
     sync_from_excel(store, path)
     assert store.get(acme["uid"])["status"] == "applied"
     assert store.get(acme["uid"])["applied_at"] == "2026-11-15"
+
+
+def test_notes_from_an_older_excel_layout_are_still_read():
+    from jobhunter.excel import _notes_col
+    old = ["ID", "Status", "Applied on", "Score", "Company", "Title", "Location", "Source", "Link", "Posted", "CV",
+           "Notes", "Why skipped"]
+    assert _notes_col(old) == 11
+    assert _notes_col(old[:10] + ["Posted ago"] + old[10:]) == 12

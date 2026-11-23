@@ -76,6 +76,13 @@ def backfill_descriptions(store: Store, limit: int = 60, session=None) -> int:
     return done
 
 
+def fill_posted_date(job) -> str:
+    """Put the posting date in ISO form, or find it in the ad text when the source gave none."""
+    from .dates import date_in_ad, normalize_date
+    job.posted_at = normalize_date(job.posted_at) or date_in_ad(job.description)
+    return job.posted_at
+
+
 def rescore_open_jobs(store: Store, search: dict) -> int:
     """Recompute the match score of jobs you have not applied to yet (scoring can improve over time)."""
     from .filters import evaluate, location_matches, score_job
@@ -86,8 +93,12 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
             continue
         job = Job(source=row["source"], external_id=row["external_id"], company=row["company"] or "",
                   title=row["title"] or "", url=row["url"] or "", location=row["location"] or "",
-                  description=row["description"] or "")
+                  description=row["description"] or "", posted_at=row.get("posted_at") or "",
+                  extra={"collected_at": row.get("collected_at") or ""})
         fixes = {}
+        posted = fill_posted_date(job)
+        if posted and posted != (row.get("posted_at") or ""):
+            fixes["posted_at"] = posted
         for field in ("title", "company", "description"):       # repair text saved with the wrong encoding
             value = row.get(field) or ""
             if re.search(r"Ã.|â\x80", value):
@@ -282,6 +293,8 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
         mark_closed_jobs(store, raw)
     except Exception as exc:
         log.warning("Could not check for closed jobs: %s", exc)
+    for job in raw:
+        fill_posted_date(job)
     kept, dropped = filter_jobs(raw, search)
     # Only remember skipped jobs that were relevant roles (so you can see why they were skipped);
     # the hundreds of unrelated jobs on big career pages are not stored.

@@ -74,7 +74,10 @@ def cmd_list(args, settings):
         from .career import is_job_board
         direct = " [company site found]" if r.get("apply_url") and is_job_board(r.get("url") or "") \
             and not is_job_board(r["apply_url"]) else ""
-        print(f"{r['uid'][:8]}  {r['status']:<9} {score}  {r['company'][:22]:<22} {r['title'][:55]}{direct}{reason}")
+        from .dates import age_text
+        posted = age_text(r.get("posted_at") or "")
+        posted = f"  [posted {posted}]" if posted else ""
+        print(f"{r['uid'][:8]}  {r['status']:<9} {score}  {r['company'][:22]:<22} {r['title'][:55]}{posted}{direct}{reason}")
 
 
 def cmd_show(args, settings):

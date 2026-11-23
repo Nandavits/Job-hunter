@@ -11,6 +11,7 @@ import logging
 from datetime import date
 from pathlib import Path
 
+from .dates import age_text
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -26,7 +27,7 @@ log = logging.getLogger("jobhunter")
 
 COLUMNS = [  # (header, width)
     ("ID", 11), ("Status", 12), ("Applied on", 12), ("Score", 7), ("Company", 28), ("Title", 46),
-    ("Location", 22), ("Source", 12), ("Link", 14), ("Posted", 11), ("CV", 12), ("Notes", 40), ("Why skipped", 48),
+    ("Location", 22), ("Source", 12), ("Link", 14), ("Posted", 11), ("Posted ago", 12), ("CV", 12), ("Notes", 40), ("Why skipped", 48),
 ]
 SHEETS = {
     "Applications": lambda r: r["status"] in APPLIED_STATUSES,
@@ -42,7 +43,7 @@ def _row(r: dict) -> list:
     return [r["uid"][:8], r["status"], r.get("applied_at") or "", r.get("score") or 0, r.get("company") or "",
             r.get("title") or "", r.get("location") or "", r.get("source") or "",
             r.get("apply_url") or r.get("url") or "", r.get("posted_at") or "",
-            "yes" if r.get("cv_path") else "", r.get("notes") or "", r.get("excluded_reason") or ""]
+            age_text(r.get("posted_at") or ""), "yes" if r.get("cv_path") else "", r.get("notes") or "", r.get("excluded_reason") or ""]
 
 
 def export_excel(store: Store, path: Path) -> Path:
@@ -122,7 +123,13 @@ def _day(value) -> str:
     return ""
 
 
-def _add_manual_row(store: Store, row) -> int:
+def _notes_col(header) -> int:
+    """Where the Notes column is in this sheet (files made by older versions have it elsewhere)."""
+    names = [str(h or "").strip() for h in (header or [])]
+    return names.index("Notes") if "Notes" in names else 11
+
+
+def _add_manual_row(store: Store, row, notes_at: int = 11) -> int:
     """A row you typed yourself (no ID): Company + Title (+ Status, Applied on, Link, Notes)."""
     company = str(row[4] or "").strip() if len(row) > 4 else ""
     title = str(row[5] or "").strip() if len(row) > 5 else ""
@@ -138,7 +145,7 @@ def _add_manual_row(store: Store, row) -> int:
     store.save([job])
     store.update(job.uid, status=status, excluded_reason="",
                  applied_at=_day(row[2]) if len(row) > 2 and status in APPLIED_STATUSES else "",
-                 notes=str(row[11] or "").strip() if len(row) > 11 else "")
+                 notes=str(row[notes_at] or "").strip() if len(row) > notes_at else "")
     if status == "applied":
         day = store.get(job.uid)["applied_at"]
         store.mark_applied(job.uid)          # also hides open copies of the same role
@@ -166,14 +173,16 @@ def sync_from_excel(store: Store, path: Path) -> int:
     for name in SHEETS:
         if name not in wb.sheetnames:
             continue
+        header = next(wb[name].iter_rows(max_row=1, values_only=True), ())
+        notes_at = _notes_col(header)
         for row in wb[name].iter_rows(min_row=2, values_only=True):
             if not row:
                 continue
             if not row[0]:
-                changes += _add_manual_row(store, row)
+                changes += _add_manual_row(store, row, notes_at)
                 continue
             uid, status = str(row[0]).strip(), str(row[1] or "").strip().lower()
-            notes = str(row[11] or "").strip() if len(row) > 11 else ""
+            notes = str(row[notes_at] or "").strip() if len(row) > notes_at else ""
             if uid in seen:
                 continue
             seen.add(uid)

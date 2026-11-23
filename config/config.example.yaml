@@ -56,6 +56,11 @@ search:
   # "3-5 years" counts as 3, "2+ years" as 2. Ads that don't say are kept.
   max_years_experience: 3
 
+  # Only jobs posted within this many days (1 = last 24 hours, 7 = last week). 0 = no limit.
+  # Uses the posting date when the site gives one (shown in the "Posted" column),
+  # otherwise the day Job Hunter first found the job.
+  max_job_age_days: 0
+
   # Other countries you would also work in, besides Germany. Empty = Germany only.
   # Known: india, austria, switzerland, netherlands, united kingdom, ireland, france, spain,
   #        portugal, poland, usa, canada, uae, singapore.   Example:  also_countries: [india]
