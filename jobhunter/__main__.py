@@ -482,6 +482,8 @@ def main(argv=None):
     p.set_defaults(func=cmd_outreach)
     p = sub.add_parser("check-links", help="list open jobs whose application page is closed (changes nothing)")
     p.set_defaults(func=cmd_check_links)
+    p = sub.add_parser("check-settings", help="check profile.yaml / config.yaml (or any copy) for typing mistakes")
+    p.add_argument("files", nargs="*", help="files to check (default: the two files in the config folder)")
     p = sub.add_parser("check-key", help="test the Claude API key")
     p.add_argument("--letters", action="store_true", help="also write one test cover letter (about 3 cents)")
     p.add_argument("--show", action="store_true", help="print the test letter")
@@ -554,6 +556,10 @@ def main(argv=None):
     p.set_defaults(func=cmd_schedule)
 
     args = parser.parse_args(argv)
+    if args.cmd == "check-settings":                 # works even when the settings files are broken
+        from .checksettings import run
+        from .config import CONFIG_DIR
+        sys.exit(run(args.files, CONFIG_DIR))
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
     args.func(args, load_settings())

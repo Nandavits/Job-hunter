@@ -154,6 +154,7 @@ python -m jobhunter discover <careers-page-url> --name Acme   # find a company's
 python -m jobhunter check-sources       # test every job source
 python -m jobhunter outreach <id>        # LinkedIn note + message for a job
 python -m jobhunter check-key --letters # test the Claude key with one sample letter
+python -m jobhunter check-settings      # find typing mistakes in profile.yaml / config.yaml (check-settings.bat: drag a file onto it)
 python -m jobhunter stats
 ```
 
