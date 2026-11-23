@@ -5,6 +5,7 @@ underneath, bold role titles, italic blue-grey dates, compact bullets, one A4 pa
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -182,7 +183,16 @@ def build_letter(profile: dict, t: Tailoring, job: dict, path: Path) -> Path:
 
 # --------------------------------------------------------------------------- PDF
 def soffice_path() -> str | None:
-    return shutil.which("soffice") or shutil.which("libreoffice")
+    found = shutil.which("soffice") or shutil.which("libreoffice")
+    if found:
+        return found
+    # On Windows the LibreOffice installer does not add itself to PATH.
+    for base in (os.environ.get("ProgramFiles", r"C:\Program Files"),
+                 os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")):
+        exe = Path(base) / "LibreOffice" / "program" / "soffice.exe"
+        if exe.exists():
+            return str(exe)
+    return None
 
 
 def to_pdf(docx_path: Path) -> Path | None:
