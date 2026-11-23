@@ -138,3 +138,24 @@ def test_notes_from_an_older_excel_layout_are_still_read():
            "Notes", "Why skipped"]
     assert _notes_col(old) == 11
     assert _notes_col(old[:10] + ["Posted ago"] + old[10:]) == 12
+
+
+def test_why_this_score_column(tmp_path):
+    from openpyxl import load_workbook
+    from jobhunter.excel import export_excel, fit_summary
+    from jobhunter.models import Job
+    from jobhunter.storage import Store
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    ad = "You build dbt models in SQL and run Spark jobs. You have 2+ years of experience. " * 3
+    job = Job(source="t", external_id="1", company="Acme", title="Data Engineer", url="https://x/1",
+              description=ad, posted_at="2020-01-01")
+    store.save([job])
+    search = {"skills": {"sql": 3, "dbt": 3, "python": 2}}
+    text = fit_summary(store.get(job.uid), search)
+    assert text.startswith("You have: sql, dbt") and "Missing: spark" in text and "Asks 2+ years" in text
+    assert "Posted" in text
+    path = export_excel(store, tmp_path / "a.xlsx", search)
+    ws = load_workbook(path)["Open jobs"]
+    header = [c.value for c in ws[1]]
+    assert header[-1] == "Why this score" and ws.cell(2, len(header)).value == text
+    assert fit_summary({"description": "", "posted_at": ""}, search) == "No ad text yet: score is a guess"

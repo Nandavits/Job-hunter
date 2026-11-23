@@ -259,11 +259,28 @@ def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
     return docs
 
 
+def check_application_replies(settings: Settings, store: Store) -> list[str]:
+    """Rejections and interview invitations in your inbox -> job status (read-only, see inbox.py)."""
+    cfg = settings.config.get("application_replies") or {}
+    if cfg.get("enabled") is False:
+        return []
+    alerts = settings.sources.get("email_alerts") or {}
+    try:
+        from .inbox import check_replies
+        return check_replies(store, settings.env("GMAIL_ADDRESS"), settings.env("GMAIL_APP_PASSWORD"),
+                             {"imap_host": alerts.get("imap_host", "imap.gmail.com"), **cfg},
+                             DATA_DIR / "inbox_seen.json", skip_senders=alerts.get("senders", []))
+    except Exception as exc:
+        log.warning("Could not read replies to your applications: %s", exc)
+        return []
+
+
 def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True, session=None) -> dict:
     store = Store(settings.database_url)
     search = settings.search
     excel_path = DATA_DIR / "applications.xlsx"
     sync_from_excel(store, excel_path)   # statuses you changed in Excel (e.g. applied on LinkedIn)
+    replies = check_application_replies(settings, store)
     try:
         backfill_descriptions(store, session=session)
     except Exception as exc:
@@ -320,26 +337,33 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
         interview_packs = prepare_due(settings, store, OUTPUT_DIR)   # jobs you moved to 'interview'
 
     tracker = store.export_tracker(DATA_DIR / "tracker.csv")
-    excel_file = export_excel(store, excel_path)
+    excel_file = export_excel(store, excel_path, search)
     md, page = notify.build_digest(new_jobs, prepared, store.stats(), reposts)
+    if replies:
+        import html as _html
+        md += "\n\n## Replies to your applications\n" + "\n".join(f"- {r}" for r in replies)
+        page += "<h3>Replies to your applications</h3><ul>" + "".join(
+            f"<li>{_html.escape(r)}</li>" for r in replies) + "</ul>"
     digest_path = DATA_DIR / f"digest-{date.today().isoformat()}.md"
     digest_path.write_text(md, encoding="utf-8")
 
     sent = {}
-    if send_digest and new_jobs:
+    invited = any(": interview (" in r for r in replies)
+    if send_digest and (new_jobs or invited):
         cfg = settings.config.get("digest", {})
         if cfg.get("email", True):
             files = [d.get(k) for d in prepared.values() for k in ("cv_pdf", "letter_pdf") if d.get(k)] \
                 if cfg.get("attach_documents", False) else []        # off by default: just the job list
             sent["email"] = notify.send_email(settings.env("GMAIL_ADDRESS"), settings.env("GMAIL_APP_PASSWORD"),
-                                              f"Job Hunter: {len(new_jobs)} new jobs", md, page, files)
+                                              ("Job Hunter: INTERVIEW invitation + " if invited else "Job Hunter: ")
+                                              + f"{len(new_jobs)} new jobs", md, page, files)
         if cfg.get("telegram"):
             sent["telegram"] = notify.send_telegram(settings.env("TELEGRAM_BOT_TOKEN"),
                                                     settings.env("TELEGRAM_CHAT_ID"), md)
 
     return {"collected": len(raw), "matching": len(kept), "new": len(new_jobs),
             "prepared": len(prepared), "dropped": len(dropped), "tracker": str(tracker),
-            "interview_prep": [str(p) for p in interview_packs],
+            "interview_prep": [str(p) for p in interview_packs], "replies": replies,
             "reposts_already_applied": len(reposts), "duplicates": len(duplicates), "excel": str(excel_file),
             "digest": str(digest_path), "sent": sent,
             "drop_reasons": _reason_counts(dropped)}

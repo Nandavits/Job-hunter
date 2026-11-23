@@ -197,3 +197,12 @@ digest:
 schedule:
   every_minutes: 30   # check for new jobs every 30 minutes while the computer is on
   daily_at: "08:00"   # used only if every_minutes is removed
+
+# Replies to your applications (rejections, interview invitations) read from the same Gmail inbox
+# as the job alerts (read-only). A rejection sets the job to 'rejected', an invitation to 'interview'
+# (the interview prep pack is then made for you). Receipts and "please complete your application"
+# emails only add a note. Needs GMAIL_ADDRESS and GMAIL_APP_PASSWORD in .env.
+application_replies:
+  enabled: true
+  days_back: 14
+

@@ -305,6 +305,14 @@ def cmd_add(args, settings):
     _export(store)
 
 
+def cmd_replies(args, settings):
+    from .pipeline import check_application_replies
+    store = _store(settings)
+    changes = check_application_replies(settings, store)
+    print("\n".join(changes) if changes else "No new replies to your applications.")
+    _export(store)
+
+
 def cmd_excel(args, settings):
     _export(_store(settings))
 
@@ -553,6 +561,8 @@ def main(argv=None):
     p.set_defaults(func=cmd_export)
 
     sub.add_parser("stats", help="count jobs per status").set_defaults(func=cmd_stats)
+    sub.add_parser("replies", help="read replies to your applications (rejections, interviews) from your inbox"
+                   ).set_defaults(func=cmd_replies)
 
     p = sub.add_parser("discover", help="find a company's ATS + slug from its careers page")
     p.add_argument("url", help="careers page URL (or a saved HTML file)")

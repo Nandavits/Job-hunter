@@ -28,6 +28,7 @@ log = logging.getLogger("jobhunter")
 COLUMNS = [  # (header, width)
     ("ID", 11), ("Status", 12), ("Applied on", 12), ("Score", 7), ("Company", 28), ("Title", 46),
     ("Location", 22), ("Source", 12), ("Link", 14), ("Posted", 11), ("Posted ago", 12), ("CV", 12), ("Notes", 40), ("Why skipped", 48),
+    ("Why this score", 70),
 ]
 SHEETS = {
     "Applications": lambda r: r["status"] in APPLIED_STATUSES,
@@ -39,14 +40,47 @@ STATUS_FILLS = {"applied": "DDEBF7", "interview": "E2EFDA", "offer": "C6E0B4", "
                 "prepared": "FFF2CC", "skipped": "EDEDED"}
 
 
-def _row(r: dict) -> list:
+def fit_summary(r: dict, search: dict | None) -> str:
+    """'You have: SQL, dbt · Missing: Spark · Asks 2 years · Posted yesterday' for one job."""
+    from .filters import min_years_required, score_job
+    text = r.get("description") or ""
+    parts = []
+    if len(text) < 100:
+        parts.append("No ad text yet: score is a guess")
+    elif search is not None:
+        job = Job(source=r.get("source") or "", external_id=r.get("external_id") or "", company=r.get("company") or "",
+                  title=r.get("title") or "", url=r.get("url") or "", description=text)
+        score_job(job, search)
+        have = ", ".join(job.matched_skills[:8]) or "none of your skills named"
+        parts.append(f"You have: {have}")
+        missing = job.extra.get("missing_skills") or []
+        parts.append(f"Missing: {', '.join(missing[:6])}" if missing else "Missing: nothing")
+    elif r.get("matched_skills"):
+        parts.append(f"You have: {r['matched_skills'].replace(',', ', ')}")
+    if len(text) >= 100:
+        years = min_years_required(text)
+        parts.append(f"Asks {years}+ years" if years else "Years not stated")
+    posted = age_text(r.get("posted_at") or "")
+    if posted:
+        parts.append(f"Posted {posted}")
+    return " · ".join(parts)
+
+
+def _row(r: dict, search: dict | None = None) -> list:
     return [r["uid"][:8], r["status"], r.get("applied_at") or "", r.get("score") or 0, r.get("company") or "",
             r.get("title") or "", r.get("location") or "", r.get("source") or "",
             r.get("apply_url") or r.get("url") or "", r.get("posted_at") or "",
-            age_text(r.get("posted_at") or ""), "yes" if r.get("cv_path") else "", r.get("notes") or "", r.get("excluded_reason") or ""]
+            age_text(r.get("posted_at") or ""), "yes" if r.get("cv_path") else "", r.get("notes") or "", r.get("excluded_reason") or "",
+            fit_summary(r, search) if r["status"] != "skipped" else ""]
 
 
-def export_excel(store: Store, path: Path) -> Path:
+def export_excel(store: Store, path: Path, search: dict | None = None) -> Path:
+    if search is None:
+        try:
+            from .config import load_settings
+            search = load_settings().search             # your skills, for the "Why this score" column
+        except (SystemExit, Exception):
+            search = None
     rows = store.list(limit=100_000, include_skipped=True)
     rows.sort(key=lambda r: (r.get("applied_at") or "", r.get("collected_at") or ""), reverse=True)
     wb = Workbook()
@@ -59,7 +93,7 @@ def export_excel(store: Store, path: Path) -> Path:
             cell.fill = HEADER_FILL
             cell.alignment = Alignment(vertical="center")
         for r in (r for r in rows if keep(r)):
-            ws.append(_row(r))
+            ws.append(_row(r, search))
             line = ws.max_row
             link = ws.cell(line, 9)
             if link.value:
