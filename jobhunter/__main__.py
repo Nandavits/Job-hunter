@@ -315,11 +315,12 @@ def cmd_check_key(args, settings):
         print("Claude API key: not set - letters and open questions use the simple templates.")
         return
     try:
-        import anthropic
-        anthropic.Anthropic(api_key=key).messages.create(
+        from .llm import make_client
+        make_client(key).messages.create(
             model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"), max_tokens=5,
             messages=[{"role": "user", "content": "Reply with OK"}])
-        print("Claude API key: working - Claude answers open questions on forms.")
+        via = " (through OpenRouter)" if key.strip().startswith("sk-or-") else ""
+        print(f"Claude API key: working{via} - Claude answers open questions on forms.")
     except Exception as exc:
         print(f"Claude API key: NOT working ({type(exc).__name__}: {str(exc)[:160]})")
         return

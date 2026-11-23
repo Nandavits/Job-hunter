@@ -261,8 +261,8 @@ def tailor(profile: dict, job: dict, api_key: str = "", model: str = "claude-son
         return base
     try:
         if client is None:
-            import anthropic
-            client = anthropic.Anthropic(api_key=api_key)
+            from .llm import make_client
+            client = make_client(api_key)
         ad = f"Company: {job.get('company')}\nTitle: {job.get('title')}\nLocation: {job.get('location')}\n\n" \
              f"{(job.get('description') or '')[:9000]}"
         messages = [{"role": "user", "content":

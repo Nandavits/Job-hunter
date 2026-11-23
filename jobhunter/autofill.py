@@ -143,8 +143,8 @@ def claude_choose(question: str, options: list[str], job: dict, profile: dict) -
     if not key or not real or SENSITIVE.search(question):
         return ""
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
+        from .llm import make_client
+        client = make_client(key)
         facts = {k: profile.get(k) for k in ("default_summary", "experience", "skills", "education",
                                              "languages", "relocation", "answers")}
         msg = client.messages.create(
@@ -228,8 +228,8 @@ def claude_answer(question: str, job: dict, profile: dict, letter_paragraphs: li
     if not key:
         return ""
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
+        from .llm import make_client
+        client = make_client(key)
         facts = {k: profile.get(k) for k in ("default_summary", "experience", "skills", "projects",
                                              "education", "languages", "relocation")}
         msg = client.messages.create(

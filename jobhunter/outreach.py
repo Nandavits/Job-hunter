@@ -88,8 +88,8 @@ def draft(profile: dict, job: dict, letter_paragraphs: list[str], matched: list[
         return base
     try:
         if client is None:
-            import anthropic
-            client = anthropic.Anthropic(api_key=key)
+            from .llm import make_client
+            client = make_client(key)
         facts = {k: profile.get(k) for k in ("personal", "experience", "skills", "projects")}
         facts["personal"] = {k: (facts.get("personal") or {}).get(k) for k in ("first_name", "last_name", "city")}
         msg = client.messages.create(model=model, max_tokens=2000, system=PROMPT, messages=[{
