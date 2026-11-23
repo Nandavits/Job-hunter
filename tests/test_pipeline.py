@@ -108,3 +108,16 @@ def test_queue_goes_through_best_jobs_and_skips(tmp_path, monkeypatch):
     cli.cmd_queue(argparse.Namespace(count=10, min_score=75), None)
     assert opened == [a.uid]                                  # best first, C is below 75
     assert store.get(b.uid)["status"] == "skipped"
+
+
+def test_typing_mistake_in_settings_file_gives_a_plain_message(tmp_path, monkeypatch):
+    import pytest
+    from jobhunter import config as cfg
+    (tmp_path / "profile.yaml").write_text("personal:\n  first_name: Jane\n  https://github.com/jane\nrelocation: yes\n",
+                                           encoding="utf-8")
+    monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+    with pytest.raises(SystemExit) as err:
+        cfg._read_yaml("profile.yaml")
+    message = str(err.value)
+    assert "typing mistake in profile.yaml" in message and "line 3" in message
+    assert "https://github.com/jane" in message
