@@ -61,7 +61,8 @@ def cmd_list(args, settings):
         rows.sort(key=lambda r: (len(r.get("description") or "") < 100, -(r["score"] or 0)))
         rows = rows[: args.limit]
     if not rows:
-        print("No jobs yet. Run: python -m jobhunter run")
+        print("No jobs yet. Search first: double-click 2-find-jobs (or start-jobhunter), then come back.\n"
+              "(Command line: python -m jobhunter run)")
     elif any(len(r.get("description") or "") < 100 for r in rows):
         print("  ? = not scored yet: the ad text could not be read (often LinkedIn alerts). Open the link to judge.")
     for r in rows:
