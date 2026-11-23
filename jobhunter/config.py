@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,6 +63,50 @@ def settings_file_error(path: Path, text: str, exc: Exception) -> str:
     return "\n".join(msg)
 
 
+def _skill_names(entry) -> list[str]:
+    """'ETL/ELT pipelines' -> ['etl', 'elt'];  'SQL (advanced)' -> ['sql'];  'Apache Airflow' -> ['airflow']."""
+    text = re.sub(r"\([^)]*\)?|\)", " ", str(entry).lower())
+    names = []
+    for part in re.split(r"[/,;&]|\band\b", text):
+        part = re.sub(r"^\s*apache\s+", "", part)
+        part = re.sub(r"\s+(?:pipelines?|tools?|basics|fundamentals)\s*$", "", part)
+        part = re.sub(r"\s+", " ", part).strip(" .-:")
+        if len(part) >= 2 and len(part.split()) <= 3:
+            names.append(part)
+    return names
+
+
+def effective_skills(config_skills: dict, profile: dict) -> dict:
+    """Skills used for the match score: the ones in profile.yaml, plus the config.yaml ones.
+
+    config.example.yaml ships with an example skill list. If config.yaml still has exactly that list,
+    only the example skills that also appear somewhere in your profile are kept, so the score
+    reflects your own CV and not the example.
+    """
+    skills: dict[str, int] = {}
+    groups = profile.get("skills") or {}
+    entries = [e for v in groups.values() for e in (v if isinstance(v, list) else [v])] \
+        if isinstance(groups, dict) else list(groups)
+    for entry in entries:
+        for name in _skill_names(entry):
+            skills.setdefault(name, 2)
+    config_skills = {str(k).lower(): v for k, v in (config_skills or {}).items()}
+    if config_skills and config_skills == _example_skills() and skills:
+        profile_text = str(profile).lower()
+        config_skills = {k: v for k, v in config_skills.items() if k in profile_text}
+    for name, weight in config_skills.items():
+        skills[name] = weight
+    return skills
+
+
+def _example_skills() -> dict:
+    try:
+        example = yaml.safe_load((CONFIG_DIR / "config.example.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+    return {str(k).lower(): v for k, v in ((example.get("search") or {}).get("skills") or {}).items()}
+
+
 @dataclass
 class Settings:
     config: dict
@@ -69,7 +114,9 @@ class Settings:
 
     @property
     def search(self) -> dict:
-        return self.config.get("search", {})
+        search = dict(self.config.get("search", {}))
+        search["skills"] = effective_skills(search.get("skills") or {}, self.profile)
+        return search
 
     @property
     def sources(self) -> dict:

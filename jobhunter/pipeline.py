@@ -115,7 +115,7 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
             changed += 1
             continue
         where = location_matches(job, search)
-        if not where and row["status"] in ("new", "prepared") and len(job.description) >= 100:
+        if not where and row["status"] in ("new", "prepared"):
             where = evaluate(job, search).excluded_reason   # ad text may be new: German level, years
         if where:
             store.update(row["uid"], status="skipped", excluded_reason=where)

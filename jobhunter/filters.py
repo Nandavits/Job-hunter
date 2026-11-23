@@ -61,7 +61,13 @@ FOREIGN = re.compile(
     r"lausanne|danmark|aarhus|sverige|gothenburg|göteborg|malmö|norge|suomi|ukraine|kyiv|serbia|belgrade|"
     r"croatia|zagreb|slovenia|ljubljana|slovakia|bratislava|turkey|istanbul|israel|tel aviv|dubai|uae|"
     r"pakistan|egypt|cairo|nigeria|south africa|philippines|vietnam|indonesia|malaysia|japan|tokyo|china|"
-    r"hong kong|korea|seoul|argentina|chile|colombia|bangalore|bengaluru|hyderabad|pune|chennai|mumbai|delhi)\b", re.I)
+    r"hong kong|korea|seoul|argentina|chile|colombia|bangalore|bengaluru|hyderabad|pune|chennai|mumbai|delhi|"
+    r"[a-zé]+-sur-[a-zé]+|saint-[a-zé]+|sainte-[a-zé]+|orly|nanterre|courbevoie|puteaux|levallois|"
+    r"boulogne-billancourt|issy-les-moulineaux|rennes|grenoble|sophia antipolis|"
+    r"manchester|leeds|hatfield|birmingham|bristol|edinburgh|glasgow|cambridge|oxford|liverpool|nottingham|"
+    r"sheffield|newcastle upon tyne|cardiff|belfast|milton keynes|"
+    r"nieuwegein|haarlem|leiden|delft|tilburg|breda|nijmegen|arnhem|zwolle|amersfoort|hilversum|almere|"
+    r"france|frankrijk|españa|nederland)\b", re.I)
 IN_GERMANY = re.compile(r"\b(?:germany|deutschland|bundesweit)\b", re.I)
 
 FAR_AWAY = re.compile(r"\b(?:united states|usa|u\.s\.|canada|india|brazil|mexico|singapore|australia|"
@@ -94,13 +100,35 @@ def required_german_level(text: str) -> tuple[str, str]:
     return best, evidence
 
 
-def written_in_german(text: str) -> bool:
+# Words that only appear in German job titles ("Sachbearbeiter (m/w/d)", "Datenanalyst", "Werkstudent ...").
+GERMAN_TITLE = re.compile(
+    r"\b(?:mitarbeiter\w*|sachbearbeiter\w*|referent\w*|werkstudent\w*|praktikant\w*|datenanalyst\w*|"
+    r"dateningenieur\w*|fachkraft|fachkräfte|kauf(?:mann|frau|leute)|leiter\w*|leitung|berater\w*|"
+    r"entwickler\w*|ingenieur\w*|spezialist\w*|verantwortliche\w*|sachgebiet\w*|teamleiter\w*|"
+    r"bereich|für|und|im|mit|als|stelle|ausbildung|abschlussarbeit|duales? studium|elternzeitvertretung|"
+    r"\w+(?:manager|analyst|engineer)in)\b", re.I)
+
+
+def german_title(title: str) -> bool:
+    return bool(GERMAN_TITLE.search(title or ""))
+
+
+def written_in_german(text: str, min_words: int = 60) -> bool:
     words = re.findall(r"[a-zäöüß]+", text.lower())
-    if len(words) < 60:
+    if len(words) < min_words:
         return False
     de = sum(w in GERMAN_STOPWORDS for w in words)
     en = sum(w in ENGLISH_STOPWORDS for w in words)
     return de > 2 * en
+
+
+# "5-7 years as a data scientist", "3+ years building pipelines": a requirement without the word "experience".
+YEARS_IN_ROLE = re.compile(
+    r"\b(\d{1,2})\s*(?:\+|\s*(?:-|–|to)\s*\d{1,2}\+?)?\s*(?:years?|yrs|jahre?n?)\s+"
+    r"(?:as|in|of|building|working|developing|designing|running|hands-on|professional|software|engineering|"
+    r"als|in der|im)\b", re.I)
+NOT_A_REQUIREMENT = re.compile(r"\bago\b|\bfounded\b|\blegacy\b|\bhistory\b|for the past|\bwe (?:have|combine)|"
+                               r"\bour\b|\bseit\b|\bvacation\b", re.I)
 
 
 def min_years_required(text: str) -> int | None:
@@ -112,6 +140,12 @@ def min_years_required(text: str) -> int | None:
             value = int(m.group(1))
             if 0 < value <= 20:
                 return value
+    for sentence in _sentences(text):
+        if NOT_A_REQUIREMENT.search(sentence):
+            continue
+        m = YEARS_IN_ROLE.search(sentence)
+        if m and 0 < int(m.group(1)) <= 15:
+            return int(m.group(1))
     return None
 
 
@@ -122,9 +156,16 @@ def _contains(haystack: str, needle: str) -> bool:
     return needle in haystack
 
 
+# Text from an alert email that was read as a job ("We found these new jobs that match your search ...").
+NOT_A_JOB = re.compile(r"we found (?:these )?new jobs|match(?:es)? your search|top tip:|"
+                       r"^(?:strong|good|great|possible) fit$", re.I)
+
+
 def title_matches(job: Job, cfg: dict) -> str:
     """Return '' if the title is fine, else a reason for dropping it."""
     title = job.title.lower()
+    if NOT_A_JOB.search(job.title or "") or NOT_A_JOB.search((job.company or "").strip()):
+        return "not a job (text from an alert email)"
     if not any(_contains(title, kw) for kw in cfg.get("title_keywords", [])):
         return "title not in target roles"
     for kw in cfg.get("exclude_title_keywords", []):
@@ -160,7 +201,10 @@ def quick_keep(cfg: dict):
 # Tools that data job ads often ask for. Ones not in your skills count as gaps in the match score.
 OTHER_TOOLS = ["kubernetes", "bigquery", "snowflake", "databricks", "spark", "kafka", "terraform", "aws", "azure",
                "gcp", "google cloud", "dagster", "looker", "fivetran", "redshift", "scala", "java", "flink",
-               "airbyte", "sqlmesh", "qlik", "sas", "hadoop", "mongodb", "elasticsearch", "golang"]
+               "airbyte", "sqlmesh", "qlik", "sas", "hadoop", "mongodb", "elasticsearch", "golang",
+               # AI and software-engineering tools: their absence keeps AI / backend roles from scoring high
+               "pytorch", "tensorflow", "langchain", "llamaindex", "typescript", "javascript", "c++",
+               "c#", "rust", "kotlin", "computer vision", "reinforcement learning", "matlab"]
 SKILL_ALIASES = {"postgres": ["postgres", "postgresql"], "data modelling": ["data modelling", "data modeling"],
                  "data modeling": ["data modeling", "data modelling"], "airflow": ["airflow"], "etl": ["etl"],
                  "elt": ["elt"], "google cloud": ["google cloud", "gcp"], "gcp": ["gcp", "google cloud"]}
@@ -218,7 +262,7 @@ def score_job(job: Job, cfg: dict) -> int:
 
     if ENGLISH_WORKPLACE.search(job.description):
         lang_part = 15
-    elif job.description and not written_in_german(job.description):
+    elif job.description and not written_in_german(job.description, 25) and not german_title(job.title):
         lang_part = 10
     else:
         lang_part = 5
@@ -234,8 +278,12 @@ def evaluate(job: Job, cfg: dict) -> Job:
 
     my_level = cfg.get("german_level", "A2").upper()
     level, evidence = required_german_level(job.description)
-    if not level and written_in_german(job.description) and not ENGLISH_WORKPLACE.search(job.description):
-        level, evidence = "B2", "posting is written in German"
+    if not level and not ENGLISH_WORKPLACE.search(job.description):
+        if written_in_german(job.description, min_words=25):
+            level, evidence = "B2", "posting is written in German"
+        elif german_title(job.title) and not (job.description and not written_in_german(job.description, 25)
+                                                and len(job.description.split()) >= 60):
+            level, evidence = "B2", "job title is in German"
     if level and LEVELS.index(level) > LEVELS.index(my_level):
         job.german_required = True
         job.excluded_reason = f"needs German {level}: {evidence}"
