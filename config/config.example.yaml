@@ -52,8 +52,14 @@ search:
   # A repost of a role you applied to within this many days is skipped.
   reapply_after_days: 180
 
-  # Drop jobs that ask for more years of experience than this.
+  # Drop jobs that ask for more years of experience than this (whole number, e.g. 2).
+  # "3-5 years" counts as 3, "2+ years" as 2. Ads that don't say are kept.
   max_years_experience: 3
+
+  # Other countries you would also work in, besides Germany. Empty = Germany only.
+  # Known: india, austria, switzerland, netherlands, united kingdom, ireland, france, spain,
+  #        portugal, poland, usa, canada, uae, singapore.   Example:  also_countries: [india]
+  also_countries: []
 
   # Your German level: A1, A2, B1, B2, C1, C2. Jobs that clearly require a higher level are dropped.
   german_level: A2
@@ -80,6 +86,10 @@ search:
   # Match score 0-100 (how well you fit what the job asks for). Jobs below this are skipped.
   # Roughly: 85+ excellent, 70-84 good, 55-69 worth a look.
   min_score: 55
+
+  # true = only keep jobs whose ad text could be read, so skills and experience are really checked.
+  # false = also keep jobs from alert emails whose ad could not be opened (shown with a low score).
+  skip_jobs_without_ad_text: false
 
 sources:
   # Arbeitnow (arbeitnow.com): free public API, Germany, many English-speaking jobs.

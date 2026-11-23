@@ -44,7 +44,10 @@ GERMAN_STOPWORDS = set("und der die das wir sie für mit eine einen ist von zu a
 ENGLISH_STOPWORDS = set("and the we you for with a an is of to on at our your or as also be are in "
                         "will this that about".split())
 
-YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:[-–]|to|bis)?\s*(\d{1,2})?\s*\+?\s*(?:years?|yrs|jahre?n?)\b", re.I)
+YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:[-–]|to|bis)?\s*(\d{1,2})?\s*\+?\s*(?:or more\s+|or above\s+|oder mehr\s+)?"
+                   r"(?:years?|yrs|jahre?n?)\b", re.I)
+# "Several years of professional experience", "mehrjährige Berufserfahrung": counted as 3 years.
+SEVERAL_YEARS = re.compile(r"\b(?:several|multiple|many) years\b|mehrjährig\w*|langjährig\w*", re.I)
 EXPERIENCE_WORDS = re.compile(r"experience|erfahrung", re.I)
 
 FOREIGN = re.compile(
@@ -140,12 +143,19 @@ def min_years_required(text: str) -> int | None:
             value = int(m.group(1))
             if 0 < value <= 20:
                 return value
+    def near(sentence: str, m: re.Match, width: int = 60) -> str:
+        return sentence[max(0, m.start() - width):m.end() + width]
+
     for sentence in _sentences(text):
-        if NOT_A_REQUIREMENT.search(sentence):
-            continue
-        m = YEARS_IN_ROLE.search(sentence)
-        if m and 0 < int(m.group(1)) <= 15:
-            return int(m.group(1))
+        for m in YEARS_IN_ROLE.finditer(sentence):
+            if 0 < int(m.group(1)) <= 15 and not NOT_A_REQUIREMENT.search(near(sentence, m)):
+                return int(m.group(1))
+    for sentence in _sentences(text):
+        for m in SEVERAL_YEARS.finditer(sentence):
+            window = near(sentence, m)
+            if re.search(r"experience|erfahrung|hands-on|professional", window, re.I) \
+                    and not NOT_A_REQUIREMENT.search(window):
+                return 3
     return None
 
 
@@ -174,9 +184,41 @@ def title_matches(job: Job, cfg: dict) -> str:
     return ""
 
 
+# Countries you can add under  also_countries:  in config.yaml (besides Germany).
+COUNTRY_PLACES = {
+    "india": r"india|bharat|bangalore|bengaluru|hyderabad|pune|chennai|mumbai|delhi|new delhi|gurgaon|gurugram|"
+             r"noida|kolkata|ahmedabad|kochi|cochin|coimbatore|trivandrum|thiruvananthapuram|jaipur|indore|"
+             r"chandigarh|visakhapatnam|vizag|vijayawada|warangal|nagpur|mysore|mysuru|bhubaneswar|lucknow",
+    "austria": r"austria|österreich|vienna|wien|salzburg|graz|linz|innsbruck",
+    "switzerland": r"switzerland|schweiz|zurich|zürich|basel|bern|geneva|genf|lausanne",
+    "netherlands": r"netherlands|nederland|holland|amsterdam|rotterdam|utrecht|eindhoven|den haag|the hague",
+    "united kingdom": r"united kingdom|uk|england|london|manchester|leeds|birmingham|edinburgh|glasgow",
+    "ireland": r"ireland|dublin|cork|galway",
+    "france": r"france|paris|lyon|toulouse|[a-zé]+-sur-[a-zé]+|saint-[a-zé]+",
+    "spain": r"spain|españa|madrid|barcelona|valencia",
+    "portugal": r"portugal|lisbon|lisboa|porto",
+    "poland": r"poland|polska|warsaw|warszawa|krakow|kraków|wroclaw|wrocław",
+    "usa": r"united states|usa|u\.s\.|new york|san francisco|seattle|boston|austin",
+    "canada": r"canada|toronto|vancouver|montreal",
+    "uae": r"uae|united arab emirates|dubai|abu dhabi",
+    "singapore": r"singapore",
+}
+
+
+def _also_country(loc: str, cfg: dict) -> str:
+    """Name of an extra country from  also_countries  that this location is in, else ''."""
+    for country in cfg.get("also_countries") or []:
+        pattern = COUNTRY_PLACES.get(str(country).strip().lower())
+        if pattern and re.search(rf"\b(?:{pattern})\b", loc, re.I):
+            return str(country)
+    return ""
+
+
 def location_matches(job: Job, cfg: dict) -> str:
     loc = (job.location or "").lower()
     if not loc:
+        return ""
+    if _also_country(loc, cfg):
         return ""
     if cfg.get("anywhere_in_germany"):
         # Any German city is fine; drop only jobs that are clearly abroad.
@@ -296,7 +338,9 @@ def evaluate(job: Job, cfg: dict) -> Job:
 
     job.score = score_job(job, cfg)
     has_description = len(job.description) > 200
-    if has_description and job.score < cfg.get("min_score", 0):
+    if not has_description and cfg.get("skip_jobs_without_ad_text"):
+        job.excluded_reason = "no ad text to check skills and experience"
+    elif has_description and job.score < cfg.get("min_score", 0):
         job.excluded_reason = f"low match score ({job.score})"
     return job
 

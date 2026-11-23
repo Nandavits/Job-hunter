@@ -107,6 +107,24 @@ def check_text(text: str, name: str = "profile.yaml") -> tuple[bool, list[str]]:
             problems.append("search > title_keywords is empty: add the job titles you want.")
         if not (data.get("sources") or {}):
             problems.append("sources is missing: copy that part from config.example.yaml.")
+        years = search.get("max_years_experience", 3)
+        if not isinstance(years, int) or not 0 <= years <= 30:
+            problems.append(f"search > max_years_experience must be a whole number like 2 (now: {years!r}).")
+        score = search.get("min_score", 55)
+        if not isinstance(score, (int, float)) or not 0 <= score <= 100:
+            problems.append(f"search > min_score must be a number from 0 to 100 (now: {score!r}).")
+        from .filters import COUNTRY_PLACES
+        countries = search.get("also_countries") or []
+        if not isinstance(countries, list):
+            problems.append("search > also_countries must be a list, e.g.  also_countries: [india]")
+        else:
+            for c in countries:
+                if str(c).strip().lower() not in COUNTRY_PLACES:
+                    problems.append(f"search > also_countries: '{c}' is not known. Use one of: "
+                                    + ", ".join(sorted(COUNTRY_PLACES)) + ".")
+        level = str(search.get("german_level", "A2")).upper()
+        if level not in ("A1", "A2", "B1", "B2", "C1", "C2"):
+            problems.append(f"search > german_level must be A1, A2, B1, B2, C1 or C2 (now: {level}).")
 
     if problems:
         return False, [f"{name} can be read, but these parts need attention:"] + [f"   - {p}" for p in problems]

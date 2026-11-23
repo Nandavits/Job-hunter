@@ -104,3 +104,41 @@ def test_ai_mentions_do_not_punish_data_roles():
           "We are an English speaking team. " * 2)
     cfg = {**CFG, "skills": {"sql": 3, "python": 2, "dbt": 3, "airflow": 3}}
     assert score_job(job("Data Engineer", ad), cfg) >= 85
+
+
+def test_also_countries_lets_india_through():
+    from jobhunter.filters import location_matches
+    cfg = {**CFG, "locations": ["berlin", "remote", "germany"]}
+    j = job("Data Engineer"); j.location = "Hyderabad, Telangana, India"
+    assert location_matches(j, cfg)
+    assert not location_matches(j, {**cfg, "also_countries": ["india"]})
+    j.location = "Ivry-sur-Seine"
+    assert location_matches(j, {**cfg, "also_countries": ["india"]})
+
+
+def test_max_two_years_and_jobs_without_ad_text():
+    cfg = {**CFG, "max_years_experience": 2, "skip_jobs_without_ad_text": True}
+    three = "You have 3-5 years of experience with SQL and Python. We are an English speaking team. " * 4
+    two = "You have 2+ years of experience with SQL and Python. We are an English speaking team. " * 4
+    assert evaluate(job("Data Analyst", three), cfg).excluded_reason == "asks for 3+ years experience"
+    assert not evaluate(job("Data Analyst", two), cfg).excluded_reason
+    assert evaluate(job("Data Analyst"), cfg).excluded_reason.startswith("no ad text")
+
+
+def test_settings_checker_catches_bad_values():
+    from jobhunter.checksettings import check_text
+    ok, report = check_text("search:\n  title_keywords: [data]\n  max_years_experience: two\n"
+                            "  also_countries: [indien]\nsources:\n  arbeitnow: {enabled: true}\n", "config.yaml")
+    text = "\n".join(report)
+    assert not ok and "max_years_experience" in text and "indien" in text
+    ok, _ = check_text("search:\n  title_keywords: [data]\n  max_years_experience: 2\n"
+                       "  also_countries: [india]\nsources:\n  arbeitnow: {enabled: true}\n", "config.yaml")
+    assert ok
+
+
+def test_several_years_and_or_more():
+    from jobhunter.filters import min_years_required
+    assert min_years_required("Experience: 3 or more years of hands-on work in data science.") == 3
+    assert min_years_required("Several years of professional experience in data engineering.") == 3
+    assert min_years_required("Sie bringen mehrjährige Berufserfahrung im Bereich BI mit.") == 3
+    assert min_years_required("Several years of hands-on data engineering, including Spark.") == 3
