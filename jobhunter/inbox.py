@@ -36,7 +36,8 @@ REJECTION = re.compile(
     r"absage|nicht (?:weiter )?berücksichtig|anderen? (?:kandidat|bewerber)|"
     r"(?:können|werden) (?:ihnen|dir|ihre bewerbung) (?:leider )?(?:keine|nicht)", re.I)
 INTERVIEW = re.compile(
-    r"invit(?:e|ing) you (?:to|for)|invitation (?:to|for) (?:an? )?(?:interview|call|chat|assessment|evaluation)|"
+    r"invit(?:e|ing) you (?:to|for)|(?:you(?:'ve| have)? been|you're|you are) invited|invited to (?:complete|take|join|an? |the |your )|"
+    r"complete (?:an?|your|the) (?:evaluation|assessment|test|challenge|questionnaire)|start (?:the |your )?evaluation|invitation (?:to|for) (?:an? )?(?:interview|call|chat|assessment|evaluation)|"
     r"interview invitation|schedule (?:an? |your )?(?:interview|call|time|chat)|book (?:a|your) (?:time|slot|call)|"
     r"calendly\.com|cal\.com/|(?:first|next|technical|video|phone) (?:interview|call|round)|"
     r"(?:coding|technical|online) (?:assessment|challenge|test)|take[- ]home|case study|evaluation invite|"
@@ -158,6 +159,19 @@ def _text(msg) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"(?is)<(style|script).*?</\1>", " ", html)))
 
 
+RULES_VERSION = 2          # raise when the rules above change: emails read before are then read again
+
+
+def _load_seen(path: Path) -> set:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    if isinstance(data, dict) and data.get("version") == RULES_VERSION:
+        return set(data.get("ids") or [])
+    return set()
+
+
 def check_replies(store, address: str, app_password: str, cfg: dict, seen_file: Path,
                   skip_senders: list[str] = ()) -> list[str]:
     """Read recent emails and update applied jobs. Returns one line per change."""
@@ -166,10 +180,7 @@ def check_replies(store, address: str, app_password: str, cfg: dict, seen_file: 
     jobs = [j for j in store.list(limit=100_000) if j["status"] in ("applied", "interview")]
     if not jobs:
         return []
-    try:
-        seen = set(json.loads(seen_file.read_text(encoding="utf-8")))
-    except (OSError, ValueError):
-        seen = set()
+    seen = _load_seen(seen_file)
     since = (datetime.now() - timedelta(days=int(cfg.get("days_back", 14)))).strftime("%d-%b-%Y")
     skip = [s.lower() for s in skip_senders] + [address.lower()]
     changes: list[str] = []
@@ -212,7 +223,7 @@ def check_replies(store, address: str, app_password: str, cfg: dict, seen_file: 
             if changed:
                 changes.append(f"{job['company']} - {job['title']}: {changed} ({subject[:60]})")
     try:
-        seen_file.write_text(json.dumps(sorted(seen)[-5000:]), encoding="utf-8")
+        seen_file.write_text(json.dumps({"version": RULES_VERSION, "ids": sorted(seen)[-5000:]}), encoding="utf-8")
     except OSError:
         pass
     for line in changes:

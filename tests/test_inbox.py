@@ -29,6 +29,13 @@ def test_classify_real_replies():
     assert classify(INVITE) == "interview"              # 'unfortunately' inside an invitation is not a rejection
     assert classify(DE_NO) == "rejected"
     assert classify(AMAZON) == ""
+    tendent = ("YOU'RE INVITED TO COMPLETE AN EVALUATION. Hi Nanda Kishore, You've been invited to complete an "
+               "evaluation as part of the hiring process for the Manufacturing Data Analyst role at Almetra.")
+    assert classify(tendent) == "interview"
+    assert classify("Your evaluation for Manufacturing Data Analyst at Almetra\nStart evaluation") == "interview"
+    flink = ("After careful consideration of your application, we regret to inform you that we will not proceed "
+             "with your application for the Data Engineer (m/f/d) position with Flink.")
+    assert classify(flink) == "rejected"
     assert classify("Nanda, 5 roles close to your application this week") == ""
 
 
