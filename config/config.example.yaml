@@ -164,6 +164,7 @@ sources:
       - empfehlungsbund      # empfehlungsbund.de and its portals (E-Mail-Jobabo)
       - interamt             # interamt.de, public sector (Suchagent)
       - karriere-familienunternehmen   # karriere-familienunternehmen.de
+      - entrepreneursclub    # karriere-familienunternehmen.de sends its alerts from entrepreneursclub.eu
       - joblift              # joblift.de (Job-Alarm)
       - arbeitnow            # arbeitnow.com alerts (its public API is read as well)
 

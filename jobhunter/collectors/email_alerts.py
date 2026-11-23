@@ -100,16 +100,18 @@ def parse_glassdoor_html(html: str) -> list[Job]:
 BOARD_SENDERS = {
     "jobvector": "jobvector", "yourfirm": "yourfirm", "jobware": "jobware", "goodjobs": "goodjobs",
     "kimeta": "kimeta", "empfehlungsbund": "empfehlungsbund", "interamt": "interamt",
-    "karriere-familienunternehmen": "karriere-familienunternehmen", "joblift": "joblift",
+    "karriere-familienunternehmen": "karriere-familienunternehmen", "entrepreneursclub": "karriere-familienunternehmen",
+    "joblift": "joblift",
     "arbeitnow": "arbeitnow",
 }
 NOT_A_JOB_LINK = re.compile(
-    r"^(alle|weitere|mehr|more|all|show|see|view all|zur übersicht|übersicht|job ?mail|job ?alert|jobagent|"
+    r"^(alle|weitere|mehr|more|all|show|see|view all|zur übersicht|übersicht|job[ -]?mail|job[ -]?alert|jobagent|"
     r"such(auftrag|agent|profil)|abmelden|abbestellen|unsubscribe|einstellungen|settings|profil|profile|"
     r"login|anmelden|registrieren|konto|datenschutz|privacy|impressum|imprint|agb|nutzungsbedingungen|terms|"
     r"kontakt|contact|hilfe|help|faq|newsletter|app|download|facebook|instagram|linkedin|xing|twitter|youtube|"
     r"tiktok|im browser|web ?version|online ansehen|hier klicken|click here|zur website|startseite|home|"
-    r"merken|speichern|teilen|share|feedback|ratgeber|karriere-?tipps|gehalt)", re.I)
+    r"merken|speichern|teilen|share|feedback|ratgeber|karriere-?tipps|gehalt|bestätig|aktivier|confirm|activate|"
+    r"löschen|delete|verwalten|manage|bearbeiten|edit|abonnier|subscribe|newsletter)", re.I)
 JOB_BUTTON = re.compile(r"^(zur (stelle|stellenanzeige|anzeige)|zum job|job ansehen|stelle ansehen|details|"
                         r"anzeige (ansehen|öffnen)|mehr erfahren|jetzt bewerben|bewerben|view job|apply)\b", re.I)
 SOCIAL_HOSTS = re.compile(r"facebook\.|instagram\.|twitter\.|x\.com|youtube\.|tiktok\.|linkedin\.com/company|"

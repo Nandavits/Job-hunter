@@ -273,3 +273,22 @@ def test_board_job_whose_link_contains_its_title_is_kept():
            '<br>Delta GmbH<br>Köln</td></tr></table>'
     jobs = parse_board_html(html, "jobware")
     assert [(j.title, j.company, j.location) for j in jobs] == [("Data Engineer", "Delta GmbH", "Köln")]
+
+
+def test_confirmation_emails_from_job_boards_create_no_fake_jobs():
+    """The double opt-in emails (jobvector, yourfirm, kimeta, Karriere im Familienunternehmen) hold only
+    confirm / delete / browser links, which must never become jobs."""
+    from jobhunter.collectors.email_alerts import board_for_sender, parse_board_html
+    html = """<table><tr><td><a href="https://www.jobvector.de/">jobvector.de</a></td></tr>
+    <tr><td><h1>Bestätige deine JobMail</h1><p>Du hast unsere jobmail abonniert. Filter: data-engineer</p>
+    <a href="https://www.jobvector.de/myjobvector/jobmails/?jobmail_confirmation_token=x">JobMail bestätigen</a></td></tr>
+    <tr><td><a href="https://ffcejdf.r.af.d.sendibt2.com/tr/cl/abc">Im Browser öffnen</a>
+    <a href="https://ffcejdf.r.af.d.sendibt2.com/tr/cl/def">Bestätigen und Jobmail aktivieren*</a></td></tr>
+    <tr><td><a href="https://www.kimeta.de/api/jobalert-confirm?x=1">Job-Alert aktivieren</a>
+    <a href="https://www.kimeta.de/api/jobalert-delete?x=1">Job-Alert löschen</a></td></tr>
+    <tr><td><a href="https://api.entrepreneursclub.eu/kifu/de/job-alert/subscribe/abc">Job Alert bestätigen</a></td></tr>
+    <tr><td><a href="https://www.yourfirm.de/datenschutz/">Datenschutz</a> | <a href="https://www.yourfirm.de/impressum/">Impressum</a></td></tr>
+    </table>"""
+    for site in ("jobvector", "yourfirm", "kimeta", "karriere-familienunternehmen"):
+        assert parse_board_html(html, site) == [], site
+    assert board_for_sender("Karriere im Familienunternehmen <jobs@entrepreneursclub.eu>") == "karriere-familienunternehmen"
