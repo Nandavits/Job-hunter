@@ -33,6 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path(os.environ.get("JAKO_HANDS_HOME") or Path.home()).resolve()
 PENDING_SECONDS = 300
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)    # run Windows commands without flashing a console window
 
 BLOCKED_PARTS = {".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", "credentials", "keychain",
                  "login data", "cookies", "user data", "protect", "crypto", "vault"}
@@ -66,7 +67,7 @@ def _start_apps() -> list[dict]:
     import json
     out = subprocess.run(["powershell", "-NoProfile", "-Command",  # nosec - fixed command, no user input
                           "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress"],
-                         capture_output=True, text=True, timeout=30)
+                         capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW)
     try:
         apps = json.loads(out.stdout or "[]")
         apps = apps if isinstance(apps, list) else [apps]
@@ -613,7 +614,7 @@ def sample_performance() -> None:
 # ---------- actions that need your "yes" ----------
 def _do_run_command(command: str) -> str:
     out = subprocess.run(["powershell", "-NoProfile", "-Command", command], capture_output=True, text=True,  # nosec
-                         timeout=90, cwd=str(HOME))
+                         timeout=90, cwd=str(HOME), creationflags=NO_WINDOW)
     text = (out.stdout + ("\n" + out.stderr if out.stderr.strip() else "")).strip()
     return f"Exit code {out.returncode}.\n{text[:6000]}" if text else f"Done (exit code {out.returncode})."
 
@@ -666,7 +667,7 @@ def _do_close_app(name: str) -> str:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return f"Closed {exe} ({closed} processes). Jako's own window stays open." if closed else f"{exe} wasn't running."
-    out = subprocess.run(["taskkill", "/IM", f"{exe}.exe"], capture_output=True, text=True, timeout=20)  # nosec
+    out = subprocess.run(["taskkill", "/IM", f"{exe}.exe"], capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)  # nosec
     return out.stdout.strip() or out.stderr.strip() or f"Closed {exe}."
 
 
@@ -704,7 +705,7 @@ def _battery_report() -> dict:
     import xml.etree.ElementTree as ET
     out = Path(tempfile.gettempdir()) / "jako-battery-report.xml"
     subprocess.run(["powercfg", "/batteryreport", "/xml", "/output", str(out)],  # nosec - fixed command
-                   capture_output=True, text=True, timeout=40)
+                   capture_output=True, text=True, timeout=40, creationflags=NO_WINDOW)
     root = ET.parse(out).getroot()
     for el in root.iter():
         el.tag = el.tag.split("}")[-1]
@@ -723,7 +724,7 @@ def _disks() -> list[dict]:
            "Wear=$(if ($r) { $r.Wear } else { $null }); Temp=$(if ($r) { $r.Temperature } else { $null }); "
            "Hours=$(if ($r) { $r.PowerOnHours } else { $null }) } }; $d | ConvertTo-Json -Compress")
     out = subprocess.run(["powershell", "-NoProfile", "-Command", cmd],  # nosec - fixed command, no user input
-                         capture_output=True, text=True, timeout=40)
+                         capture_output=True, text=True, timeout=40, creationflags=NO_WINDOW)
     try:
         data = json.loads(out.stdout or "[]")
     except ValueError:

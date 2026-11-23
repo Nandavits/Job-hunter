@@ -248,3 +248,11 @@ def test_pruning_screenshots_also_drops_stale_thinking():
     assert all(any(getattr(b, "type", "") == "tool_use" for b in m["content"]) for m in out if m["role"] == "assistant")
     few = prune_images(msgs[:5], keep=3)                         # nothing removed: thinking stays as it was
     assert any(getattr(b, "type", "") == "thinking" for b in few[1]["content"])
+
+
+def test_windows_commands_never_flash_a_console_window():
+    import ast, inspect
+    tree = ast.parse(inspect.getsource(H))
+    runs = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "run"
+            and getattr(n.func.value, "id", "") == "subprocess"]
+    assert runs and all(any(k.arg == "creationflags" for k in n.keywords) for n in runs)
