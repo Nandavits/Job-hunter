@@ -12,7 +12,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [1/3] Building and starting containers (first time takes 5-10 minutes)...
-docker compose up -d --build > logs\setup.log 2>&1
+docker compose up -d --build db jobhunter > logs\setup.log 2>&1
 if errorlevel 1 (
   echo Build failed - see logs\setup.log
   echo BUILD_FAILED >> logs\setup.log
