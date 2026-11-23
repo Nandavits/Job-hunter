@@ -118,6 +118,12 @@ SOCIAL_HOSTS = re.compile(r"facebook\.|instagram\.|twitter\.|x\.com|youtube\.|ti
                           r"xing\.com/pages|apps\.apple\.|play\.google\.", re.I)
 
 
+def _is_navigation(label: str) -> bool:
+    """Menu/settings links are short; a long label or one with (m/w/d) is a job title even if it
+    starts with a word like 'Datenschutz' (Datenschutzkoordinator ...)."""
+    return bool(NOT_A_JOB_LINK.match(label)) and len(label) <= 40 and not re.search(r"\([mwfdx]/", label, re.I)
+
+
 def board_for_sender(sender: str) -> str:
     sender = (sender or "").lower()
     return next((site for key, site in BOARD_SENDERS.items() if key in sender), "")
@@ -142,16 +148,46 @@ def parse_board_html(html: str, site: str) -> list[Job]:
             title = lines[0] if lines else ""
         else:
             title = label
-        if not (8 <= len(title) <= 200) or NOT_A_JOB_LINK.match(title) or JOB_BUTTON.match(title) \
+        if not (8 <= len(title) <= 200) or _is_navigation(title) or JOB_BUTTON.match(title) \
                 or not re.search(r"[A-Za-zÄÖÜäöüß]{3}", title) or URL_RE.match(title) \
                 or re.sub(r"[^a-z]", "", title.lower()) in (site.replace("-", ""), re.sub(r"[^a-z]", "", site + "de")):
             continue
-        rest = [l for l in lines if l != title and not NOT_A_JOB_LINK.match(l)]
+        rest = [l for l in lines if l != title and not _is_navigation(l)]
         company = rest[0] if rest else ""
         location = rest[1] if len(rest) > 1 else ""
         key = _job_id(site, href, title, company)
         jobs.setdefault(key, Job(source="email", external_id=key, company=company[:120], title=title[:200],
                                  url=href, location=location[:120], extra={"site": site, "needs_review": True}))
+    return list(jobs.values())
+
+
+MD_LINK = re.compile(r"\[\s*([^\]\n]{3,200}?)\s*\]\((https?://[^)\s]+)[^)]*\)")
+
+
+def _clean_url(url: str) -> str:
+    return re.sub(r"[?&]utm_[^#]*$", "", url)
+
+
+def parse_board_text(text: str, site: str) -> list[Job]:
+    """Plain-text part of job-board alerts written as [Job title](link), then company and location lines
+    (yourfirm and others). Gives the board's own job link instead of a tracking link."""
+    jobs: dict[str, Job] = {}
+    matches = list(MD_LINK.finditer(text or ""))
+    for i, m in enumerate(matches):
+        title, url = re.sub(r"[*_]+", "", m.group(1)).strip(), m.group(2)
+        if not (8 <= len(title) <= 200) or _is_navigation(title) or JOB_BUTTON.match(title):
+            continue
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        lines = [l.strip(" |*") for l in text[m.end():end].splitlines()]
+        lines = [l for l in lines if l and not NOISE_LINE.match(l) and not _is_navigation(l)][:2]
+        if not lines:                       # a link with nothing under it is a menu link, not a job
+            continue
+        company = lines[0]
+        location = lines[1] if len(lines) > 1 else ""
+        key = _job_id(site, url, title, company)
+        jobs.setdefault(key, Job(source="email", external_id=key, company=company[:120], title=title[:200],
+                                 url=_clean_url(url), location=location[:120],
+                                 extra={"site": site, "needs_review": True}))
     return list(jobs.values())
 
 
@@ -263,7 +299,7 @@ def fetch(cfg: dict, address: str, app_password: str) -> list[Job]:
                 html_body = _body_html(msg)
                 board = board_for_sender(msg.get("From", "") or sender)
                 if board:
-                    found = parse_board_html(html_body, board)
+                    found = parse_board_text(_body_text(msg), board) or parse_board_html(html_body, board)
                 else:
                     found = parse_glassdoor_html(html_body) or parse_alert_text(_body_text(msg)) or \
                         parse_alert_html(html_body)

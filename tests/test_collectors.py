@@ -292,3 +292,47 @@ def test_confirmation_emails_from_job_boards_create_no_fake_jobs():
     for site in ("jobvector", "yourfirm", "kimeta", "karriere-familienunternehmen"):
         assert parse_board_html(html, site) == [], site
     assert board_for_sender("Karriere im Familienunternehmen <jobs@entrepreneursclub.eu>") == "karriere-familienunternehmen"
+
+
+YOURFIRM_TEXT = """[Im Browser öffnen](https://ffcejdf.r.af.d.sendibt2.com/tr/mr/abc)
+
+Jetzt kann deine Jobsuche durchstarten – mit deiner ganz persönlichen Jobmail.
+
+[Head of Data / AI Governance Consulting (m/w/d)](https://www.yourfirm.de/job/detail/YF-53087?utm_source=jobemail&utm_medium=email)
+
+SoftProject GmbH
+
+Ettlingen
+
+[Datenschutzkoordinator/in im zentralen Qualitätsmanagement (m/w/d) in Teilzeit](https://www.yourfirm.de/job/detail/YF-53969?utm_source=jobemail)
+
+Caritasverband Offenbach/Main e.V.
+
+Offenbach am Main
+
+[Chapter Lead (m/w/d) Data Reporting](https://www.yourfirm.de/job/detail/SDE-132932?utm_source=jobemail)
+
+SIGNAL IDUNA Gruppe
+
+Dortmund, Hamburg
+
+[ **Alle passenden Jobs**](https://www.yourfirm.de/suche/all/?fulltext=Data "Passende Stellen")
+
+**Suchprofil****:**
+Suchbegriff(e): Data
+
+[Datenschutz](https://www.yourfirm.de/datenschutz/ "Datenschutz") | [Impressum](https://www.yourfirm.de/impressum/ "Impressum")
+
+[Abmelden und Verwalten von Jobs per Mail](https://www.yourfirm.de/mail-unsubscribe/?jpmHash=x "Abmelden")"""
+
+
+def test_yourfirm_plain_text_alert_gives_company_location_and_clean_link():
+    from jobhunter.collectors.email_alerts import parse_board_text
+    jobs = parse_board_text(YOURFIRM_TEXT, "yourfirm")
+    assert [(j.title, j.company, j.location) for j in jobs] == [
+        ("Head of Data / AI Governance Consulting (m/w/d)", "SoftProject GmbH", "Ettlingen"),
+        ("Datenschutzkoordinator/in im zentralen Qualitätsmanagement (m/w/d) in Teilzeit",
+         "Caritasverband Offenbach/Main e.V.", "Offenbach am Main"),
+        ("Chapter Lead (m/w/d) Data Reporting", "SIGNAL IDUNA Gruppe", "Dortmund, Hamburg"),
+    ]
+    assert jobs[0].url == "https://www.yourfirm.de/job/detail/YF-53087"
