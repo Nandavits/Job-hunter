@@ -301,6 +301,11 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
             except Exception as exc:
                 log.warning("Could not prepare %s: %s", job["title"], exc)
 
+    interview_packs = []
+    if make_docs:
+        from .interview import prepare_due
+        interview_packs = prepare_due(settings, store, OUTPUT_DIR)   # jobs you moved to 'interview'
+
     tracker = store.export_tracker(DATA_DIR / "tracker.csv")
     excel_file = export_excel(store, excel_path)
     md, page = notify.build_digest(new_jobs, prepared, store.stats(), reposts)
@@ -321,6 +326,7 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
 
     return {"collected": len(raw), "matching": len(kept), "new": len(new_jobs),
             "prepared": len(prepared), "dropped": len(dropped), "tracker": str(tracker),
+            "interview_prep": [str(p) for p in interview_packs],
             "reposts_already_applied": len(reposts), "duplicates": len(duplicates), "excel": str(excel_file),
             "digest": str(digest_path), "sent": sent,
             "drop_reasons": _reason_counts(dropped)}

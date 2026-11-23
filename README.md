@@ -111,6 +111,21 @@ answer for get "Prefer not to say".
 and **All jobs** (with the reason each job was skipped). You can change a Status or Notes cell, for
 example to mark a job you applied to on LinkedIn, and the next run reads it back.
 
+## Interview preparation
+
+When a company invites me to an interview, I change the job's status to **interview** (in Excel, with
+`mark <id> interview`, or with **P** in `apply.bat`). Job Hunter then writes
+`Interview_Prep_<Company>.docx` next to the CV and letter for that job:
+
+- a 60-second introduction for this role
+- what the employer clearly cares about, taken from the ad
+- 8 to 14 likely questions (technical, behavioural, practical) with answers built only from my profile
+- honest answers for tools the ad asks for that I have not used
+- questions to ask them, and topics to revise before the interview
+
+With a Claude API key the pack is written by Claude; without one, a rule-based pack is built from the
+ad and the profile. It never invents experience.
+
 ## Running in the cloud (laptop off)
 
 A private copy of the settings can run on GitHub Actions every hour from about 06:00 to 22:00. It collects
@@ -131,7 +146,8 @@ python -m jobhunter list                # open jobs, best first
 python -m jobhunter show <id>           # full ad and why it matched
 python -m jobhunter fill <id>           # open the pre-filled form (apply.bat does this)
 python -m jobhunter queue               # top 10 jobs one after another (apply.bat: T)
-python -m jobhunter mark <id> interview --note "Call on Tuesday"
+python -m jobhunter mark <id> interview --note "Call on Tuesday"   # also writes the interview prep pack
+python -m jobhunter prep <id>           # interview preparation pack (apply.bat: P)
 python -m jobhunter add --url <link> --company Acme --title "Data Engineer" --description-file ad.txt
 python -m jobhunter discover <careers-page-url> --name Acme   # find a company's job board
 python -m jobhunter check-sources       # test every job source

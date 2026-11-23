@@ -258,6 +258,24 @@ def cmd_mark(args, settings):
         values["notes"] = ((job.get("notes") or "") + f"\n{datetime.now():%Y-%m-%d}: {args.note}").strip()
     store.update(job["uid"], **values)
     print(f"{job['company']} – {job['title']}: {args.status}")
+    if args.status == "interview":
+        from .config import OUTPUT_DIR
+        from .interview import prepare_interview
+        print(f"Interview preparation: {prepare_interview(settings, store, store.get(job['uid']), OUTPUT_DIR)}")
+    _export(store)
+
+
+def cmd_prep(args, settings):
+    """Interview preparation pack for one job: questions, answers from your profile, gaps, pitch."""
+    from .config import OUTPUT_DIR
+    from .interview import prepare_interview
+    store = _store(settings)
+    job = _need(store, args.id)
+    path = prepare_interview(settings, store, job, OUTPUT_DIR, force=args.again)
+    print(f"Interview preparation for {job['company']} – {job['title']}:\n  {path}")
+    if job["status"] not in ("interview", "offer"):
+        store.update(job["uid"], status="interview")
+        print("Status set to interview.")
     _export(store)
 
 
@@ -499,6 +517,11 @@ def main(argv=None):
     p.add_argument("status", choices=STATUSES)
     p.add_argument("--note")
     p.set_defaults(func=cmd_mark)
+
+    p = sub.add_parser("prep", help="interview preparation pack for a job (questions, answers, gaps, pitch)")
+    p.add_argument("id")
+    p.add_argument("--again", action="store_true", help="write a fresh pack even if one exists")
+    p.set_defaults(func=cmd_prep)
 
     p = sub.add_parser("add", help="add a job manually (e.g. from LinkedIn)")
     p.add_argument("--url", required=True)

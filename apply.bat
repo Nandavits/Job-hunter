@@ -57,9 +57,20 @@ echo ================= Your jobs =================
 echo =============================================
 echo.
 echo Type T to go through your top 10 jobs one after another (fastest).
+echo Type P when a company invites you to an interview: you get a preparation pack.
 set "JOBID="
 set /p JOBID=Or type the id of one job (or just press Enter to quit): 
 if not defined JOBID exit /b 0
+if /i "!JOBID!"=="P" (
+  echo Jobs you applied to:
+  ".venv\Scripts\python.exe" -m jobhunter list --status applied
+  ".venv\Scripts\python.exe" -m jobhunter list --status interview
+  set "PREPID="
+  set /p PREPID=Id of the job you have an interview for: 
+  if defined PREPID ".venv\Scripts\python.exe" -m jobhunter prep !PREPID!
+  echo The preparation pack is a Word file in that job's folder inside "output".
+  goto menu
+)
 if /i "!JOBID!"=="T" (
   ".venv\Scripts\python.exe" -m jobhunter queue
   goto menu
