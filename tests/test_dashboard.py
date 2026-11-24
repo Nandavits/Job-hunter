@@ -230,3 +230,18 @@ def test_apply_myself_writes_the_cv_first_when_there_is_none(tmp_path, monkeypat
     token = re.search(r'name="token" value="([^"]+)"', page).group(1)
     c.post(f"/job/{job.uid}/manual", data={"token": token})
     assert pages == ["https://www.arbeitnow.com/x"] and (P.upload_dir / "CV_Ann_Bee.pdf").is_file()
+
+
+def test_posted_within_filter(tmp_path):
+    import datetime as dt
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    today = dt.date.today()
+    jobs = [Job(source="t", external_id=str(i), company=f"C{i}", title=f"Data Analyst {i}", url=f"https://x/{i}",
+                location="Berlin", posted_at=(today - dt.timedelta(days=d)).isoformat())
+            for i, d in enumerate((0, 2, 5, 12, 200))]
+    store.save(jobs)
+    c = TestClient(create_app(S(), store, launcher=print, checker=lambda j: None))
+    shown = lambda age: sum(f"Data Analyst {i}" in c.get(f"/?age={age}").text for i in range(5))
+    assert (shown("1"), shown("2"), shown("7"), shown("14"), shown("all")) == (1, 2, 3, 4, 5)
+    page = c.get("/").text                                  # default: 7 days (no limit in settings)
+    assert "Data Analyst 2" in page and "Data Analyst 4" not in page and "Last 48 hours" in page

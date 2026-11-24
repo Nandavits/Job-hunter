@@ -28,12 +28,22 @@ from .filters import COUNTRY_PLACES, _also_country
 from .storage import STATUSES, Store
 
 log = logging.getLogger("jobhunter")
-VERSION = "24 Nov 2026 (evening)"      # shown top right: tells you the update really arrived
+VERSION = "24 Nov 2026 (night)"      # shown top right: tells you the update really arrived
 OPEN = ("new", "prepared")
 APPLIED = ("applied", "interview", "offer", "rejected")
 GERMAN_PLACES = ("germany", "deutschland", "berlin", "munich", "münchen", "hamburg", "cologne", "köln", "frankfurt",
                  "stuttgart", "düsseldorf", "leipzig", "dresden", "hannover", "nürnberg", "nuremberg", "bremen",
                  "essen", "dortmund", "bonn", "mannheim", "karlsruhe", "heidelberg", "münster", "leverkusen")
+
+
+AGE_CHOICES = {"1": 1, "2": 2, "7": 7, "14": 14, "all": 10**6}
+AGE_LABELS = {"1": "Last 24 hours", "2": "Last 48 hours", "7": "Last 7 days", "14": "Last 14 days", "all": "Any date"}
+
+
+def job_age(row: dict) -> int | None:
+    """Days since the job was posted; the day Job Hunter found it when the ad gives no date."""
+    days = age_days(str(row.get("posted_at") or ""))
+    return days if days is not None else age_days(str(row.get("collected_at") or "")[:10])
 
 
 def country_of(location: str, cfg: dict) -> str:
@@ -145,6 +155,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
     settings = settings or load_settings()
     store = store or Store(settings.database_url)
     search = settings.search
+    limit = int(search.get("max_job_age_days") or 0)
+    default_age = next((k for k, v in AGE_CHOICES.items() if v == limit), "7")   # your setting, else 7 days
     token = secrets.token_urlsafe(24)               # forms carry it: other websites cannot post to this page
     busy: dict[str, str] = {}                       # uid -> "preparing" / "failed: ..."
     app = FastAPI(title="Job Hunter", docs_url=None, redoc_url=None, openapi_url=None)
@@ -205,7 +217,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         return r
 
     @app.get("/", response_class=HTMLResponse)
-    def jobs(request: Request, status: str = "open", country: str = "", min_score: int = 0, q: str = ""):
+    def jobs(request: Request, status: str = "open", country: str = "", min_score: int = 0, q: str = "",
+             age: str = ""):
+        age = age if age in AGE_CHOICES else default_age
         if status == "open":
             rows = [r for s in OPEN for r in store.list(status=s, limit=5000)]
         elif status in STATUSES:
@@ -214,13 +228,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
             rows = store.list(limit=5000)
         rows = [enrich(r) for r in rows if (r.get("score") or 0) >= min_score
                 and (not q or q.lower() in f"{r['company']} {r['title']}".lower())]
+        if age != "all":                                   # posted within the last N days
+            rows = [r for r in rows if (job_age(r) if job_age(r) is not None else 0) <= AGE_CHOICES[age]]
         countries = sorted({r["country"] for r in rows})
         if country:
             rows = [r for r in rows if r["country"] == country]
         rows.sort(key=lambda r: str(r.get("posted_at") or ""), reverse=True)     # newest first ...
         rows.sort(key=lambda r: -(r.get("score") or 0))                          # ... within each score
         return view(request, "jobs.html", rows=rows[:300], status=status, country=country, countries=countries,
-                    min_score=min_score, q=q, statuses=STATUSES)
+                    min_score=min_score, q=q, statuses=STATUSES, age=age, age_choices=AGE_LABELS)
 
     @app.get("/tracker", response_class=HTMLResponse)
     def tracker(request: Request):

@@ -3,6 +3,7 @@
 <form class="card row" method="get" action="/">
 <select name="status"><option value="open" {{ 'selected' if status=='open' }}>Open (new + prepared)</option>
 {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if status==s }}>{{ s|capitalize }}</option>{% endfor %}<option value="all" {{ 'selected' if status=='all' }}>All</option></select>
+<select name="age">{% for k, label in age_choices.items() %}<option value="{{ k }}" {{ 'selected' if age==k }}>{{ label }}</option>{% endfor %}</select>
 <select name="country"><option value="">All countries</option>{% for c in countries %}<option {{ 'selected' if country==c }}>{{ c }}</option>{% endfor %}</select>
 <label class="muted">Min score <input name="min_score" type="number" min="0" max="100" value="{{ min_score }}" style="width:70px"></label>
 <input name="q" value="{{ q }}" placeholder="Company or title" style="width:220px"><button>Filter</button>
