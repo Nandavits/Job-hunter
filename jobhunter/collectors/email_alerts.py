@@ -33,8 +33,9 @@ CLEAN_URLS = {
 
 
 def _lines(tag) -> list[str]:
+    """Text lines of a block; separators ("|") and bare numbers (a salary split over lines) are not lines."""
     text = tag.get_text("\n", strip=True)
-    return [l.strip() for l in text.split("\n") if l.strip()]
+    return [l.strip(" |") for l in text.split("\n") if re.search(r"[A-Za-zÄÖÜäöüß]{2}", l)]
 
 
 def parse_alert_html(html: str) -> list[Job]:
@@ -152,11 +153,12 @@ def parse_board_html(html: str, site: str) -> list[Job]:
         if len(own) >= 2 and not JOB_BUTTON.match(own[0]):
             # the whole job card is one link (jobvector): title, company, salary, town on separate lines
             title, rest = own[0], [l for l in own[1:] if not _is_navigation(l)]
-            key = _job_id(site, href, title, rest[0] if rest else "")
+            company = rest[0] if len(rest) > 1 else ""          # one line under the title = the town
+            location = rest[-1] if rest else ""
+            key = _job_id(site, href, title, company)
             if 8 <= len(title) <= 200 and not _is_navigation(title):
-                jobs.setdefault(key, Job(source="email", external_id=key, company=(rest[0] if rest else "")[:120],
-                                         title=title[:200], url=href,
-                                         location=(rest[-1] if len(rest) > 1 else "")[:120],
+                jobs.setdefault(key, Job(source="email", external_id=key, company=company[:120],
+                                         title=title[:200], url=href, location=location[:120],
                                          extra={"site": site, "needs_review": True}))
             continue
         block = a.find_parent(["td", "tr", "div", "li", "table"]) or a
