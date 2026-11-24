@@ -2,7 +2,7 @@
 import re
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from jhcloud import tasks
 from jhcloud.ingest import save_jobs
@@ -243,3 +243,13 @@ def test_reset_emails_are_limited(client, monkeypatch):
     for _ in range(8):
         client.post("/forgot", data={"email": "nan@example.com"})
     assert len(mailer.OUTBOX) == 5
+
+
+def test_new_account_is_matched_at_once(server, client):
+    with server["Session"]() as db:
+        save_jobs(db, [record(1), record(2)])
+    signup(client)                                              # the queue runs synchronously in tests
+    with server["Session"]() as db:
+        user = db.scalar(select(User))
+        assert user.last_matched_job_id == db.scalar(select(func.max(Job.id)))
+        assert db.query(Match).filter(Match.user_id == user.id).count() == 2

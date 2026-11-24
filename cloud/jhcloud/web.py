@@ -109,6 +109,7 @@ def create_app(settings: ServerSettings | None = None, redis: Redis | None = Non
             user = accounts.sign_up(session, email, password)
         except accounts.AccountError as exc:
             return page(request, "signup.html", error=str(exc), email=email)
+        tasks.queue().enqueue(tasks.match_users, [user.id], job_timeout=1800)   # jobs at once, not in 30 min
         return logged_in(user)
 
     @app.get("/login", response_class=HTMLResponse)

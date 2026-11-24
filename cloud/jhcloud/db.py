@@ -26,13 +26,26 @@ def make_sessionmaker(engine):
 
 def init_db(engine) -> None:
     """Create missing tables, and add columns that newer versions introduced (a tiny migration step)."""
-    from sqlalchemy import inspect, text
+    from sqlalchemy import text
     from . import models  # noqa: F401  (registers the tables)
+    if engine.dialect.name == "postgresql":
+        # web, worker and scheduler start at the same moment: one at a time creates the tables
+        # (found on the first real start: two processes ran CREATE TABLE together and one crashed)
+        with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(724501)"))
+            Base.metadata.create_all(conn)
+            _add_new_columns(conn)
+        return
     Base.metadata.create_all(engine)
-    have = {t: {c["name"] for c in inspect(engine).get_columns(t)} for t in Base.metadata.tables}
     with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            for column in table.columns:
-                if column.name not in have.get(table.name, set()) and not column.primary_key:
-                    kind = column.type.compile(engine.dialect)
-                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {column.name} {kind} DEFAULT \'\''))
+        _add_new_columns(conn)
+
+
+def _add_new_columns(conn) -> None:
+    from sqlalchemy import inspect, text
+    have = {t: {c["name"] for c in inspect(conn).get_columns(t)} for t in Base.metadata.tables}
+    for table in Base.metadata.sorted_tables:
+        for column in table.columns:
+            if column.name not in have.get(table.name, set()) and not column.primary_key:
+                kind = column.type.compile(conn.dialect)
+                conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {column.name} {kind} DEFAULT ''"))

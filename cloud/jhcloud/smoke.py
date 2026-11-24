@@ -38,6 +38,13 @@ def main(base: str = "http://127.0.0.1:8000") -> int:
     check("form with CSRF token", r.status_code == 200)
     r = c.post("/settings/key", data={"api_key": "x"}, follow_redirects=False)
     check("form without CSRF token is refused", r.status_code == 400)
+    import time
+    from .matching import match_user
+    time.sleep(3)                                   # the worker matches the new account against existing jobs
+    with make_sessionmaker(make_engine(ServerSettings.from_env().database_url))() as db:
+        uid = db.scalar(select(User.id).where(User.email == email))
+        waiting = db.scalar(select(func.count()).select_from(Job).where(Job.id > db.get(User, uid).last_matched_job_id))
+    check("new account was matched against existing jobs", waiting == 0, f"{waiting} jobs still waiting")
     c.post("/logout")
     c.cookies.clear()
     check("logged out sees login page", "Log in" in c.get("/jobs").text)
