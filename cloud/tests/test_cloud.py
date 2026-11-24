@@ -212,3 +212,34 @@ def test_clean_up_keeps_jobs_you_acted_on(server, client):
         db.commit()
         assert tasks.clean_up(db) == 1                         # only the untouched old one goes
         assert db.query(Match).count() == 2
+
+
+def test_password_reset(client, monkeypatch):
+    from jhcloud import mailer
+    monkeypatch.setenv("SMTP_HOST", "test")
+    mailer.OUTBOX.clear()
+    signup(client)
+    client.cookies.clear()
+    known = client.post("/forgot", data={"email": "nan@example.com"}).text
+    unknown = client.post("/forgot", data={"email": "nobody@example.com"}).text
+    assert "If an account exists" in known and "If an account exists" in unknown    # same answer either way
+    assert len(mailer.OUTBOX) == 1 and mailer.OUTBOX[0]["To"] == "nan@example.com"
+    token = re.search(r"token=(\S+)", mailer.OUTBOX[0].get_content()).group(1)
+    r = client.post("/reset", data={"token": token, "password": "a-brand-new-password"})
+    assert "Password changed" in r.text
+    again = client.post("/reset", data={"token": token, "password": "another-new-password"})
+    assert "expired or was already used" in again.text                              # one use only
+    assert client.post("/login", data={"email": "nan@example.com", "password": "a-long-password"}).text.count("Wrong") == 1
+    ok = client.post("/login", data={"email": "nan@example.com", "password": "a-brand-new-password"}, follow_redirects=False)
+    assert ok.headers["location"] == "/jobs"
+    assert "expired" in client.post("/reset", data={"token": "forged.token", "password": "x" * 12}).text
+
+
+def test_reset_emails_are_limited(client, monkeypatch):
+    from jhcloud import mailer
+    monkeypatch.setenv("SMTP_HOST", "test")
+    mailer.OUTBOX.clear()
+    signup(client)
+    for _ in range(8):
+        client.post("/forgot", data={"email": "nan@example.com"})
+    assert len(mailer.OUTBOX) == 5

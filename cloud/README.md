@@ -70,4 +70,4 @@ Neon's free PostgreSQL), but free tiers sleep when idle and cannot carry real tr
 
 - Gmail via OAuth ("Sign in with Google") for reading replies; until then inbox reading stays desktop-only.
 - A load test that simulates thousands of users.
-- Password reset by email.
+

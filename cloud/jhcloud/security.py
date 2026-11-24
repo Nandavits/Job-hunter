@@ -45,6 +45,7 @@ class Keys:
             raise ValueError("SECRET_KEY must be at least 32 characters (it signs logins and encrypts API keys).")
         self.sessions = URLSafeTimedSerializer(secret, salt="session")
         self._csrf = URLSafeTimedSerializer(secret, salt="csrf")
+        self._reset = URLSafeTimedSerializer(secret, salt="password-reset")
         fernet_key = base64.urlsafe_b64encode(hashlib.sha256(("fernet:" + secret).encode()).digest())
         self._fernet = Fernet(fernet_key)
 
@@ -59,6 +60,19 @@ class Keys:
             return int(self.sessions.loads(token, max_age=SESSION_DAYS * 86400)["u"])
         except (BadSignature, SignatureExpired, KeyError, TypeError, ValueError):
             return None
+
+    # password reset: the token contains a piece of the current password hash, so it stops working
+    # as soon as the password changes (one use only), and it expires after an hour
+    def reset_token(self, user_id: int, password_hash: str) -> str:
+        return self._reset.dumps({"u": user_id, "h": password_hash[-16:]})
+
+    def reset_user(self, token: str, lookup) -> int | None:
+        try:
+            data = self._reset.loads(token, max_age=3600)
+        except (BadSignature, SignatureExpired):
+            return None
+        current = lookup(int(data.get("u", 0)))
+        return int(data["u"]) if current and hmac.compare_digest(current[-16:], str(data.get("h", ""))) else None
 
     # CSRF: every form carries a token bound to the logged-in user
     def csrf_token(self, user_id: int) -> str:

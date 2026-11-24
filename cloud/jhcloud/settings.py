@@ -17,6 +17,7 @@ class ServerSettings:
     storage_dir: Path
     ingest_every_minutes: int
     secure_cookies: bool
+    public_url: str = "http://127.0.0.1:8000"
 
     @classmethod
     def from_env(cls) -> "ServerSettings":
@@ -27,6 +28,7 @@ class ServerSettings:
             storage_dir=Path(os.environ.get("STORAGE_DIR", str(HERE / "storage"))),
             ingest_every_minutes=int(os.environ.get("INGEST_EVERY_MINUTES", "30")),
             secure_cookies=os.environ.get("SECURE_COOKIES", "0") == "1",
+            public_url=os.environ.get("PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/"),
         )
 
 

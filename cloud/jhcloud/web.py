@@ -21,7 +21,7 @@ from . import accounts, tasks
 from .db import init_db, make_engine, make_sessionmaker
 from .matching import rematch_user
 from .models import Job, Match, User
-from .security import Keys
+from .security import Keys, hash_password, password_problem
 from .settings import ServerSettings
 
 STATUSES = ["new", "prepared", "applied", "interview", "rejected", "offer", "skipped"]
@@ -128,6 +128,45 @@ def create_app(settings: ServerSettings | None = None, redis: Redis | None = Non
             return page(request, "login.html", error=str(exc), email=email)
         redis.delete(key)
         return logged_in(user)
+
+    @app.get("/forgot", response_class=HTMLResponse)
+    def forgot_page(request: Request):
+        return page(request, "forgot.html")
+
+    @app.post("/forgot", response_class=HTMLResponse)
+    def forgot(request: Request, email: str = Form(...), session=Depends(db)):
+        key = f"reset-ask:{request.client.host if request.client else 'x'}"
+        asked = redis.incr(key)
+        redis.expire(key, 3600)
+        user = session.scalar(select(User).where(User.email == email.strip().lower()))
+        if user is not None and asked <= 5:            # at most 5 reset emails per IP per hour
+            link = f"{settings.public_url}/reset?token={keys.reset_token(user.id, user.password_hash)}"
+            tasks.queue().enqueue(tasks.send_email, user.email, "Reset your Job Hunter password",
+                                  f"Someone asked to reset the password for {user.email}.\n\n"
+                                  f"Open this link within one hour to choose a new password:\n{link}\n\n"
+                                  "If this was not you, ignore this email; nothing changes.")
+        # the same answer whether or not the account exists: no way to test which emails are registered
+        return page(request, "forgot.html", sent=True)
+
+    @app.get("/reset", response_class=HTMLResponse)
+    def reset_page(request: Request, token: str = ""):
+        return page(request, "reset.html", token=token)
+
+    @app.post("/reset", response_class=HTMLResponse)
+    def reset(request: Request, token: str = Form(...), password: str = Form(...), session=Depends(db)):
+        def current_hash(uid: int):
+            u = session.get(User, uid)
+            return u.password_hash if u else None
+        user_id = keys.reset_user(token, current_hash)
+        if user_id is None:
+            return page(request, "reset.html", token="", error="This link is expired or was already used. Ask for a new one.")
+        problem = password_problem(password)
+        if problem:
+            return page(request, "reset.html", token=token, error=problem)
+        user = session.get(User, user_id)
+        user.password_hash = hash_password(password)
+        session.commit()
+        return page(request, "login.html", notice="Password changed. Log in with your new password.", email=user.email)
 
     @app.post("/logout")
     def logout():

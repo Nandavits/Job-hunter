@@ -103,6 +103,11 @@ def match_users(user_ids: list[int]) -> int:
     return total
 
 
+def send_email(to: str, subject: str, body: str) -> None:
+    from . import mailer
+    mailer.send(to, subject, body)
+
+
 def prepare_documents(user_id: int, match_id: int) -> str:
     settings, Session = state()
     keys = Keys(settings.secret_key)
