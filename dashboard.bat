@@ -80,10 +80,8 @@ if not exist data\dashboard-autostart.done (
   echo and the "Job Hunter" icon on your desktop opens it. To stop the automatic start: dashboard-autostart-off
 )
 set "NEEDPIP="
-if not exist data\dashboard-packages.done set "NEEDPIP=1"
-if not defined NEEDPIP for %%F in (requirements.txt requirements-dashboard.txt) do (
-  for /f %%R in ('powershell -NoProfile -Command "if ((Get-Item '%%F').LastWriteTime -gt (Get-Item 'data\dashboard-packages.done').LastWriteTime) {'new'}"') do set "NEEDPIP=1"
-)
+fc /b requirements.txt data\packages-main.txt >nul 2>&1 || set "NEEDPIP=1"
+fc /b requirements-dashboard.txt data\packages-dashboard.txt >nul 2>&1 || set "NEEDPIP=1"
 if defined NEEDPIP (
   echo Installing / updating packages...
   ".venv\Scripts\python.exe" -m pip install -q -r requirements.txt -r requirements-dashboard.txt
@@ -92,7 +90,8 @@ if defined NEEDPIP (
     pause
     exit /b 1
   )
-  echo done> data\dashboard-packages.done
+  copy /y requirements.txt data\packages-main.txt >nul
+  copy /y requirements-dashboard.txt data\packages-dashboard.txt >nul
 )
 echo.
 echo The dashboard opens in your browser: http://127.0.0.1:8095
