@@ -1,0 +1,104 @@
+# Server-wide job sources: collected ONCE for all users.
+# Personal email alerts are not used here (each user's inbox is private).
+title_keywords:
+- data engineer
+- analytics engineer
+- data analyst
+- bi analyst
+- bi engineer
+- business intelligence
+- bi developer
+- etl developer
+- data platform
+- automation engineer
+- ai engineer
+- data operations
+- dataops
+- datenanalyst
+- dateningenieur
+- bi-entwickler
+sources:
+  arbeitnow:
+    enabled: true
+    max_pages: 5
+  amazon:
+    enabled: true
+  databerlin:
+    enabled: true
+    max_details: 80
+  arbeitsagentur:
+    enabled: true
+    queries:
+    - Data Engineer
+    - Analytics Engineer
+    - Data Analyst
+    - BI Analyst
+    - Datenanalyst
+    - Dateningenieur
+    - BI-Entwickler
+    - ETL-Entwickler
+    where: ''
+    radius_km: 30
+    published_since_days: 7
+    include_remote: true
+  companies:
+  - name: Talon.One
+    ats: greenhouse
+    slug: linkedinjobs
+  - name: Contentful
+    ats: greenhouse
+    slug: contentful
+  - name: HelloFresh
+    ats: greenhouse
+    slug: hellofresh
+  - name: N26
+    ats: greenhouse
+    slug: n26
+  - name: 1KOMMA5°
+    ats: personio
+    slug: 1komma5grad
+  - name: GetYourGuide
+    ats: greenhouse
+    slug: getyourguide
+  - name: SumUp
+    ats: greenhouse
+    slug: sumup
+  - name: Celonis
+    ats: greenhouse
+    slug: celonis
+  - name: Raisin
+    ats: greenhouse
+    slug: raisin
+  - name: Trade Republic
+    ats: greenhouse
+    slug: traderepublicbank
+  - name: Solaris
+    ats: greenhouse
+    slug: solarisbank
+  - name: Moss
+    ats: ashby
+    slug: moss
+  - name: Enpal
+    ats: ashby
+    slug: enpal
+  - name: Flinn
+    ats: ashby
+    slug: flinn
+  - name: Parloa
+    ats: ashby
+    slug: parloa
+  - name: Upvest
+    ats: ashby
+    slug: upvest
+  - name: Choco
+    ats: ashby
+    slug: choco
+  - name: Mobimeo
+    ats: personio
+    slug: mobimeo
+  - name: Ada Health
+    ats: greenhouse
+    slug: adahealth
+  - name: Spotify
+    ats: lever
+    slug: spotify

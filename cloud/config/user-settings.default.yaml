@@ -1,0 +1,50 @@
+# Your search settings. Skills come from your profile automatically;
+# add extra skill weights under skills if you like (e.g.  dbt: 3).
+search:
+  title_keywords:
+  - data engineer
+  - analytics engineer
+  - data analyst
+  - bi analyst
+  - bi engineer
+  - business intelligence
+  - bi developer
+  - etl developer
+  - data platform
+  - automation engineer
+  - ai engineer
+  - data operations
+  - dataops
+  - datenanalyst
+  - dateningenieur
+  - bi-entwickler
+  exclude_title_keywords:
+  - senior
+  - sr.
+  - sr
+  - snr
+  - lead
+  - principal
+  - staff
+  - head of
+  - director
+  - manager
+  - intern
+  - internship
+  - praktikum
+  - werkstudent
+  - working student
+  - ausbildung
+  anywhere_in_germany: true
+  locations:
+  - berlin
+  - remote
+  - germany
+  - deutschland
+  max_years_experience: 3
+  max_job_age_days: 0
+  also_countries: []
+  german_level: A2
+  skills: {}
+  min_score: 55
+  skip_jobs_without_ad_text: false

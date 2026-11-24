@@ -13,3 +13,8 @@ __pycache__/
 venv/
 logs/
 .venv-hands/
+
+# multi-user version
+cloud/.env
+cloud/storage/
+cloud/*.db

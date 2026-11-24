@@ -1,0 +1,50 @@
+# Job Hunter Cloud on one machine:  copy .env.example to .env, then  docker compose up -d --build
+# Open http://127.0.0.1:8000.  More users? Add workers:  docker compose up -d --scale worker=4
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jhcloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: jhcloud
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U jhcloud"], interval: 5s, retries: 10}
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  web:
+    build: {context: .., dockerfile: cloud/Dockerfile}
+    command: uvicorn jhcloud.web:app_from_env --factory --host 0.0.0.0 --port 8000 --workers 2
+    env_file: .env
+    environment: &env
+      DATABASE_URL: postgresql+psycopg://jhcloud:${POSTGRES_PASSWORD}@db:5432/jhcloud
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_DIR: /data
+    volumes: [files:/data]
+    ports: ["127.0.0.1:8000:8000"]          # only this computer; put a TLS proxy in front for the internet
+    depends_on: {db: {condition: service_healthy}, redis: {condition: service_started}}
+    restart: unless-stopped
+
+  worker:                                   # scale this one: each worker takes tasks from the queue
+    build: {context: .., dockerfile: cloud/Dockerfile}
+    command: rq worker jobhunter --url redis://redis:6379/0
+    env_file: .env
+    environment: *env
+    volumes: [files:/data]
+    depends_on: {db: {condition: service_healthy}, redis: {condition: service_started}}
+    restart: unless-stopped
+
+  scheduler:                                # exactly one: queues the shared job search every 30 minutes
+    build: {context: .., dockerfile: cloud/Dockerfile}
+    command: python -m jhcloud.scheduler
+    env_file: .env
+    environment: *env
+    depends_on: {redis: {condition: service_started}}
+    restart: unless-stopped
+
+volumes:
+  dbdata:
+  files:

@@ -15,3 +15,5 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-hands.txt icalendar recurring-ical-events httpx numpy
       # Jako's voice-message model (faster-whisper) is large and not needed for the tests
       - run: pytest -q
+      - run: pip install -r cloud/requirements.txt
+      - run: cd cloud && pytest -q
