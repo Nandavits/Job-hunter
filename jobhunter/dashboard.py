@@ -134,8 +134,13 @@ def manual_kit(job: dict, settings) -> dict:
     return {"answers": answers, "letter": letter}
 
 
+def _prepare(settings, store, job):
+    from .pipeline import prepare_job
+    return prepare_job(settings, store, job)
+
+
 def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None, opener=None,
-               checker=None, browser=None):
+               checker=None, browser=None, preparer=None):
     settings = settings or load_settings()
     store = store or Store(settings.database_url)
     search = settings.search
@@ -308,12 +313,21 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         from .upload import UPLOAD_DIR, fill_upload_folder, open_folder, open_in_browser
         check(token_)
         job = store.get(uid)
-        cv = local_file((job or {}).get("cv_path") or "")
-        if not job or not cv:
-            raise HTTPException(status_code=400, detail="Press 'Prepare CV + letter' first, then try again.")
+        if not job:
+            raise HTTPException(status_code=404, detail="No such job")
         if still_open(job) is False:
             store.update(job["uid"], status="skipped", excluded_reason="job closed (ad says it no longer accepts applications)")
             return RedirectResponse(f"/job/{job['uid']}?closed=1", status_code=303)
+        cv = local_file(job.get("cv_path") or "")
+        if not cv:                                      # no CV yet: write it now (takes about a minute)
+            try:
+                (preparer or _prepare)(settings, store, job)
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"Could not write the CV: {exc}") from None
+            job = store.get(job["uid"])
+            cv = local_file(job.get("cv_path") or "")
+            if not cv:
+                raise HTTPException(status_code=500, detail="Could not write the CV. Try 'Prepare CV + letter'.")
         folder = getattr(settings, "upload_dir", None) or UPLOAD_DIR
         try:
             fill_upload_folder(job, cv, local_file(job.get("letter_path") or ""),

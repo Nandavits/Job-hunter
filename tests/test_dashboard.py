@@ -203,3 +203,30 @@ def test_apply_myself_opens_chrome_and_the_upload_folder(tmp_path, monkeypatch):
     assert pages == ["https://www.linkedin.com/jobs/view/4491636512/"] and folders == [P.upload_dir]
     assert (P.upload_dir / "CV_Ann_Bee.pdf").is_file()
     assert "Sandvik - Data Analyst" in r.text and "opened in Chrome" in r.text
+
+
+def test_apply_myself_writes_the_cv_first_when_there_is_none(tmp_path, monkeypatch):
+    import jobhunter.dashboard as d
+    out = tmp_path / "output"
+    out.mkdir()
+    monkeypatch.setattr(d, "OUTPUT_DIR", out)
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    job = Job(source="arbeitnow", external_id="7", company="Acme", title="Data Analyst", url="https://www.arbeitnow.com/x")
+    store.save([job])
+
+    def prepare(settings, store_, j):
+        (out / "acme").mkdir()
+        (out / "acme" / "CV_A_B_Acme.pdf").write_text("cv")
+        store_.update(j["uid"], cv_path=str(out / "acme" / "CV_A_B_Acme.pdf"), status="prepared")
+
+    class P(S):
+        profile = {"personal": {"first_name": "Ann", "last_name": "Bee"}}
+        upload_dir = tmp_path / "_UPLOAD"
+    pages = []
+    c = TestClient(create_app(P(), store, launcher=print, opener=lambda f: None, browser=pages.append,
+                              checker=lambda j: None, preparer=prepare))
+    page = c.get(f"/job/{job.uid}").text
+    assert "Apply myself in Chrome" in page                 # shown even before a CV exists
+    token = re.search(r'name="token" value="([^"]+)"', page).group(1)
+    c.post(f"/job/{job.uid}/manual", data={"token": token})
+    assert pages == ["https://www.arbeitnow.com/x"] and (P.upload_dir / "CV_Ann_Bee.pdf").is_file()
