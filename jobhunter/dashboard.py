@@ -134,7 +134,8 @@ def manual_kit(job: dict, settings) -> dict:
     return {"answers": answers, "letter": letter}
 
 
-def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None, opener=None):
+def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None, opener=None,
+               checker=None):
     settings = settings or load_settings()
     store = store or Store(settings.database_url)
     search = settings.search
@@ -145,6 +146,17 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
     pages.env.globals.update(age_text=age_text)
     pages.env.filters["link"] = web_link
     app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "dashboard_static")), name="static")
+
+    def still_open(job: dict) -> bool | None:
+        if checker:
+            return checker(job)
+        from .collectors.base import make_session
+        from .linkcheck import ad_closed
+        session = make_session()
+        for url in dict.fromkeys(u for u in (job.get("url"), job.get("apply_url")) if u):
+            if ad_closed(session, url):
+                return False
+        return None
 
     def launch(uid: str) -> None:                   # "Apply": the form filler in its own window
         if launcher:
@@ -277,6 +289,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         job = store.get(uid)
         if not job:
             raise HTTPException(status_code=404, detail="No such job")
+        if still_open(job) is False:                    # the ad says it is closed: don't open a dead form
+            store.update(job["uid"], status="skipped", excluded_reason="job closed (ad says it no longer accepts applications)")
+            return RedirectResponse(f"/job/{job['uid']}?closed=1", status_code=303)
         launch(job["uid"])
         return RedirectResponse(f"/job/{job['uid']}?filling=1", status_code=303)
 

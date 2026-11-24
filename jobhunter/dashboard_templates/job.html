@@ -4,6 +4,7 @@
 <p class="muted">{{ j.company }} · {{ j.country }} · {{ j.location or '' }}{% if j.posted_at %} · posted {{ age_text(j.posted_at) }}{% endif %} · {{ j.source }}</p>
 <p><span class="score">{{ j.score or 0 }}</span> &nbsp; {% for part in j.why.split(' · ') %}{% if part.startswith('MISSING MUST-HAVE') %}<span class="must">{{ part }}</span>{% else %}<span class="muted">{{ part }}</span>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>
 {% if earlier %}<div class="note">You already applied to this role: {{ earlier[0].company }} - {{ earlier[0].title }} on {{ earlier[0].applied_at or '?' }}.</div>{% endif %}
+{% if request.query_params.get('closed') %}<div class="note">This job no longer accepts applications, so Job Hunter removed it from your list (status: skipped).</div>{% endif %}
 {% if request.query_params.get('filling') %}<div class="note">The application opened in a new window: Job Hunter fills the form there. Check every answer, then click Submit yourself, and set the status to "applied" here.</div>{% endif %}
 {% if j.busy %}<div class="note">{{ 'Writing your CV and cover letter... reload in a minute.' if j.busy=='preparing' else j.busy }}</div>{% endif %}
 <div class="row">

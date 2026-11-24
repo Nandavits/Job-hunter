@@ -32,7 +32,7 @@ def app(tmp_path):
         store.update(j.uid, score=score)
     store.update(jobs[2].uid, status="applied", applied_at="2026-11-17")
     launched = []
-    client = TestClient(create_app(S(), store, launcher=launched.append))
+    client = TestClient(create_app(S(), store, launcher=launched.append, checker=lambda job: None))
     token = re.search(r'name="token" value="([^"]+)"', client.get(f"/job/{jobs[0].uid}").text).group(1)
     return {"client": client, "store": store, "jobs": jobs, "launched": launched, "token": token}
 
@@ -165,3 +165,14 @@ def test_files_button_and_copy_answers(tmp_path, monkeypatch):
     assert "_UPLOAD" in r.text and opened == [P.upload_dir]
     assert (P.upload_dir / "CV_Ann_Bee.docx").is_file() and (P.upload_dir / "answers.txt").is_file()
     assert c.get("/static/copy.js").status_code == 200
+
+
+def test_apply_on_a_closed_job_removes_it(app, tmp_path):
+    store = app["store"]
+    j = app["jobs"][1]
+    launched = []
+    c = TestClient(create_app(S(), store, launcher=launched.append, checker=lambda job: False))
+    token = re.search(r'name="token" value="([^"]+)"', c.get(f"/job/{j.uid}").text).group(1)
+    r = c.post(f"/job/{j.uid}/apply", data={"token": token})
+    assert launched == [] and "no longer accepts applications" in r.text
+    assert store.get(j.uid)["status"] == "skipped"
