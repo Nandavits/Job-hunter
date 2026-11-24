@@ -1,0 +1,17 @@
+# Never send secrets or personal data to Docker builds
+.env
+.env.*
+**/.env
+config/*
+!config/*.example.yaml
+data/
+output/
+logs/
+.git/
+.venv*/
+**/__pycache__/
+cloud/storage/
+cloud/*.db
+cloud/loadtest/results.json
+*.tgz
+*.zip
