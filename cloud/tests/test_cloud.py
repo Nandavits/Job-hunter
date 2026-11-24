@@ -118,7 +118,7 @@ def test_fan_out_through_the_queue(server, monkeypatch, client):
         return save_jobs(db, [record(10), record(11)])
     monkeypatch.setattr(tasks, "ingest", fake_ingest)
     result = tasks.ingest_and_fan_out()
-    assert result == {"new_jobs": 2, "users": 3}
+    assert result == {"new_jobs": 2, "users": 3, "gmail_users": 0}
     with server["Session"]() as db:
         assert db.query(Match).count() == 6                     # 2 jobs x 3 users, matched by queued tasks
 

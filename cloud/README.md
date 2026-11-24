@@ -29,6 +29,8 @@ scheduler ──> every 30 min: "ingest_and_fan_out" ──> queue
 - `jhcloud/tasks.py`: the queued tasks; users are matched in groups of 200 per task.
 - `jhcloud/web.py`: sign-up, login, job list with "Why this score", statuses, CV downloads.
 - `jhcloud/security.py`: scrypt password hashes, signed session cookies, CSRF tokens, encrypted API keys.
+- `jhcloud/google.py`: "Connect Gmail" (read-only) and reading replies through the Gmail API.
+- `jhcloud/mailer.py`: password-reset emails (any SMTP account, or the server log when none is set).
 
 ## Security built in
 
@@ -39,6 +41,8 @@ scheduler ──> every 30 min: "ingest_and_fan_out" ──> queue
 - Users' AI keys are encrypted (Fernet) and never shown again.
 - Security headers (CSP, no framing, no sniffing); HTML in job ads is escaped (tested).
 - File downloads only from the user's own folder; Job Hunter never submits applications.
+- Password reset links work once and for one hour; at most 5 reset emails per IP per hour.
+- Matches nobody acted on are deleted after 30 days.
 
 ## Run it
 
@@ -66,8 +70,18 @@ Building and running on your own computer is free. Each user brings their own Cl
 (or gets template CVs without one). Free hosting exists for a demo (e.g. Render's free web service +
 Neon's free PostgreSQL), but free tiers sleep when idle and cannot carry real traffic.
 
-## Not done yet
+## Replies from Gmail ("Connect Gmail")
 
-- Gmail via OAuth ("Sign in with Google") for reading replies; until then inbox reading stays desktop-only.
-- A load test that simulates thousands of users.
+Users can connect Gmail with Google sign-in (OAuth 2.0 + PKCE, scope `gmail.readonly` only). The refresh token is
+stored encrypted; "Disconnect" deletes it and revokes it at Google. Workers read new emails and use the same
+rules as the desktop version to mark jobs rejected or interview.
+
+**Google's limit:** `gmail.readonly` is a restricted scope. In Testing mode it is free for up to 100 test users.
+Opening it to everyone needs Google's verification plus a yearly security assessment by a Google-approved
+assessor, which costs money. Everything else in this app works without Gmail.
+
+## Load test
+
+See [loadtest/REPORT.md](loadtest/REPORT.md): 5,000 users × 400 jobs matched in 5 minutes on 2 CPUs, the web
+dashboard serving ~145 loads per second, two problems found and fixed, and a projection to 100,000 users.
 

@@ -5,6 +5,13 @@
 <p class="muted">Your own Claude or OpenRouter key writes tailored CVs. It is stored encrypted and never shown again. Without a key, CVs use templates. Now: {{ key_hint }}</p>
 <form method="post" action="/settings/key" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
 <input name="api_key" type="password" placeholder="sk-ant-... or sk-or-..." autocomplete="off" style="flex:1"><button>Save key</button></form></div>
+<div class="card"><h2>Replies from your Gmail (optional)</h2>
+<p class="muted">Job Hunter reads your inbox (read-only: it can never send, change or delete an email) and marks jobs as
+rejected or interview when a company replies.</p>
+{% if google_email %}<p>Connected: {{ google_email }}</p>
+<form method="post" action="/google/disconnect"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost">Disconnect Gmail</button></form>
+{% elif google_ready %}<form method="post" action="/google/connect"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Connect Gmail with Google</button></form>
+{% else %}<p class="muted">Not available yet on this server (Google sign-in is not set up).</p>{% endif %}</div>
 <form method="post" action="/settings"><input type="hidden" name="csrf" value="{{ csrf }}">
 <div class="card"><h2>Your profile (your CV facts)</h2><textarea name="profile" spellcheck="false">{{ profile }}</textarea></div>
 <div class="card"><h2>Your search</h2><p class="muted">Titles, places, German level, max years, minimum score, countries, job age.</p>

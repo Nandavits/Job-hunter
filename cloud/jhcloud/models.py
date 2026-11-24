@@ -30,6 +30,9 @@ class User(Base):
     settings_yaml: Mapped[str] = mapped_column(Text, default="")
     api_key_enc: Mapped[str] = mapped_column(Text, default="")        # encrypted, never shown back
     last_matched_job_id: Mapped[int] = mapped_column(Integer, default=0)
+    google_refresh_enc: Mapped[str] = mapped_column(Text, default="")  # Gmail read-only access, encrypted
+    google_email: Mapped[str] = mapped_column(String(254), default="")
+    gmail_seen: Mapped[str] = mapped_column(Text, default="")          # ids of emails already read (JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

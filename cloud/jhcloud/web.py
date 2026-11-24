@@ -17,7 +17,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeout
 
 from jobhunter.dates import age_text
 
-from . import accounts, tasks
+from . import accounts, google, tasks
 from .db import init_db, make_engine, make_sessionmaker
 from .matching import rematch_user
 from .models import Job, Match, User
@@ -230,10 +230,53 @@ def create_app(settings: ServerSettings | None = None, redis: Redis | None = Non
             raise HTTPException(status_code=404, detail="Not found")
         return FileResponse(path, filename=path.name)
 
+    def settings_context(user: User) -> dict:
+        return {"key_hint": accounts.key_hint(keys, user), "google_ready": google.configured(),
+                "google_email": user.google_email if user.google_refresh_enc else ""}
+
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request, user: User = Depends(current_user)):
         return page(request, "settings.html", user=user, profile=user.profile_yaml, search=user.settings_yaml,
-                    key_hint=accounts.key_hint(keys, user))
+                    **settings_context(user))
+
+    # ----- Connect Gmail (read-only) with Google sign-in -----
+    redirect_uri = f"{settings.public_url}/google/callback"
+
+    @app.post("/google/connect")
+    def google_connect(csrf: str = Form(""), user: User = Depends(current_user)):
+        check_csrf(user, csrf)
+        if not google.configured():
+            raise HTTPException(status_code=400, detail="Google sign-in is not set up on this server.")
+        nonce = keys.session_token(user.id)                     # signed: names the user, cannot be forged
+        verifier, challenge = google.pkce_pair()
+        redis.setex(f"pkce:{nonce[-24:]}", 600, verifier)
+        return RedirectResponse(google.consent_url(redirect_uri, nonce, challenge), status_code=303)
+
+    @app.get("/google/callback")
+    def google_callback(state: str = "", code: str = "", error: str = "", user: User = Depends(current_user),
+                        session=Depends(db)):
+        if error or keys.user_from_session(state) != user.id:  # a callback started by someone else: refuse
+            return RedirectResponse("/settings", status_code=303)
+        verifier = redis.get(f"pkce:{state[-24:]}")
+        redis.delete(f"pkce:{state[-24:]}")
+        if not verifier or not code:
+            return RedirectResponse("/settings", status_code=303)
+        tokens = google.exchange_code(code, redirect_uri, verifier.decode() if isinstance(verifier, bytes) else verifier)
+        if tokens.get("refresh_token"):
+            user.google_refresh_enc = keys.encrypt(tokens["refresh_token"])
+            user.google_email = google.email_of(tokens.get("id_token", ""))
+            user.gmail_seen = ""
+            session.commit()
+        return RedirectResponse("/settings", status_code=303)
+
+    @app.post("/google/disconnect")
+    def google_disconnect(csrf: str = Form(""), user: User = Depends(current_user), session=Depends(db)):
+        check_csrf(user, csrf)
+        if user.google_refresh_enc:
+            google.revoke(keys.decrypt(user.google_refresh_enc))
+        user.google_refresh_enc, user.google_email, user.gmail_seen = "", "", ""
+        session.commit()
+        return RedirectResponse("/settings", status_code=303)
 
     @app.post("/settings")
     def save_settings(request: Request, profile: str = Form(...), search: str = Form(...), csrf: str = Form(""),
@@ -242,7 +285,7 @@ def create_app(settings: ServerSettings | None = None, redis: Redis | None = Non
         problems = accounts.save_settings(session, user, profile, search)
         if problems:
             return page(request, "settings.html", user=user, profile=profile, search=search, problems=problems,
-                        key_hint=accounts.key_hint(keys, user))
+                        **settings_context(user))
         rematch_user(session, user.id)
         return RedirectResponse("/jobs", status_code=303)
 

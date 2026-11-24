@@ -86,9 +86,32 @@ def ingest_and_fan_out() -> dict:
         new = ingest(db)
         clean_up(db)
         user_ids = list(db.scalars(select(User.id).order_by(User.id)))
+        with_gmail = list(db.scalars(select(User.id).where(User.google_refresh_enc != "").order_by(User.id)))
     for i in range(0, len(user_ids), GROUP):
         queue().enqueue(match_users, user_ids[i:i + GROUP], job_timeout=1800)
-    return {"new_jobs": new, "users": len(user_ids)}
+    for i in range(0, len(with_gmail), GROUP):
+        queue().enqueue(check_replies_users, with_gmail[i:i + GROUP], job_timeout=1800)
+    return {"new_jobs": new, "users": len(user_ids), "gmail_users": len(with_gmail)}
+
+
+def check_replies_users(user_ids: list[int]) -> int:
+    """Read replies to applications for users who connected Gmail (read-only)."""
+    from . import google
+    settings, Session = state()
+    keys = Keys(settings.secret_key)
+    changed = 0
+    with Session() as db:
+        for uid in user_ids:
+            user = db.get(User, uid)
+            token = keys.decrypt(user.google_refresh_enc) if user else ""
+            if not token:
+                continue
+            try:
+                changed += len(google.check_replies(db, user, token))
+            except Exception as exc:                     # one broken account must not stop the others
+                log.warning("Gmail replies failed for user %s: %s", uid, exc)
+                db.rollback()
+    return changed
 
 
 def match_users(user_ids: list[int]) -> int:

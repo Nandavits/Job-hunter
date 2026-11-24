@@ -25,5 +25,14 @@ def make_sessionmaker(engine):
 
 
 def init_db(engine) -> None:
+    """Create missing tables, and add columns that newer versions introduced (a tiny migration step)."""
+    from sqlalchemy import inspect, text
     from . import models  # noqa: F401  (registers the tables)
     Base.metadata.create_all(engine)
+    have = {t: {c["name"] for c in inspect(engine).get_columns(t)} for t in Base.metadata.tables}
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            for column in table.columns:
+                if column.name not in have.get(table.name, set()) and not column.primary_key:
+                    kind = column.type.compile(engine.dialect)
+                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {column.name} {kind} DEFAULT \'\''))
