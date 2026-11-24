@@ -142,3 +142,21 @@ def test_several_years_and_or_more():
     assert min_years_required("Several years of professional experience in data engineering.") == 3
     assert min_years_required("Sie bringen mehrjährige Berufserfahrung im Bereich BI mit.") == 3
     assert min_years_required("Several years of hands-on data engineering, including Spark.") == 3
+
+
+def test_missing_must_have_caps_the_score():
+    cfg = {**CFG, "skills": {"sql": 3, "python": 2, "power bi": 1, "data modelling": 1, "data quality": 1,
+                             "etl": 2, "elt": 1}}
+    allianz = ("You build Power BI dashboards and data models. Strong Python and SQL skills for ETL/ELT development. "
+               "Familiarity with data quality. Proven hands-on experience with Databricks (or equivalent "
+               "Spark-based platform) for data engineering. We are an English speaking team. ")
+    job_ = job("Risk Analytics Data Analyst", allianz)
+    assert score_job(job_, cfg) <= 55 and set(job_.extra["missing_must"]) == {"databricks", "spark"}
+    form3 = ("Hands-on experience building dashboards using AWS QuickSight or a comparable BI platform. "
+             "SQL and Python. We are an English speaking team. Power BI is fine. ")
+    j2 = job("Reporting Data Analyst", form3)
+    score_job(j2, cfg)
+    assert j2.extra["missing_must"] == []
+    plus = "SQL, Python and Power BI. Knowledge of Databricks or similar platforms is a plus. English speaking team."
+    j3 = job("Data Analyst", plus)
+    assert score_job(j3, cfg) >= 70 and j3.extra["missing_must"] == []

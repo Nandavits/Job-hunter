@@ -53,7 +53,10 @@ def fit_summary(r: dict, search: dict | None) -> str:
         score_job(job, search)
         have = ", ".join(job.matched_skills[:8]) or "none of your skills named"
         parts.append(f"You have: {have}")
-        missing = job.extra.get("missing_skills") or []
+        must = job.extra.get("missing_must") or []
+        if must:
+            parts.append(f"MISSING MUST-HAVE: {', '.join(must)}")
+        missing = [m for m in job.extra.get("missing_skills") or [] if m not in must]
         parts.append(f"Missing: {', '.join(missing[:6])}" if missing else "Missing: nothing")
     elif r.get("matched_skills"):
         parts.append(f"You have: {r['matched_skills'].replace(',', ', ')}")

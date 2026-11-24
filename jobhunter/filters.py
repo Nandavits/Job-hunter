@@ -252,6 +252,16 @@ SKILL_ALIASES = {"postgres": ["postgres", "postgresql"], "data modelling": ["dat
                  "elt": ["elt"], "google cloud": ["google cloud", "gcp"], "gcp": ["gcp", "google cloud"]}
 
 
+# A requirement the job really insists on ("proven hands-on experience with Databricks", "X is a must").
+# Missing one of these caps the score below 70, however many other tools match (the Allianz lesson:
+# 7 matching tools gave 79 although the main requirement, Databricks, was missing).
+MUST_HAVE = re.compile(
+    r"\bproven\b|\brequired\b|\brequirements?\b|\bmust\b|\bmandatory\b|\bessential\b|\bexpert\b|"
+    r"in-depth|\bdeep\b|\bsolid\b|\bstrong\b|hands-on experience|extensive|\bseveral years\b|"
+    r"\bvoraussetzung\b|zwingend|fundierte|umfassende|sehr gute kenntnisse|mehrjährige", re.I)
+MUST_HAVE_CAP = {1: 65, 2: 55}
+
+
 def score_job(job: Job, cfg: dict) -> int:
     """Match percentage (0-100): how well you fit what this job asks for.
 
@@ -268,6 +278,7 @@ def score_job(job: Job, cfg: dict) -> int:
     matched = [s for s in mine if has(text, s)]
     sentences = [x.lower() for x in _sentences(f"{job.title}\n{job.description}")]
     missing: dict[str, float] = {}
+    must_missing: list[str] = []
     for tool in OTHER_TOOLS:
         if any(tool in SKILL_ALIASES.get(m, [m]) for m in mine) or not _contains(text, tool):
             continue
@@ -277,10 +288,22 @@ def score_job(job: Job, cfg: dict) -> int:
                 any(has(sentence, m) for m in matched)
             optional = OPTIONAL_MARKERS.search(sentence) or re.search(r"\bideally\b|idealerweise", sentence)
             weight = min(weight, 0.0 if alternative else 0.5 if optional else 1.0)
+            # "X or a comparable BI platform" accepts what you have; "X (or equivalent Spark platform)"
+            # names another tool you lack, so it stays a must-have
+            other_way = re.search(r"\b(?:or|oder)\b[^.;]{0,40}\b(?:comparable|similar|equivalent|other|"
+                                  r"vergleichbar\w*|ähnlich\w*)\b", sentence) and not any(
+                _contains(sentence, t) for t in OTHER_TOOLS if t != tool and not any(
+                    t in SKILL_ALIASES.get(m, [m]) for m in mine))
+            if not alternative and not optional and not other_way and MUST_HAVE.search(sentence) \
+                    and tool not in must_missing:
+                must_missing.append(tool)
         if weight:
             missing[tool] = weight
+        elif tool in must_missing:
+            must_missing.remove(tool)              # an "or similar" elsewhere in the ad: not a hard need
     job.matched_skills = matched
     job.extra["missing_skills"] = list(missing)
+    job.extra["missing_must"] = must_missing
 
     gaps = sum(missing.values())
     mentioned = len(matched) + gaps
@@ -309,7 +332,10 @@ def score_job(job: Job, cfg: dict) -> int:
     else:
         lang_part = 5
 
-    return int(min(100, round(skill_part + title_part + exp_part + lang_part)))
+    score = int(min(100, round(skill_part + title_part + exp_part + lang_part)))
+    if must_missing:
+        score = min(score, MUST_HAVE_CAP.get(len(must_missing), 50))
+    return score
 
 
 def job_too_old(job: Job, cfg: dict) -> str:
