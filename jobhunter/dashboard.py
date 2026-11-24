@@ -28,6 +28,7 @@ from .filters import COUNTRY_PLACES, _also_country
 from .storage import STATUSES, Store
 
 log = logging.getLogger("jobhunter")
+VERSION = "24 Nov 2026 (evening)"      # shown top right: tells you the update really arrived
 OPEN = ("new", "prepared")
 APPLIED = ("applied", "interview", "offer", "rejected")
 GERMAN_PLACES = ("germany", "deutschland", "berlin", "munich", "münchen", "hamburg", "cologne", "köln", "frankfurt",
@@ -192,7 +193,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         except (OSError, IndexError):
             ctx["upload_for"] = ""
         counts = store.stats()
-        ctx.update(token=token, counts=counts, open_count=sum(counts.get(s, 0) for s in OPEN),
+        ctx.update(token=token, counts=counts, version=VERSION, open_count=sum(counts.get(s, 0) for s in OPEN),
                    applied_count=sum(counts.get(s, 0) for s in APPLIED))
         return pages.TemplateResponse(request, name, ctx)
 
