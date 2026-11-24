@@ -28,7 +28,7 @@ from .filters import COUNTRY_PLACES, _also_country
 from .storage import STATUSES, Store
 
 log = logging.getLogger("jobhunter")
-VERSION = "24 Nov 2026 (night)"      # shown top right: tells you the update really arrived
+VERSION = "24 Nov 2026 (late)"      # shown top right: tells you the update really arrived
 OPEN = ("new", "prepared")
 APPLIED = ("applied", "interview", "offer", "rejected")
 GERMAN_PLACES = ("germany", "deutschland", "berlin", "munich", "münchen", "hamburg", "cologne", "köln", "frankfurt",
@@ -151,7 +151,7 @@ def _prepare(settings, store, job):
 
 
 def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None, opener=None,
-               checker=None, browser=None, preparer=None):
+               checker=None, browser=None, preparer=None, fetcher=None):
     settings = settings or load_settings()
     store = store or Store(settings.database_url)
     search = settings.search
@@ -175,6 +175,52 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
             if ad_closed(session, url):
                 return False
         return None
+
+    def needs_ad(job: dict) -> bool:
+        return (job.get("status") in OPEN and len(job.get("description") or "") < 100
+                and (job.get("url") or "").startswith("http") and "glassdoor." not in job.get("url", ""))
+
+    def read_ad(job: dict) -> dict | None:
+        """Fetch the ad text of one job and score it properly. Returns the updated job, or None."""
+        try:
+            if fetcher:
+                text = fetcher(job["url"])
+            else:
+                from .collectors import description_for
+                from .collectors.base import make_session
+                text = description_for(make_session(), job["url"])
+        except Exception as exc:
+            log.debug("Could not read the ad %s: %s", job.get("url"), exc)
+            return None
+        if len(text or "") < 100:
+            return None
+        from .pipeline import rescore_open_jobs
+        store.update(job["uid"], description=text)
+        rescore_open_jobs(store, search)
+        return store.get(job["uid"])
+
+    ads_busy = {"running": False, "done": 0}
+
+    @app.post("/read-ads")
+    def read_missing_ads(token_: str = Form("", alias="token")):
+        """Fetch the ad text for every open job that has none, in the background."""
+        check(token_)
+        if not ads_busy["running"]:
+            ads_busy.update(running=True, done=0)
+            todo = [r for s_ in OPEN for r in store.list(status=s_, limit=5000) if needs_ad(r)]
+
+            def work():
+                import time
+                try:
+                    for row in todo[:80]:
+                        if read_ad(row):
+                            ads_busy["done"] += 1
+                        if not fetcher:
+                            time.sleep(1.5)               # be gentle with LinkedIn
+                finally:
+                    ads_busy["running"] = False
+            threading.Thread(target=work, daemon=True).start()
+        return RedirectResponse("/?reading=1", status_code=303)
 
     def launch(uid: str) -> None:                   # "Apply": the form filler in its own window
         if launcher:
@@ -235,7 +281,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
             rows = [r for r in rows if r["country"] == country]
         rows.sort(key=lambda r: str(r.get("posted_at") or ""), reverse=True)     # newest first ...
         rows.sort(key=lambda r: -(r.get("score") or 0))                          # ... within each score
-        return view(request, "jobs.html", rows=rows[:300], status=status, country=country, countries=countries,
+        no_ad = sum(1 for r in rows if needs_ad(r))
+        return view(request, "jobs.html", rows=rows[:300], no_ad=no_ad, ads_busy=ads_busy, status=status, country=country, countries=countries,
                     min_score=min_score, q=q, statuses=STATUSES, age=age, age_choices=AGE_LABELS)
 
     @app.get("/tracker", response_class=HTMLResponse)
@@ -257,6 +304,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         job = store.get(uid)
         if not job:
             raise HTTPException(status_code=404, detail="No such job")
+        if needs_ad(job):                               # alert emails give no ad text: read the ad now
+            fetched = read_ad(job)
+            if fetched:
+                job = fetched
         return view(request, "job.html", j=enrich(job), statuses=STATUSES,
                     earlier=store.applied_versions(job), kit=manual_kit(job, settings))
 

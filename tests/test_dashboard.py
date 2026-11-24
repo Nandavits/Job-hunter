@@ -157,7 +157,7 @@ def test_files_button_and_copy_answers(tmp_path, monkeypatch):
         profile = {"personal": {"first_name": "Ann", "last_name": "Bee", "email": "ann@x.de"}}
         upload_dir = tmp_path / "_UPLOAD"
     opened = []
-    c = TestClient(create_app(P(), store, launcher=print, opener=opened.append))
+    c = TestClient(create_app(P(), store, launcher=print, opener=opened.append, fetcher=lambda u: ""))
     page = c.get(f"/job/{job.uid}").text
     assert "ann@x.de" in page and "data-copy" in page and "I like data." in page and "/static/copy.js" in page
     token = re.search(r'name="token" value="([^"]+)"', page).group(1)
@@ -195,7 +195,7 @@ def test_apply_myself_opens_chrome_and_the_upload_folder(tmp_path, monkeypatch):
         upload_dir = tmp_path / "_UPLOAD"
     folders, pages = [], []
     c = TestClient(create_app(P(), store, launcher=print, opener=folders.append, browser=pages.append,
-                              checker=lambda j: None))
+                              checker=lambda j: None, fetcher=lambda u: ""))
     page = c.get(f"/job/{job.uid}").text
     assert "Apply myself in Chrome" in page
     token = re.search(r'name="token" value="([^"]+)"', page).group(1)
@@ -224,7 +224,7 @@ def test_apply_myself_writes_the_cv_first_when_there_is_none(tmp_path, monkeypat
         upload_dir = tmp_path / "_UPLOAD"
     pages = []
     c = TestClient(create_app(P(), store, launcher=print, opener=lambda f: None, browser=pages.append,
-                              checker=lambda j: None, preparer=prepare))
+                              checker=lambda j: None, preparer=prepare, fetcher=lambda u: ""))
     page = c.get(f"/job/{job.uid}").text
     assert "Apply myself in Chrome" in page                 # shown even before a CV exists
     token = re.search(r'name="token" value="([^"]+)"', page).group(1)
@@ -261,3 +261,20 @@ def test_import_jobs_from_the_old_version(tmp_path):
     assert new.get(a.uid)["status"] == "applied"
     assert new.get(a.uid)["cv_path"] == "/app/output/2026-11-20_Acme/CV_X.pdf"
     assert import_jobs(new, tmp_path / "jobs.db") == 0            # running it twice changes nothing
+
+
+def test_jobs_without_ad_text_get_their_ad_read(tmp_path):
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    job = Job(source="email", external_id="li1", company="Statista", title="Data & Analytics Engineer (m/f/d)",
+              url="https://www.linkedin.com/jobs/view/4400000001/", location="Berlin")
+    store.save([job])
+    ad = "English speaking team in Berlin. You work with SQL, Python, dbt and Airflow every day. " * 3
+
+    class P(S):
+        search = {"skills": {"sql": 3, "python": 2, "dbt": 3, "airflow": 2}}
+    c = TestClient(create_app(P(), store, launcher=print, checker=lambda j: None, fetcher=lambda url: ad))
+    assert "Read their ads now" in c.get("/").text
+    page = c.get(f"/job/{job.uid}").text                    # opening the job reads its ad
+    assert "No ad text yet" not in page and "dbt" in page
+    assert store.get(job.uid)["description"].startswith("English speaking team")
+    assert "Read their ads now" not in c.get("/").text
