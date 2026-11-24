@@ -66,10 +66,25 @@ def set_queue(q: Queue) -> None:
     _queue = q
 
 
+KEEP_UNTOUCHED_DAYS = 30
+
+
+def clean_up(db, days: int = KEEP_UNTOUCHED_DAYS) -> int:
+    """Delete matches nobody opened or acted on within `days`. Without this the table grows forever
+    (the load test showed ~11% of all user x job pairs are kept). Jobs you acted on are never deleted."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import delete
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    result = db.execute(delete(Match).where(Match.status == "new", Match.prep_state == "", Match.created_at < cutoff))
+    db.commit()
+    return result.rowcount or 0
+
+
 def ingest_and_fan_out() -> dict:
     settings, Session = state()
     with Session() as db:
         new = ingest(db)
+        clean_up(db)
         user_ids = list(db.scalars(select(User.id).order_by(User.id)))
     for i in range(0, len(user_ids), GROUP):
         queue().enqueue(match_users, user_ids[i:i + GROUP], job_timeout=1800)

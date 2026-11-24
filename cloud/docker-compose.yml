@@ -17,7 +17,7 @@ services:
 
   web:
     build: {context: .., dockerfile: cloud/Dockerfile}
-    command: uvicorn jhcloud.web:app_from_env --factory --host 0.0.0.0 --port 8000 --workers 2
+    command: uvicorn jhcloud.web:app_from_env --factory --host 0.0.0.0 --port 8000 --workers 2 --limit-concurrency 120   # over the limit: an instant 503, not a long wait
     env_file: .env
     environment: &env
       DATABASE_URL: postgresql+psycopg://jhcloud:${POSTGRES_PASSWORD}@db:5432/jhcloud

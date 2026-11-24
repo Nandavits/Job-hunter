@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from redis import Redis
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import TimeoutError as PoolTimeout
 
 from jobhunter.dates import age_text
 
@@ -40,6 +41,11 @@ def create_app(settings: ServerSettings | None = None, redis: Redis | None = Non
     app = FastAPI(title="Job Hunter", docs_url=None, redoc_url=None)
     pages = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
     pages.env.globals["age_text"] = age_text
+
+    @app.exception_handler(PoolTimeout)
+    async def busy(request: Request, exc: PoolTimeout):
+        return HTMLResponse("Job Hunter is very busy right now. Please try again in a few seconds.", status_code=503,
+                            headers={"Retry-After": "5"})
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

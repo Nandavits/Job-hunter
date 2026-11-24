@@ -194,3 +194,21 @@ def test_settings_are_checked_before_saving(client):
     token = csrf(client)
     r = client.post("/settings", data={"profile": "personal: [broken", "search": "search: {}", "csrf": token})
     assert "Not saved" in r.text
+
+
+def test_clean_up_keeps_jobs_you_acted_on(server, client):
+    from datetime import datetime, timedelta, timezone
+    signup(client)
+    uid = user_id(server, "nan@example.com")
+    with server["Session"]() as db:
+        save_jobs(db, [record(1), record(2), record(3)])
+        match_user(db, uid)
+        old = datetime.now(timezone.utc) - timedelta(days=40)
+        ms = db.scalars(select(Match).where(Match.user_id == uid).order_by(Match.id)).all()
+        for m in ms:
+            m.created_at = old
+        ms[0].status = "applied"
+        ms[1].prep_state = "done"
+        db.commit()
+        assert tasks.clean_up(db) == 1                         # only the untouched old one goes
+        assert db.query(Match).count() == 2

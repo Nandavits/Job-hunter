@@ -14,7 +14,9 @@ def make_engine(url: str):
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     else:
-        kwargs.update(pool_size=10, max_overflow=20)
+        # 40 = FastAPI's thread pool per process, so each busy thread can get a connection;
+        # wait at most 5 s for one, then answer "busy" instead of hanging (found in the load test)
+        kwargs.update(pool_size=20, max_overflow=20, pool_timeout=5)
     return create_engine(url, **kwargs)
 
 

@@ -53,7 +53,8 @@ class Job(Base):
 class Match(Base):
     __tablename__ = "matches"
     __table_args__ = (UniqueConstraint("user_id", "job_id", name="one_match_per_user_job"),
-                      Index("matches_user_status_score", "user_id", "status", "score"))
+                      Index("matches_user_status_score", "user_id", "status", "score"),
+                      Index("matches_status_created", "status", "created_at"))       # for the clean-up
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
