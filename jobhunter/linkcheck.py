@@ -14,6 +14,7 @@ log = logging.getLogger("jobhunter")
 
 CLOSED = "job closed (application page gone)"
 AD_CLOSED = "job closed (ad says it no longer accepts applications)"
+AD_REMOVED = "job closed (the ad was removed from LinkedIn)"
 # What job pages say once a job is closed (LinkedIn, StepStone, Indeed, XING, company pages).
 CLOSED_TEXT = re.compile(
     r"no longer accepting applications|this job (?:is|has) (?:no longer available|expired|been closed)|"
@@ -93,8 +94,9 @@ def is_closed(session, apply_url: str, cache: dict) -> bool | None:
     return None
 
 
-def ad_closed(session, url: str) -> bool | None:
-    """Does the job's own page say it is closed? True = it says so, None = page looks open or can't be read."""
+def ad_state(session, url: str) -> str | None:
+    """"closed" = the page says so; "gone" = LinkedIn has removed the ad (its public page answers 404);
+    None = looks open or can't be read."""
     from .collectors import LINKEDIN_JOB
     url = url or ""
     m = LINKEDIN_JOB.search(url)
@@ -107,9 +109,16 @@ def ad_closed(session, url: str) -> bool | None:
     except Exception as exc:
         log.debug("Could not open %s: %s", url, exc)
         return None
+    if r.status_code == 404 and m:
+        return "gone"                       # counted only when seen twice, 12+ hours apart
     if r.status_code != 200:
-        return None                         # LinkedIn also answers 404/429 when it is busy: can't tell
-    return True if CLOSED_TEXT.search(r.text[:400_000]) else None
+        return None                         # 429/999 = LinkedIn is busy: can't tell
+    return "closed" if CLOSED_TEXT.search(r.text[:400_000]) else None
+
+
+def ad_closed(session, url: str) -> bool | None:
+    """True = the job's page says it no longer accepts applications."""
+    return True if ad_state(session, url) == "closed" else None
 
 
 def _checked(path) -> dict:
@@ -134,21 +143,29 @@ def close_closed_ads(store, session, limit: int = 40, checked_file=None, now=Non
     for r in store.list(limit=100_000):
         if r["status"] not in ("new", "prepared"):
             continue
-        last = checked.get(r["uid"], "")
+        entry = checked.get(r["uid"], "")
+        last = entry.get("at", "") if isinstance(entry, dict) else entry
         if last and now - dt.datetime.fromisoformat(last) < dt.timedelta(hours=RECHECK_HOURS):
             continue
         due.append(r)
     due.sort(key=lambda r: -(r.get("score") or 0))          # the jobs at the top of your list first
     closed = 0
     for row in due[:limit]:
+        entry = checked.get(row["uid"])
+        gone_before = entry.get("gone", 0) if isinstance(entry, dict) else 0
+        gone = 0
         for url in dict.fromkeys(u for u in (row.get("url"), row.get("apply_url")) if u):
             if "linkedin.com" in url:
                 time.sleep(1.5)                             # be gentle with LinkedIn
-            if ad_closed(session, url):
-                store.update(row["uid"], status="skipped", excluded_reason=AD_CLOSED)
+            state = ad_state(session, url)
+            if state == "closed" or (state == "gone" and gone_before):
+                store.update(row["uid"], status="skipped",
+                             excluded_reason=AD_CLOSED if state == "closed" else AD_REMOVED)
                 closed += 1
                 break
-        checked[row["uid"]] = now.isoformat(timespec="seconds")
+            if state == "gone":
+                gone = 1
+        checked[row["uid"]] = {"at": now.isoformat(timespec="seconds"), "gone": gone}
     open_uids = {r["uid"] for r in store.list(limit=100_000) if r["status"] in ("new", "prepared")}
     checked = {k: v for k, v in checked.items() if k in open_uids}
     try:
