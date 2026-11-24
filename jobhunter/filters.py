@@ -112,6 +112,36 @@ GERMAN_TITLE = re.compile(
     r"\w+(?:manager|analyst|engineer)in)\b", re.I)
 
 
+# Ads written in, or asking for, a language other than English or German (Netherlands, Switzerland ...).
+OTHER_LANGUAGE_WORDS = {
+    # only words unique to each language ("de", "en" are Dutch and French; "du", "des" also German)
+    "Dutch": set("het een van voor met je jouw wij zijn bij ons onze ervaring kennis werken functie "
+                 "zoeken bent heb hebt naar ook goede wat wordt worden hebben".split()),
+    "French": set("le la les une et pour avec vous nous votre notre est sont dans sur expérience "
+                  "poste équipe connaissances".split()),       # not "du"/"des": German words too
+}
+NEEDS_OTHER_LANGUAGE = re.compile(
+    r"\b(?:fluent|native|proficient|excellent|good|strong|business[- ]level)\b[^.]{0,30}\b(Dutch|French|Nederlands|"
+    r"Français|Italian|Spanish|Polish|Swedish|Danish|Norwegian|Finnish)\b|\b(Dutch|French|Nederlands|Français)\b[^.]{0,25}"
+    r"\b(?:is )?(?:required|a must|mandatory|essential|vereist|obligatoire)\b", re.I)
+
+
+def other_language(text: str) -> str:
+    """'Dutch' or 'French' when the ad is written in it, or asks for it; '' otherwise (English/German ads)."""
+    m = NEEDS_OTHER_LANGUAGE.search(text or "")
+    if m and not re.search(r"\b(?:plus|advantage|bonus|nice to have|preferred|ideally)\b",
+                           text[m.start():m.end() + 40], re.I):
+        name = next(g for g in m.groups() if g)
+        return {"nederlands": "Dutch", "français": "French"}.get(name.lower(), name.capitalize())
+    words = re.findall(r"[a-zàâçéèêëîïôûùüÿ]+", (text or "").lower())
+    if len(words) < 25:
+        return ""
+    english = sum(w in {"the", "and", "you", "with", "for", "our", "are", "will", "your", "of", "to"} for w in words)
+    counts = {lang: sum(w in vocab for w in words) for lang, vocab in OTHER_LANGUAGE_WORDS.items()}
+    language, hits = max(counts.items(), key=lambda kv: kv[1])
+    return language if hits > max(12, 1.5 * english) else ""
+
+
 def german_title(title: str) -> bool:
     return bool(GERMAN_TITLE.search(title or ""))
 
@@ -371,6 +401,10 @@ def evaluate(job: Job, cfg: dict) -> Job:
     if level and LEVELS.index(level) > LEVELS.index(my_level):
         job.german_required = True
         job.excluded_reason = f"needs German {level}: {evidence}"
+        return job
+    language = other_language(job.description)
+    if language and language.lower() not in [str(x).lower() for x in cfg.get("other_languages", [])]:
+        job.excluded_reason = f"needs {language} (written in or asks for it)"
         return job
 
     years = min_years_required(job.description)

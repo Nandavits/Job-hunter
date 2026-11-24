@@ -66,6 +66,10 @@ search:
   #        portugal, poland, usa, canada, uae, singapore.   Example:  also_countries: [india]
   also_countries: []
 
+  # Languages besides English and German you can work in. Ads written in, or asking for, another
+  # language (Dutch, French ...) are skipped. Example:  other_languages: [french]
+  other_languages: []
+
   # Your German level: A1, A2, B1, B2, C1, C2. Jobs that clearly require a higher level are dropped.
   german_level: A2
 

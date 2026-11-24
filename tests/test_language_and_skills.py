@@ -160,3 +160,21 @@ def test_missing_must_have_caps_the_score():
     plus = "SQL, Python and Power BI. Knowledge of Databricks or similar platforms is a plus. English speaking team."
     j3 = job("Data Analyst", plus)
     assert score_job(j3, cfg) >= 70 and j3.extra["missing_must"] == []
+
+
+def test_ads_in_or_asking_for_other_languages():
+    from jobhunter.filters import other_language
+    dutch = ("Wij zoeken een data engineer voor ons team in Amsterdam. Je hebt ervaring met SQL en Python en je "
+             "bent goed in het bouwen van pipelines. Bij ons werk je met een groot team aan mooie projecten voor "
+             "onze klanten. Jouw kennis van data is een goede basis voor deze functie.")
+    assert other_language(dutch) == "Dutch"
+    assert other_language("You build SQL pipelines in Amsterdam. Fluent Dutch is required for client meetings.") == "Dutch"
+    assert other_language("You build SQL pipelines in Amsterdam. Dutch is a plus but not required. " * 3) == ""
+    assert other_language("We are an English speaking team in Amsterdam and you will work with SQL and Python. " * 3) == ""
+    french = ("Nous recherchons un data engineer pour notre équipe à Genève. Vous avez une expérience avec SQL et "
+              "Python et vous aimez travailler dans une équipe internationale pour nos clients dans les banques et "
+              "les assurances avec des données complexes.")
+    assert other_language(french) == "French"
+    cfg = {**CFG, "locations": ["berlin"], "also_countries": ["netherlands"]}
+    j = job("Data Engineer", dutch); j.location = "Amsterdam"
+    assert evaluate(j, cfg).excluded_reason.startswith("needs Dutch")
