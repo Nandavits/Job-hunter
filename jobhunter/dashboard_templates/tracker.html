@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% set page='tracker' %}{% block title %}Applications · Job Hunter{% endblock %}
+{% block body %}<h1>Applications</h1>
+<div class="card">{% if rows %}<table><tr><th>Applied</th><th>Job</th><th>Status</th><th>Notes</th><th>Change</th></tr>
+{% for r in rows %}<tr><td>{{ r.applied_at or '?' }}<div class="muted">{% if r.days is not none %}{{ r.days }} days ago{% endif %}</div></td>
+<td><a href="/job/{{ r.uid }}">{{ r.title }}</a><div class="muted">{{ r.company }} · {{ r.country }}</div></td>
+<td><span class="tag">{{ r.status }}</span>{% if r.status=='applied' and r.days and r.days >= 7 %}<div class="muted">no reply for {{ r.days }} days</div>{% endif %}</td>
+<td class="muted" style="max-width:320px;white-space:pre-line">{{ (r.notes or '')[-300:] }}</td>
+<td><form method="post" action="/job/{{ r.uid }}/status" class="row"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="back" value="/tracker">
+<select name="status">{% for s in statuses %}<option {{ 'selected' if s==r.status }}>{{ s }}</option>{% endfor %}</select><button class="ghost">Save</button></form></td></tr>{% endfor %}</table>
+{% else %}<p class="muted">No applications yet.</p>{% endif %}</div>{% endblock %}

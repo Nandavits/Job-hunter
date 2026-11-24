@@ -142,7 +142,7 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_det
         if not job.posted_at:
             job.posted_at = posted_date(detail)
         if not job.apply_url:
-            job.apply_url = detail.get("allianzpartnerUrl") or detail.get("externeUrl") or ""
+            job.apply_url = _specific(detail.get("allianzpartnerUrl") or detail.get("externeUrl") or "")   # e.g. a bare homepage is no application link
     return jobs
 
 

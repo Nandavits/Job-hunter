@@ -1,0 +1,251 @@
+"""Job Hunter dashboard: your jobs, applications and charts in the browser.
+
+    python -m jobhunter dashboard        ->  http://127.0.0.1:8095
+
+Runs on your own computer only (127.0.0.1) and reads the same database as Job Hunter.
+Nothing is ever submitted: "Apply" opens the application in a browser and fills it; you click Submit.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import logging
+import secrets
+import subprocess
+import sys
+import threading
+from collections import Counter
+from pathlib import Path
+
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from .config import OUTPUT_DIR, ROOT, Settings, load_settings
+from .dates import age_days, age_text
+from .excel import fit_summary
+from .filters import COUNTRY_PLACES, _also_country
+from .storage import STATUSES, Store
+
+log = logging.getLogger("jobhunter")
+OPEN = ("new", "prepared")
+APPLIED = ("applied", "interview", "offer", "rejected")
+GERMAN_PLACES = ("germany", "deutschland", "berlin", "munich", "münchen", "hamburg", "cologne", "köln", "frankfurt",
+                 "stuttgart", "düsseldorf", "leipzig", "dresden", "hannover", "nürnberg", "nuremberg", "bremen",
+                 "essen", "dortmund", "bonn", "mannheim", "karlsruhe", "heidelberg", "münster", "leverkusen")
+
+
+def country_of(location: str, cfg: dict) -> str:
+    loc = (location or "").lower()
+    if not loc:
+        return "Germany"                         # the job agency and most German boards leave it out
+    for country in COUNTRY_PLACES:
+        if _also_country(loc, {"also_countries": [country]}):
+            if country == "united kingdom":
+                return "UK"
+            if country not in ("usa", "uae"):
+                return country.title()
+    if any(p in loc for p in GERMAN_PLACES):
+        return "Germany"
+    if "remote" in loc:
+        return "Remote"
+    return "Germany"
+
+
+def web_link(url: str) -> str:
+    """Links from the job agency come without https:// ("www.allianzdeutschland.de"); make them openable."""
+    url = (url or "").strip()
+    if not url or url.startswith(("http://", "https://")):
+        return url
+    return "https://" + url.lstrip("/")
+
+
+def bar_chart(items: list[tuple[str, float]], unit: str = "", width: int = 640) -> str:
+    """A small horizontal bar chart as SVG (no JavaScript, no internet needed)."""
+    if not items:
+        return '<p class="muted">No data yet.</p>'
+    top = max(v for _, v in items) or 1
+    row, label_w = 26, 170
+    h = row * len(items) + 8
+    bars = []
+    for i, (label, value) in enumerate(items):
+        y = 4 + i * row
+        w = (width - label_w - 70) * value / top
+        bars.append(f'<text x="{label_w - 8}" y="{y + 16}" text-anchor="end" class="lbl">{_esc(label)}</text>'
+                    f'<rect x="{label_w}" y="{y + 3}" width="{max(w, 1):.0f}" height="17" rx="4" class="bar"/>'
+                    f'<text x="{label_w + w + 6:.0f}" y="{y + 16}" class="val">{value:g}{unit}</text>')
+    return f'<svg viewBox="0 0 {width} {h}" class="chart" role="img">{"".join(bars)}</svg>'
+
+
+def _esc(text: str) -> str:
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def week_start(day: str) -> str:
+    d = dt.date.fromisoformat(day[:10])
+    return (d - dt.timedelta(days=d.weekday())).isoformat()
+
+
+def charts_data(rows: list[dict], cfg: dict, today: dt.date | None = None) -> dict:
+    today = today or dt.date.today()
+    weeks = [(today - dt.timedelta(days=today.weekday()) - dt.timedelta(weeks=i)).isoformat() for i in range(7, -1, -1)]
+    applied = [r for r in rows if r["status"] in APPLIED and r.get("applied_at")]
+    per_week = Counter(week_start(r["applied_at"]) for r in applied)
+    replies = [r for r in applied if r["status"] in ("interview", "offer", "rejected")]
+    interviews = [r for r in applied if r["status"] in ("interview", "offer")]
+    open_jobs = [r for r in rows if r["status"] in OPEN]
+    recent = [r for r in rows if (age_days(str(r.get("collected_at") or "")[:10]) or 0) <= 30]
+    return {
+        "per_week": [(f"week of {w[5:]}", per_week.get(w, 0)) for w in weeks],
+        "applied": len(applied), "replies": len(replies), "interviews": len(interviews),
+        "reply_rate": round(100 * len(replies) / len(applied)) if applied else 0,
+        "interview_rate": round(100 * len(interviews) / len(applied)) if applied else 0,
+        "by_source": Counter(r["source"] for r in recent).most_common(10),
+        "by_country": Counter(country_of(r.get("location"), cfg) for r in open_jobs).most_common(),
+    }
+
+
+def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None):
+    settings = settings or load_settings()
+    store = store or Store(settings.database_url)
+    search = settings.search
+    token = secrets.token_urlsafe(24)               # forms carry it: other websites cannot post to this page
+    busy: dict[str, str] = {}                       # uid -> "preparing" / "failed: ..."
+    app = FastAPI(title="Job Hunter", docs_url=None, redoc_url=None, openapi_url=None)
+    pages = Jinja2Templates(directory=str(Path(__file__).parent / "dashboard_templates"))
+    pages.env.globals.update(age_text=age_text)
+    pages.env.filters["link"] = web_link
+
+    def launch(uid: str) -> None:                   # "Apply": the form filler in its own window
+        if launcher:
+            return launcher(uid)
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        subprocess.Popen([sys.executable, "-m", "jobhunter", "fill", uid], cwd=str(ROOT), creationflags=flags)  # nosec B603
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        if request.method == "POST":
+            origin = request.headers.get("origin") or request.headers.get("referer") or ""
+            if origin and not origin.startswith(("http://127.0.0.1", "http://localhost")):
+                return HTMLResponse("Refused: request from another website.", status_code=403)
+        response = await call_next(request)
+        response.headers.update({"X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
+                                 "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'"})
+        return response
+
+    def check(form_token: str) -> None:
+        if not secrets.compare_digest(form_token or "", token):
+            raise HTTPException(status_code=400, detail="This page is out of date. Reload it and try again.")
+
+    def view(request, name, **ctx):
+        counts = store.stats()
+        ctx.update(token=token, counts=counts, open_count=sum(counts.get(s, 0) for s in OPEN),
+                   applied_count=sum(counts.get(s, 0) for s in APPLIED))
+        return pages.TemplateResponse(request, name, ctx)
+
+    def enrich(r: dict) -> dict:
+        r = dict(r)
+        r["country"] = country_of(r.get("location"), search)
+        r["why"] = fit_summary(r, search) if r["status"] != "skipped" else ""
+        r["busy"] = busy.get(r["uid"], "")
+        return r
+
+    @app.get("/", response_class=HTMLResponse)
+    def jobs(request: Request, status: str = "open", country: str = "", min_score: int = 0, q: str = ""):
+        if status == "open":
+            rows = [r for s in OPEN for r in store.list(status=s, limit=5000)]
+        elif status in STATUSES:
+            rows = store.list(status=status, limit=5000)
+        else:
+            rows = store.list(limit=5000)
+        rows = [enrich(r) for r in rows if (r.get("score") or 0) >= min_score
+                and (not q or q.lower() in f"{r['company']} {r['title']}".lower())]
+        countries = sorted({r["country"] for r in rows})
+        if country:
+            rows = [r for r in rows if r["country"] == country]
+        rows.sort(key=lambda r: str(r.get("posted_at") or ""), reverse=True)     # newest first ...
+        rows.sort(key=lambda r: -(r.get("score") or 0))                          # ... within each score
+        return view(request, "jobs.html", rows=rows[:300], status=status, country=country, countries=countries,
+                    min_score=min_score, q=q, statuses=STATUSES)
+
+    @app.get("/tracker", response_class=HTMLResponse)
+    def tracker(request: Request):
+        rows = [enrich(r) for s in APPLIED for r in store.list(status=s, limit=5000)]
+        rows.sort(key=lambda r: str(r.get("applied_at") or ""), reverse=True)
+        for r in rows:
+            r["days"] = age_days(str(r.get("applied_at") or "")) if r.get("applied_at") else None
+        return view(request, "tracker.html", rows=rows, statuses=STATUSES)
+
+    @app.get("/charts", response_class=HTMLResponse)
+    def charts(request: Request):
+        data = charts_data(store.list(limit=100_000, include_skipped=True), search)
+        return view(request, "charts.html", d=data, week_svg=bar_chart(data["per_week"]),
+                    source_svg=bar_chart(data["by_source"]), country_svg=bar_chart(data["by_country"]))
+
+    @app.get("/job/{uid}", response_class=HTMLResponse)
+    def job_page(request: Request, uid: str):
+        job = store.get(uid)
+        if not job:
+            raise HTTPException(status_code=404, detail="No such job")
+        return view(request, "job.html", j=enrich(job), statuses=STATUSES,
+                    earlier=store.applied_versions(job))
+
+    @app.post("/job/{uid}/status")
+    def set_status(uid: str, status: str = Form(...), token_: str = Form("", alias="token"), back: str = Form("/")):
+        check(token_)
+        job = store.get(uid)
+        if not job or status not in STATUSES:
+            raise HTTPException(status_code=400, detail="Unknown job or status")
+        if status == "applied":
+            store.mark_applied(job["uid"])
+        else:
+            store.update(job["uid"], status=status)
+        return RedirectResponse(back if back.startswith("/") else "/", status_code=303)
+
+    @app.post("/job/{uid}/prepare")
+    def prepare(uid: str, token_: str = Form("", alias="token")):
+        check(token_)
+        job = store.get(uid)
+        if not job:
+            raise HTTPException(status_code=404, detail="No such job")
+        if busy.get(job["uid"]) != "preparing":
+            busy[job["uid"]] = "preparing"
+
+            def work():
+                from .pipeline import prepare_job
+                try:
+                    prepare_job(settings, store, job)
+                    busy.pop(job["uid"], None)
+                except Exception as exc:                        # shown on the page; the run can be repeated
+                    log.warning("Preparing %s failed: %s", job["uid"], exc)
+                    busy[job["uid"]] = f"failed: {exc}"[:200]
+            threading.Thread(target=work, daemon=True).start()
+        return RedirectResponse(f"/job/{job['uid']}", status_code=303)
+
+    @app.post("/job/{uid}/apply")
+    def apply(uid: str, token_: str = Form("", alias="token")):
+        check(token_)
+        job = store.get(uid)
+        if not job:
+            raise HTTPException(status_code=404, detail="No such job")
+        launch(job["uid"])
+        return RedirectResponse(f"/job/{job['uid']}?filling=1", status_code=303)
+
+    @app.get("/file/{uid}/{kind}")
+    def file(uid: str, kind: str):
+        job = store.get(uid)
+        raw = (job or {}).get({"cv": "cv_path", "letter": "letter_path"}.get(kind, ""), "") or ""
+        path = (OUTPUT_DIR / Path(raw).relative_to("/app/output")) if raw.startswith("/app/output") else Path(raw)
+        path = path.resolve() if raw else None
+        if not path or not path.is_file() or OUTPUT_DIR.resolve() not in path.parents:   # only files Job Hunter made
+            raise HTTPException(status_code=404, detail="File not found")
+        return FileResponse(path, filename=path.name)
+
+    return app
+
+
+def serve(port: int = 8095, open_browser: bool = True) -> None:
+    import uvicorn
+    if open_browser:
+        import webbrowser
+        threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
+    uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")

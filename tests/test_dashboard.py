@@ -1,0 +1,111 @@
+"""The browser dashboard: pages, filters, status changes, prepare/apply buttons and its safety checks."""
+import re
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from jobhunter import dashboard
+from jobhunter.dashboard import charts_data, country_of, create_app, web_link
+from jobhunter.models import Job
+from jobhunter.storage import Store
+
+AD = "English speaking team. SQL, Python, dbt and Airflow. Proven hands-on experience with Databricks is required. " * 3
+
+
+class S:                                      # just what the dashboard needs from Settings
+    search = {"skills": {"sql": 3, "python": 2, "dbt": 3}, "also_countries": ["netherlands", "india"]}
+    database_url = ""
+
+
+@pytest.fixture
+def app(tmp_path):
+    store = Store(f"sqlite:///{tmp_path / 'jobs.db'}")
+    jobs = [Job(source="greenhouse", external_id="1", company="Adyen", title="Data Engineer", url="https://x/1",
+                location="Amsterdam", description=AD, posted_at="2026-11-20"),
+            Job(source="arbeitnow", external_id="2", company="Acme <b>bold</b>", title="Data Analyst", url="https://x/2",
+                location="Berlin", description="SQL and Python. English speaking team. " * 4),
+            Job(source="email", external_id="3", company="Moss", title="Applied AI Engineer", url="https://x/3",
+                location="Berlin")]
+    store.save(jobs)
+    for j, score in zip(jobs, (55, 88, 70)):
+        store.update(j.uid, score=score)
+    store.update(jobs[2].uid, status="applied", applied_at="2026-11-17")
+    launched = []
+    client = TestClient(create_app(S(), store, launcher=launched.append))
+    token = re.search(r'name="token" value="([^"]+)"', client.get(f"/job/{jobs[0].uid}").text).group(1)
+    return {"client": client, "store": store, "jobs": jobs, "launched": launched, "token": token}
+
+
+def test_pages_and_filters(app):
+    c, jobs = app["client"], app["jobs"]
+    page = c.get("/").text
+    assert "Adyen" in page and "Data Analyst" in page and "Applied AI Engineer" not in page   # open jobs only
+    assert "MISSING MUST-HAVE: databricks" in page                                            # the Allianz lesson
+    assert "&lt;b&gt;bold" in page and "<b>bold</b>" not in page                              # no HTML from ads
+    nl = c.get("/?country=Netherlands").text
+    assert "Adyen" in nl and "Data Analyst" not in nl
+    assert "Adyen" not in c.get("/?min_score=60").text
+    assert "Moss" in c.get("/tracker").text
+    charts = c.get("/charts").text
+    assert "applications" in charts and "<svg" in charts
+
+
+def test_status_change_needs_the_page_token(app):
+    c, store, j = app["client"], app["store"], app["jobs"][1]
+    assert c.post(f"/job/{j.uid}/status", data={"status": "applied"}).status_code == 400
+    r = c.post(f"/job/{j.uid}/status", data={"status": "applied", "token": app["token"]}, follow_redirects=False)
+    assert r.status_code == 303 and store.get(j.uid)["status"] == "applied" and store.get(j.uid)["applied_at"]
+
+
+def test_other_websites_cannot_post(app):
+    j = app["jobs"][1]
+    r = app["client"].post(f"/job/{j.uid}/status", data={"status": "skipped", "token": app["token"]},
+                           headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403 and app["store"].get(j.uid)["status"] == "new"
+
+
+def test_apply_opens_the_form_filler_never_submits(app):
+    j = app["jobs"][0]
+    r = app["client"].post(f"/job/{j.uid}/apply", data={"token": app["token"]})
+    assert app["launched"] == [j.uid] and "click Submit yourself" in r.text
+
+
+def test_prepare_runs_in_the_background(app, monkeypatch):
+    import jobhunter.pipeline as pipeline
+    done = []
+    monkeypatch.setattr(pipeline, "prepare_job", lambda settings, store, job: done.append(job["uid"]))
+    j = app["jobs"][0]
+    app["client"].post(f"/job/{j.uid}/prepare", data={"token": app["token"]})
+    import time
+    for _ in range(50):
+        if done:
+            break
+        time.sleep(0.02)
+    assert done == [j.uid]
+
+
+def test_files_only_from_the_output_folder(app, tmp_path):
+    j = app["jobs"][0]
+    secret = tmp_path / "secret.txt"
+    secret.write_text("x")
+    app["store"].update(j.uid, cv_path=str(secret))
+    assert app["client"].get(f"/file/{j.uid}/cv").status_code == 404
+
+
+def test_helpers():
+    cfg = {"also_countries": ["india"]}
+    assert country_of("Amsterdam", cfg) == "Netherlands" and country_of("Hyderabad, India", cfg) == "India"
+    assert country_of("Berlin", cfg) == "Germany" and country_of("", cfg) == "Germany"
+    assert country_of("London, UK", cfg) == "UK" and country_of("Remote", cfg) == "Remote"
+    assert web_link("www.allianzdeutschland.de") == "https://www.allianzdeutschland.de"
+    assert web_link("https://a.de/x") == "https://a.de/x" and web_link("") == ""
+    import datetime as dt
+    rows = [{"status": "applied", "applied_at": "2026-11-17", "source": "email", "location": "Berlin",
+             "collected_at": "2026-11-17"},
+            {"status": "rejected", "applied_at": "2026-11-18", "source": "email", "location": "Berlin",
+             "collected_at": "2026-11-18"},
+            {"status": "new", "applied_at": "", "source": "arbeitnow", "location": "Amsterdam", "collected_at": "2026-11-20"}]
+    d = charts_data(rows, {"also_countries": ["netherlands"]}, today=dt.date(2026, 11, 24))
+    assert d["applied"] == 2 and d["reply_rate"] == 50 and ("Netherlands", 1) in d["by_country"]
+    assert sum(v for _, v in d["per_week"]) == 2

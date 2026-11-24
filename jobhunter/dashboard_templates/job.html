@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% set page='jobs' %}{% block title %}{{ j.title }} · Job Hunter{% endblock %}
+{% block body %}<p><a href="/">&larr; All jobs</a></p>
+<div class="card"><h1>{{ j.title }}</h1>
+<p class="muted">{{ j.company }} · {{ j.country }} · {{ j.location or '' }}{% if j.posted_at %} · posted {{ age_text(j.posted_at) }}{% endif %} · {{ j.source }}</p>
+<p><span class="score">{{ j.score or 0 }}</span> &nbsp; {% for part in j.why.split(' · ') %}{% if part.startswith('MISSING MUST-HAVE') %}<span class="must">{{ part }}</span>{% else %}<span class="muted">{{ part }}</span>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+{% if earlier %}<div class="note">You already applied to this role: {{ earlier[0].company }} - {{ earlier[0].title }} on {{ earlier[0].applied_at or '?' }}.</div>{% endif %}
+{% if request.query_params.get('filling') %}<div class="note">The application opened in a new window: Job Hunter fills the form there. Check every answer, then click Submit yourself, and set the status to "applied" here.</div>{% endif %}
+{% if j.busy %}<div class="note">{{ 'Writing your CV and cover letter... reload in a minute.' if j.busy=='preparing' else j.busy }}</div>{% endif %}
+<div class="row">
+<form method="post" action="/job/{{ j.uid }}/prepare"><input type="hidden" name="token" value="{{ token }}"><button>{{ 'Prepare again' if j.cv_path else 'Prepare CV + letter' }}</button></form>
+<form method="post" action="/job/{{ j.uid }}/apply"><input type="hidden" name="token" value="{{ token }}"><button>Apply (fills the form, you submit)</button></form>
+{% if j.apply_url or j.url %}<a class="btn" style="background:none;color:var(--text);border:1px solid var(--line)" href="{{ (j.apply_url or j.url)|link }}" target="_blank" rel="noopener noreferrer">Open the ad</a>{% endif %}
+<form method="post" action="/job/{{ j.uid }}/status" class="row"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="back" value="/job/{{ j.uid }}">
+<select name="status">{% for s in statuses %}<option {{ 'selected' if s==j.status }}>{{ s }}</option>{% endfor %}</select><button class="ghost">Save status</button></form></div>
+{% if j.cv_path %}<p>Documents: <a href="/file/{{ j.uid }}/cv">CV</a> · <a href="/file/{{ j.uid }}/letter">Cover letter</a></p>{% endif %}
+{% if j.notes %}<p class="muted" style="white-space:pre-line">{{ j.notes }}</p>{% endif %}</div>
+<div class="card"><h2>The ad</h2><pre class="ad">{{ j.description or 'No ad text yet: open the ad.' }}</pre></div>{% endblock %}

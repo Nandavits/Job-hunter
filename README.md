@@ -106,6 +106,17 @@ Workday, job boards) open in your normal browser, with your answers and file pat
 Fields the tool could not answer are listed under "Needs your answer". Personal questions it has no
 answer for get "Prefer not to say".
 
+## The dashboard
+
+Double-click **dashboard** (or `python -m jobhunter dashboard`): it opens http://127.0.0.1:8095 in your browser.
+
+- **Jobs**: every open job with its score, country, posting date and *why this score* (a missing must-have is shown in red). Filter by status, country, minimum score or company.
+- **A job's page**: the ad, buttons to prepare your CV + cover letter, to open the ad, and **Apply**, which opens the application in a new window and fills it in. You check it and click Submit yourself.
+- **Applications**: everything you applied to, how long ago, and replies read from your inbox. Change a status in one click.
+- **Charts**: applications per week, reply and interview rate, open jobs per country and jobs per source.
+
+It runs only on your computer (nobody else on the network can open it), and other websites cannot press its buttons.
+
 ## The Excel tracker
 
 `data/applications.xlsx` is rewritten after every run, with three sheets: **Applications**, **Open jobs**

@@ -313,6 +313,12 @@ def cmd_replies(args, settings):
     _export(store)
 
 
+def cmd_dashboard(args, settings):
+    from .dashboard import serve
+    print(f"Job Hunter dashboard: http://127.0.0.1:{args.port}  (close this window to stop it)")
+    serve(port=args.port, open_browser=not args.no_browser)
+
+
 def cmd_excel(args, settings):
     _export(_store(settings))
 
@@ -561,6 +567,10 @@ def main(argv=None):
     p.set_defaults(func=cmd_export)
 
     sub.add_parser("stats", help="count jobs per status").set_defaults(func=cmd_stats)
+    p = sub.add_parser("dashboard", help="your jobs, applications and charts in the browser")
+    p.add_argument("--port", type=int, default=8095)
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(func=cmd_dashboard)
     sub.add_parser("replies", help="read replies to your applications (rejections, interviews) from your inbox"
                    ).set_defaults(func=cmd_replies)
 
