@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt /app/requirements-jobhunter.txt
-COPY cloud/requirements.txt /app/requirements-cloud.txt
-RUN pip install --no-cache-dir -r requirements-jobhunter.txt -r requirements-cloud.txt
+# Only what the server needs (no browser automation or test tools): a smaller, faster image
+COPY cloud/requirements-runtime.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 COPY jobhunter /app/jobhunter
 COPY config/*.example.yaml /app/config/
 COPY cloud /app/cloud

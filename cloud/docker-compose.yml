@@ -18,6 +18,7 @@ services:
 
   web:
     build: {context: .., dockerfile: cloud/Dockerfile}
+    image: jhcloud:latest                   # built once; worker and scheduler reuse this image
     command: uvicorn jhcloud.web:app_from_env --factory --host 0.0.0.0 --port 8000 --workers 2 --limit-concurrency 120   # over the limit: an instant 503, not a long wait
     env_file: .env
     environment: &env
@@ -30,20 +31,20 @@ services:
     restart: unless-stopped
 
   worker:                                   # scale this one: each worker takes tasks from the queue
-    build: {context: .., dockerfile: cloud/Dockerfile}
+    image: jhcloud:latest
     command: rq worker jobhunter --url redis://redis:6379/0
     env_file: .env
     environment: *env
     volumes: [files:/data]
-    depends_on: {db: {condition: service_healthy}, redis: {condition: service_started}}
+    depends_on: {db: {condition: service_healthy}, redis: {condition: service_started}, web: {condition: service_started}}
     restart: unless-stopped
 
   scheduler:                                # exactly one: queues the shared job search every 30 minutes
-    build: {context: .., dockerfile: cloud/Dockerfile}
+    image: jhcloud:latest
     command: python -m jhcloud.scheduler
     env_file: .env
     environment: *env
-    depends_on: {redis: {condition: service_started}}
+    depends_on: {redis: {condition: service_started}, web: {condition: service_started}}
     restart: unless-stopped
 
 volumes:
