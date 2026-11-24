@@ -382,6 +382,12 @@ def cmd_check_key(args, settings):
                                                   job, settings.profile) or "(no answer)")
 
 
+def cmd_import_jobs(args, settings):
+    from .storage import import_jobs
+    n = import_jobs(_store(settings, sync=False), args.file)
+    print(f"Copied {n} jobs and applications from {args.file}.")
+
+
 def cmd_stats(args, settings):
     print(json.dumps(_store(settings).stats(), indent=2))
 
@@ -575,6 +581,9 @@ def main(argv=None):
     p.set_defaults(func=cmd_export)
 
     sub.add_parser("stats", help="count jobs per status").set_defaults(func=cmd_stats)
+    p = sub.add_parser("import-jobs", help="copy jobs + applications from an older jobs.db file")
+    p.add_argument("file")
+    p.set_defaults(func=cmd_import_jobs)
     p = sub.add_parser("dashboard", help="your jobs, applications and charts in the browser")
     p.add_argument("--port", type=int, default=8095)
     p.add_argument("--no-browser", action="store_true")

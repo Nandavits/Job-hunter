@@ -245,3 +245,19 @@ def test_posted_within_filter(tmp_path):
     assert (shown("1"), shown("2"), shown("7"), shown("14"), shown("all")) == (1, 2, 3, 4, 5)
     page = c.get("/").text                                  # default: 7 days (no limit in settings)
     assert "Data Analyst 2" in page and "Data Analyst 4" not in page and "Last 48 hours" in page
+
+
+def test_import_jobs_from_the_old_version(tmp_path):
+    from jobhunter.storage import import_jobs
+    old = Store(f"sqlite:///{tmp_path / 'jobs.db'}")
+    a = Job(source="t", external_id="1", company="Acme", title="Data Analyst", url="https://x/1")
+    b = Job(source="t", external_id="2", company="Beta", title="Data Engineer", url="https://x/2")
+    old.save([a, b])
+    old.mark_applied(a.uid)
+    old.update(a.uid, cv_path=r"C:\Users\Her\Desktop\Job-Hunter\output\2026-11-20_Acme\CV_X.pdf")
+    new = Store(f"sqlite:///{tmp_path / 'new.db'}")
+    new.save([b])
+    assert import_jobs(new, tmp_path / "jobs.db") == 1
+    assert new.get(a.uid)["status"] == "applied"
+    assert new.get(a.uid)["cv_path"] == "/app/output/2026-11-20_Acme/CV_X.pdf"
+    assert import_jobs(new, tmp_path / "jobs.db") == 0            # running it twice changes nothing

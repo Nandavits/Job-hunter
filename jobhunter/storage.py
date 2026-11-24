@@ -142,3 +142,27 @@ class Store:
                 row["application_url"] = row.get("apply_url") or row.get("url")
                 writer.writerow(row)
         return path
+
+
+def import_jobs(store: "Store", sqlite_file: str | Path) -> int:
+    """Copy jobs and applications from an older Job Hunter database file (the version without Docker)
+    into this one. Jobs that are already here are left alone. Document paths are pointed at this
+    folder's output/ (copy the old output folder across too)."""
+    import re
+    from sqlalchemy import select
+    old = create_engine(f"sqlite:///{Path(sqlite_file)}", future=True)
+    columns = {c.name for c in jobs_table.columns}
+    added = 0
+    with old.connect() as src, store.engine.begin() as dst:
+        have = {r[0] for r in dst.execute(select(jobs_table.c.uid))}
+        for row in src.execute(select(jobs_table)).mappings():
+            if row["uid"] in have:
+                continue
+            values = {k: v for k, v in row.items() if k in columns}
+            for key in ("cv_path", "letter_path"):
+                path = (values.get(key) or "").replace("\\", "/")
+                m = re.search(r"/output/(.+)$", path)
+                values[key] = f"/app/output/{m.group(1)}" if m else values.get(key) or ""
+            dst.execute(jobs_table.insert().values(**values))
+            added += 1
+    return added
