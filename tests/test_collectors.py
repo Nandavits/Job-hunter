@@ -349,3 +349,30 @@ def test_arbeitsagentur_v6_posting_date():
     assert posted_date({"aktuelleVeroeffentlichungsdatum": "2026-11-20"}) == "2026-11-20"
     assert posted_date({"veroeffentlichungszeitraum": {"von": "2026-11-19"}}) == "2026-11-19"
     assert posted_date({"eintrittsdatum": "2027-01-01"}) == ""          # start date is not the posting date
+
+
+def test_board_alerts_jobvector_kimeta_and_confirmation_links():
+    from jobhunter.collectors.email_alerts import parse_board_html
+    jobvector = """<table><tr><td><a href="https://www.jobvector.de/jobs/data-analyst/?jobId=31dd&utm_source=x">
+      <div>Data Analyst - Wettbewerbsanalyse (m/w/d)</div><div>AbbVie Deutschland GmbH &amp; Co. KG</div>
+      <div>88.546 €/Jahr (geschätzt)</div><div>Wiesbaden</div></a></td></tr>
+      <tr><td><a href="https://www.jobvector.de/jobs/data-engineer/?jobId=70c9"><div>Schnellbewerbung</div>
+      <div>Data Engineer - Data Pipelines (m/f/d)</div><div>Alden Scientific Immune GmbH</div>
+      <div>61.842 €/Jahr (geschätzt)</div><div>Dortmund</div></a></td></tr>
+      <tr><td><a href="https://www.jobvector.de/myjobvector/jobmails/?token=1">JobMail abbestellen</a></td></tr></table>"""
+    jobs = {j.title: j for j in parse_board_html(jobvector, "jobvector")}
+    assert set(jobs) == {"Data Analyst - Wettbewerbsanalyse (m/w/d)", "Data Engineer - Data Pipelines (m/f/d)"}
+    j = jobs["Data Engineer - Data Pipelines (m/f/d)"]
+    assert (j.company, j.location) == ("Alden Scientific Immune GmbH", "Dortmund")
+    assert jobs["Data Analyst - Wettbewerbsanalyse (m/w/d)"].location == "Wiesbaden"
+
+    kimeta = """<table><tr><td>Data Engineer Bereich Shared Service Center IT (m/w/d)
+      <a href="https://www.kimeta.de/job?id=995759182&utm_source=Jobemail"><img src="x.png"></a></td></tr>
+      <tr><td></td></tr><tr><td>Liebherr-Components Biberach GmbH</td><td>Biberach</td></tr></table>
+      <table><tr><td><a href="https://www.kimeta.de/job?id=995760128">(Senior) Data Architect &amp; Engineer SAP (m/w/d)</a>
+      </td></tr><tr><td>Ernsting's family</td><td>Coesfeld-Lette bei Münster</td></tr></table>"""
+    got = {j.title: (j.company, j.location) for j in parse_board_html(kimeta, "kimeta")}
+    assert got["(Senior) Data Architect & Engineer SAP (m/w/d)"] == ("Ernsting's family", "Coesfeld-Lette bei Münster")
+
+    confirm = '<a href="https://www.empfehlungsbund.de/email-job-abo/x/confirm">E-Mail-Adresse bestätigen und Job-Newsletter aktivieren</a>'
+    assert parse_board_html(confirm, "empfehlungsbund") == []

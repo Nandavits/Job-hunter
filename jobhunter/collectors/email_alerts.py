@@ -113,6 +113,7 @@ NOT_A_JOB_LINK = re.compile(
     r"tiktok|im browser|web ?version|online ansehen|hier klicken|click here|zur website|startseite|home|"
     r"merken|speichern|teilen|share|feedback|ratgeber|karriere-?tipps|gehalt|bestätig|aktivier|confirm|activate|"
     r"löschen|delete|verwalten|manage|bearbeiten|edit|abonnier|subscribe|newsletter)", re.I)
+QUICK_APPLY = re.compile(r"^(schnellbewerbung|quick apply|easy apply|top[- ]?job|neu|new)$", re.I)
 JOB_BUTTON = re.compile(r"^(zur (stelle|stellenanzeige|anzeige)|zum job|job ansehen|stelle ansehen|details|"
                         r"anzeige (ansehen|öffnen)|mehr erfahren|jetzt bewerben|bewerben|view job|apply)\b", re.I)
 SOCIAL_HOSTS = re.compile(r"facebook\.|instagram\.|twitter\.|x\.com|youtube\.|tiktok\.|linkedin\.com/company|"
@@ -122,7 +123,11 @@ SOCIAL_HOSTS = re.compile(r"facebook\.|instagram\.|twitter\.|x\.com|youtube\.|ti
 def _is_navigation(label: str) -> bool:
     """Menu/settings links are short; a long label or one with (m/w/d) is a job title even if it
     starts with a word like 'Datenschutz' (Datenschutzkoordinator ...)."""
-    return bool(NOT_A_JOB_LINK.match(label)) and len(label) <= 40 and not re.search(r"\([mwfdx]/", label, re.I)
+    if re.search(r"\([mwfdx]/", label, re.I):
+        return False
+    if re.search(r"bestätig|aktivier|\bconfirm|\bactivate|abbestell|unsubscribe", label, re.I):
+        return True                     # "E-Mail-Adresse bestätigen und Job-Newsletter aktivieren"
+    return bool(NOT_A_JOB_LINK.match(label)) and len(label) <= 40
 
 
 def board_for_sender(sender: str) -> str:
@@ -143,12 +148,31 @@ def parse_board_html(html: str, site: str) -> list[Job]:
         if not href.startswith("http") or SOCIAL_HOSTS.search(href) or re.match(r"https?://[^/]+/?$", href):
             continue                                       # social links and plain home-page links
         label = re.sub(r"\s+", " ", a.get_text(" ", strip=True))
+        own = [l for l in _lines(a) if not NOISE_LINE.match(l) and not QUICK_APPLY.match(l)]
+        if len(own) >= 2 and not JOB_BUTTON.match(own[0]):
+            # the whole job card is one link (jobvector): title, company, salary, town on separate lines
+            title, rest = own[0], [l for l in own[1:] if not _is_navigation(l)]
+            key = _job_id(site, href, title, rest[0] if rest else "")
+            if 8 <= len(title) <= 200 and not _is_navigation(title):
+                jobs.setdefault(key, Job(source="email", external_id=key, company=(rest[0] if rest else "")[:120],
+                                         title=title[:200], url=href,
+                                         location=(rest[-1] if len(rest) > 1 else "")[:120],
+                                         extra={"site": site, "needs_review": True}))
+            continue
         block = a.find_parent(["td", "tr", "div", "li", "table"]) or a
         lines = [l for l in _lines(block) if not NOISE_LINE.match(l) and not JOB_BUTTON.match(l)]
         if JOB_BUTTON.match(label):
             title = lines[0] if lines else ""
         else:
             title = label
+        if label and len(lines) <= 1:
+            # title alone in its cell, company and town in the next rows of the same card (kimeta)
+            card = a.find_parent("table")
+            if card is not None:
+                after = _lines(card)
+                if title in after:
+                    after = after[after.index(title) + 1:]
+                    lines = [title] + [l for l in after if not NOISE_LINE.match(l)][:2]
         if not (8 <= len(title) <= 200) or _is_navigation(title) or JOB_BUTTON.match(title) \
                 or not re.search(r"[A-Za-zÄÖÜäöüß]{3}", title) or URL_RE.match(title) \
                 or re.sub(r"[^a-z]", "", title.lower()) in (site.replace("-", ""), re.sub(r"[^a-z]", "", site + "de")):
