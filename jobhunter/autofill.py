@@ -392,7 +392,7 @@ def _choose_in_widget(page, el, label: str, values: dict) -> str:
 MANUAL_ONLY = re.compile(r"smartrecruiters\.com/oneclick-ui|myworkdayjobs\.com|successfactors|recruitee\.com|"
                          r"jobs\.lever\.co|jobs\.ea\.com|ea\.avature\.net|"                 # human check fails when filled
                          r"/o/[^/]+/c/new|"
-                         r"linkedin\.com|indeed\.|stepstone\.|xing\.com", re.I)
+                         r"linkedin\.com|indeed\.|stepstone\.|xing\.com|arbeitnow\.|glassdoor\.", re.I)
 
 
 def manual_only(url: str) -> bool:

@@ -135,7 +135,7 @@ def manual_kit(job: dict, settings) -> dict:
 
 
 def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None, opener=None,
-               checker=None):
+               checker=None, browser=None):
     settings = settings or load_settings()
     store = store or Store(settings.database_url)
     search = settings.search
@@ -180,6 +180,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
             raise HTTPException(status_code=400, detail="This page is out of date. Reload it and try again.")
 
     def view(request, name, **ctx):
+        from .upload import UPLOAD_DIR
+        folder = getattr(settings, "upload_dir", None) or UPLOAD_DIR
+        try:                                        # whose CV is in _UPLOAD right now
+            ctx["upload_for"] = (folder / "answers.txt").read_text(encoding="utf-8").splitlines()[0]
+        except (OSError, IndexError):
+            ctx["upload_for"] = ""
         counts = store.stats()
         ctx.update(token=token, counts=counts, open_count=sum(counts.get(s, 0) for s in OPEN),
                    applied_count=sum(counts.get(s, 0) for s in APPLIED))
@@ -295,6 +301,29 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         launch(job["uid"])
         return RedirectResponse(f"/job/{job['uid']}?filling=1", status_code=303)
 
+    @app.post("/job/{uid}/manual")
+    def apply_myself(uid: str, token_: str = Form("", alias="token")):
+        """Apply yourself in Chrome: this job's CV + letter go to _UPLOAD, the folder and the form open."""
+        from .autofill import answer_sheet, target_url
+        from .upload import UPLOAD_DIR, fill_upload_folder, open_folder, open_in_browser
+        check(token_)
+        job = store.get(uid)
+        cv = local_file((job or {}).get("cv_path") or "")
+        if not job or not cv:
+            raise HTTPException(status_code=400, detail="Press 'Prepare CV + letter' first, then try again.")
+        if still_open(job) is False:
+            store.update(job["uid"], status="skipped", excluded_reason="job closed (ad says it no longer accepts applications)")
+            return RedirectResponse(f"/job/{job['uid']}?closed=1", status_code=303)
+        folder = getattr(settings, "upload_dir", None) or UPLOAD_DIR
+        try:
+            fill_upload_folder(job, cv, local_file(job.get("letter_path") or ""),
+                               answer_sheet(job, settings.profile), settings.profile, folder=folder)
+        except OSError as exc:
+            raise HTTPException(status_code=409, detail=f"Close the file in Word first ({exc}).") from None
+        (opener or open_folder)(folder)
+        (browser or open_in_browser)(target_url(job))
+        return RedirectResponse(f"/job/{job['uid']}?myself=1", status_code=303)
+
     @app.get("/file/{uid}/{kind}")
     def file(uid: str, kind: str):
         job = store.get(uid)
@@ -315,12 +344,12 @@ def already_running(port: int) -> bool:
 
 def serve(port: int = 8095, open_browser: bool = True) -> None:
     import uvicorn
-    import webbrowser
+    from .upload import open_in_browser
     if already_running(port):                     # started at sign-in already: just show it
         if open_browser:
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            open_in_browser(f"http://127.0.0.1:{port}")
         print("The dashboard is already running - opened it in your browser. You can close this window.")
         return
     if open_browser:
-        threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
+        threading.Timer(1.5, lambda: open_in_browser(f"http://127.0.0.1:{port}")).start()
     uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")

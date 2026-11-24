@@ -176,3 +176,30 @@ def test_apply_on_a_closed_job_removes_it(app, tmp_path):
     r = c.post(f"/job/{j.uid}/apply", data={"token": token})
     assert launched == [] and "no longer accepts applications" in r.text
     assert store.get(j.uid)["status"] == "skipped"
+
+
+def test_apply_myself_opens_chrome_and_the_upload_folder(tmp_path, monkeypatch):
+    import jobhunter.dashboard as d
+    out = tmp_path / "output"
+    (out / "job").mkdir(parents=True)
+    (out / "job" / "CV_A_B_X.pdf").write_text("cv")
+    monkeypatch.setattr(d, "OUTPUT_DIR", out)
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    job = Job(source="email", external_id="9", company="Sandvik", title="Data Analyst",
+              url="https://www.linkedin.com/jobs/view/4491636512/")
+    store.save([job])
+    store.update(job.uid, cv_path=str(out / "job" / "CV_A_B_X.pdf"))
+
+    class P(S):
+        profile = {"personal": {"first_name": "Ann", "last_name": "Bee"}}
+        upload_dir = tmp_path / "_UPLOAD"
+    folders, pages = [], []
+    c = TestClient(create_app(P(), store, launcher=print, opener=folders.append, browser=pages.append,
+                              checker=lambda j: None))
+    page = c.get(f"/job/{job.uid}").text
+    assert "Apply myself in Chrome" in page
+    token = re.search(r'name="token" value="([^"]+)"', page).group(1)
+    r = c.post(f"/job/{job.uid}/manual", data={"token": token})
+    assert pages == ["https://www.linkedin.com/jobs/view/4491636512/"] and folders == [P.upload_dir]
+    assert (P.upload_dir / "CV_Ann_Bee.pdf").is_file()
+    assert "Sandvik - Data Analyst" in r.text and "opened in Chrome" in r.text

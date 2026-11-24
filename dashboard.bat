@@ -8,7 +8,7 @@ set "BOOT="
 if /i "%~1"=="--boot" set "BOOT=1"
 if not defined BOOT (
   rem already running (it starts at sign-in): just open it, no waiting
-  curl -s -o nul --max-time 2 http://127.0.0.1:8095/ && (start "" http://127.0.0.1:8095/ & exit /b 0)
+  curl -s -o nul --max-time 2 http://127.0.0.1:8095/ && (start "" chrome http://127.0.0.1:8095/ || start "" http://127.0.0.1:8095/) && exit /b 0
   echo Starting the Job Hunter dashboard... this takes up to 1-2 minutes when the laptop is busy.
   echo Your browser opens by itself when it is ready. Keep this window open.
   echo.

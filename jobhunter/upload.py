@@ -46,3 +46,26 @@ def fill_upload_folder(job: dict, cv: Path, letter: Path | None, answers: str, p
 def open_folder(folder: Path = UPLOAD_DIR) -> None:
     if sys.platform.startswith("win"):
         os.startfile(str(folder))                    # nosec B606 - opens File Explorer on our own folder
+
+
+def chrome_path() -> str:
+    """Google Chrome on Windows (where you are signed in and upload files), if installed."""
+    if not sys.platform.startswith("win"):
+        return ""
+    for base in (os.environ.get("PROGRAMFILES", r"C:\Program Files"), os.environ.get("PROGRAMFILES(X86)", ""),
+                 os.environ.get("LOCALAPPDATA", "")):
+        exe = Path(base or ".") / "Google" / "Chrome" / "Application" / "chrome.exe"
+        if base and exe.is_file():
+            return str(exe)
+    return ""
+
+
+def open_in_browser(url: str) -> None:
+    """Open a page in Google Chrome when it is installed, otherwise in the default browser."""
+    import subprocess
+    import webbrowser
+    exe = chrome_path()
+    if exe:
+        subprocess.Popen([exe, url])                 # nosec B603 - fixed program, our own URL
+    else:
+        webbrowser.open(url)

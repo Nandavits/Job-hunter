@@ -200,13 +200,13 @@ def cmd_fill(args, settings):
         print(f"\nCould not update the _UPLOAD folder ({exc}). The files are in {cv.parent}")
     if manual_only(target_url(job)):
         # Sites that refuse automated browsers: open the form in your normal browser instead.
-        import webbrowser
         print("\nThis site does not allow automated form filling, so it opens in your normal browser.")
         print(f"Upload your CV and cover letter from the _UPLOAD folder (it opens now): {UPLOAD_DIR}")
         open_folder()
         print("\nYour answers to copy:\n")
         print(sheet.read_text(encoding="utf-8"))
-        webbrowser.open(target_url(job))
+        from .upload import open_in_browser
+        open_in_browser(target_url(job))               # Chrome, where you are signed in
         report = None
     else:
         print(f"If a 'verify you are human' check appears, solve it in the window yourself. If it keeps failing,\n"
