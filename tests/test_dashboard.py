@@ -109,3 +109,59 @@ def test_helpers():
     d = charts_data(rows, {"also_countries": ["netherlands"]}, today=dt.date(2026, 11, 24))
     assert d["applied"] == 2 and d["reply_rate"] == 50 and ("Netherlands", 1) in d["by_country"]
     assert sum(v for _, v in d["per_week"]) == 2
+
+
+def test_upload_folder_holds_only_the_current_job(tmp_path):
+    from jobhunter.upload import fill_upload_folder
+    out = tmp_path / "output" / "2026-11-19_Jobgether"
+    out.mkdir(parents=True)
+    (out / "CV_Nanda_Mummadireddy_Jobgether.docx").write_text("cv")
+    (out / "CV_Nanda_Mummadireddy_Jobgether.pdf").write_text("cvpdf")
+    (out / "Cover_Letter_Nanda_Mummadireddy_Jobgether.docx").write_text("letter")
+    folder = tmp_path / "_UPLOAD"
+    folder.mkdir()
+    (folder / "CV_Old_Job.pdf").write_text("old")
+    (folder / "keep-me.png").write_text("not ours")
+    profile = {"personal": {"first_name": "Nanda Kishore Reddy", "last_name": "Mummadireddy"}}
+    fill_upload_folder({"company": "Jobgether", "title": "Revenue Data Analyst", "url": "https://x"},
+                       out / "CV_Nanda_Mummadireddy_Jobgether.docx",
+                       out / "Cover_Letter_Nanda_Mummadireddy_Jobgether.docx", "Email  me@x", profile, folder=folder)
+    names = sorted(p.name for p in folder.iterdir())
+    assert names == ["CV_Nanda_Mummadireddy.docx", "CV_Nanda_Mummadireddy.pdf", "Cover_Letter_Nanda_Mummadireddy.docx",
+                     "answers.txt", "keep-me.png"]
+    assert "Jobgether - Revenue Data Analyst" in (folder / "answers.txt").read_text()
+
+
+def test_lever_and_workday_open_in_your_normal_browser():
+    from jobhunter.autofill import manual_only
+    assert manual_only("https://jobs.lever.co/jobgether/0172/apply")
+    assert manual_only("https://ea.wd1.myworkdayjobs.com/en-US/EA/job/x")
+    assert not manual_only("https://job-boards.greenhouse.io/adyen/jobs/1")
+
+
+def test_files_button_and_copy_answers(tmp_path, monkeypatch):
+    import jobhunter.dashboard as d
+    out = tmp_path / "output"
+    (out / "job").mkdir(parents=True)
+    (out / "job" / "CV_A_B_X.docx").write_text("cv")
+    (out / "job" / "Cover_Letter_A_B_X.docx").write_text("l")
+    (out / "job" / "tailoring.json").write_text('{"letter": ["I like data."]}')
+    monkeypatch.setattr(d, "OUTPUT_DIR", out)
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    job = Job(source="t", external_id="1", company="Acme", title="Analyst", url="https://x", location="Berlin")
+    store.save([job])
+    store.update(job.uid, cv_path=str(out / "job" / "CV_A_B_X.docx"),
+                 letter_path=str(out / "job" / "Cover_Letter_A_B_X.docx"))
+
+    class P(S):
+        profile = {"personal": {"first_name": "Ann", "last_name": "Bee", "email": "ann@x.de"}}
+        upload_dir = tmp_path / "_UPLOAD"
+    opened = []
+    c = TestClient(create_app(P(), store, launcher=print, opener=opened.append))
+    page = c.get(f"/job/{job.uid}").text
+    assert "ann@x.de" in page and "data-copy" in page and "I like data." in page and "/static/copy.js" in page
+    token = re.search(r'name="token" value="([^"]+)"', page).group(1)
+    r = c.post(f"/job/{job.uid}/files", data={"token": token})
+    assert "_UPLOAD" in r.text and opened == [P.upload_dir]
+    assert (P.upload_dir / "CV_Ann_Bee.docx").is_file() and (P.upload_dir / "answers.txt").is_file()
+    assert c.get("/static/copy.js").status_code == 200

@@ -112,6 +112,7 @@ Double-click **dashboard** (or `python -m jobhunter dashboard`): it opens http:/
 
 - **Jobs**: every open job with its score, country, posting date and *why this score* (a missing must-have is shown in red). Filter by status, country, minimum score or company.
 - **A job's page**: the ad, buttons to prepare your CV + cover letter, to open the ad, and **Apply**, which opens the application in a new window and fills it in. You check it and click Submit yourself.
+- **Filling a form by hand** (Workday, Lever, EA and other sites that block automatic filling): the job's page lists your answers with a **Copy** button each, plus the cover letter text, and **Put CV + letter in the _UPLOAD folder** copies that job's files to `job-hunter/_UPLOAD` with short names and opens it. Apply does the same. Pick `_UPLOAD` once in the site's upload window; after that the picker opens there by itself.
 - **Applications**: everything you applied to, how long ago, and replies read from your inbox. Change a status in one click.
 - **Charts**: applications per week, reply and interview rate, open jobs per country and jobs per source.
 

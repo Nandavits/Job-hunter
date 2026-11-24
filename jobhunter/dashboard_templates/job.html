@@ -12,6 +12,14 @@
 {% if j.apply_url or j.url %}<a class="btn" style="background:none;color:var(--text);border:1px solid var(--line)" href="{{ (j.apply_url or j.url)|link }}" target="_blank" rel="noopener noreferrer">Open the ad</a>{% endif %}
 <form method="post" action="/job/{{ j.uid }}/status" class="row"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="back" value="/job/{{ j.uid }}">
 <select name="status">{% for s in statuses %}<option {{ 'selected' if s==j.status }}>{{ s }}</option>{% endfor %}</select><button class="ghost">Save status</button></form></div>
-{% if j.cv_path %}<p>Documents: <a href="/file/{{ j.uid }}/cv">CV</a> · <a href="/file/{{ j.uid }}/letter">Cover letter</a></p>{% endif %}
+{% if request.query_params.get('files') %}<div class="note">Your CV, cover letter and answers are in the <b>_UPLOAD</b> folder (it just opened). In the site's upload window pick that folder once; next time it opens there by itself.</div>{% endif %}
+{% if j.cv_path %}<div class="row" style="margin-top:12px"><span>Documents: <a href="/file/{{ j.uid }}/cv">CV</a> · <a href="/file/{{ j.uid }}/letter">Cover letter</a></span>
+<form method="post" action="/job/{{ j.uid }}/files"><input type="hidden" name="token" value="{{ token }}"><button class="ghost">Put CV + letter in the _UPLOAD folder</button></form></div>{% endif %}
 {% if j.notes %}<p class="muted" style="white-space:pre-line">{{ j.notes }}</p>{% endif %}</div>
+{% if kit.answers %}<div class="card"><h2>Filling the form by hand</h2>
+<p class="muted">Click Copy, then paste into the form.</p><table>
+{% for label, value in kit.answers %}<tr><td class="muted" style="width:200px">{{ label }}</td><td id="a{{ loop.index }}">{{ value }}</td>
+<td style="width:80px"><button class="ghost" data-copy="a{{ loop.index }}">Copy</button></td></tr>{% endfor %}</table>
+{% if kit.letter %}<h2 style="margin-top:16px">Cover letter text <button class="ghost" data-copy="letter">Copy</button></h2>
+<pre class="ad" id="letter">{{ kit.letter }}</pre>{% endif %}</div>{% endif %}
 <div class="card"><h2>The ad</h2><pre class="ad">{{ j.description or 'No ad text yet: open the ad.' }}</pre></div>{% endblock %}

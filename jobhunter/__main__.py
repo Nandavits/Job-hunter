@@ -191,11 +191,19 @@ def cmd_fill(args, settings):
     from .autofill import answer_sheet, manual_only
     sheet = cv.parent / "form_answers.txt"
     sheet.write_text(answer_sheet(job, settings.profile), encoding="utf-8")
+    from .upload import UPLOAD_DIR, fill_upload_folder, open_folder
+    try:
+        fill_upload_folder(job, cv, letter_file, sheet.read_text(encoding="utf-8"), settings.profile)
+        print(f"\nYour CV, cover letter and answers for this job are in: {UPLOAD_DIR}")
+        print("In the site's 'Upload' window, pick that folder once - next time it opens there by itself.")
+    except OSError as exc:                             # e.g. a file in _UPLOAD is open in Word
+        print(f"\nCould not update the _UPLOAD folder ({exc}). The files are in {cv.parent}")
     if manual_only(target_url(job)):
         # Sites that refuse automated browsers: open the form in your normal browser instead.
         import webbrowser
         print("\nThis site does not allow automated form filling, so it opens in your normal browser.")
-        print(f"Upload these files:\n  CV:           {cv}\n  Cover letter: {letter_file}")
+        print(f"Upload your CV and cover letter from the _UPLOAD folder (it opens now): {UPLOAD_DIR}")
+        open_folder()
         print("\nYour answers to copy:\n")
         print(sheet.read_text(encoding="utf-8"))
         webbrowser.open(target_url(job))
@@ -214,8 +222,8 @@ def cmd_fill(args, settings):
             else:                                      # an unusual form: never crash, let the person finish by hand
                 log.warning("Form filling stopped: %s", str(exc).splitlines()[0][:200])
                 print("\nJob Hunter could not fill this form completely (it is an unusual form)."
-                      "\nFinish it in the browser yourself: your CV and cover letter are in"
-                      f"\n  {cv.parent}\nand your standard answers are in form_answers.txt in the same folder."
+                      "\nFinish it in the browser yourself: your CV, cover letter and answers are in"
+                      f"\n  {UPLOAD_DIR}"
                       "\nIf you applied, answer y below.")
             report = None
     if report is not None:

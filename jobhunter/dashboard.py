@@ -18,6 +18,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .config import OUTPUT_DIR, ROOT, Settings, load_settings
@@ -104,7 +105,36 @@ def charts_data(rows: list[dict], cfg: dict, today: dt.date | None = None) -> di
     }
 
 
-def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None):
+def local_file(raw: str) -> Path | None:
+    """Documents made inside Docker are stored as /app/output/...; find them in this folder's output/."""
+    if not raw:
+        return None
+    p = Path(raw)
+    if not p.exists() and "/output/" in raw.replace("\\", "/"):
+        p = OUTPUT_DIR / raw.replace("\\", "/").split("/output/", 1)[1]
+    p = p.resolve()
+    return p if p.is_file() and OUTPUT_DIR.resolve() in p.parents else None    # only files Job Hunter made
+
+
+def manual_kit(job: dict, settings) -> dict:
+    """What you paste into a form by hand: your answers one by one, and the cover letter text."""
+    import json
+    from .autofill import ANSWER_SHEET_KEYS, letter_plain_text, value_map
+    profile = getattr(settings, "profile", None) or {}
+    values = value_map(profile) if profile.get("personal") else {}
+    answers = [(k.replace("_", " ").capitalize(), values[k]) for k in ANSWER_SHEET_KEYS if values.get(k)]
+    letter = ""
+    cv = local_file(job.get("cv_path") or "")
+    meta = cv.parent / "tailoring.json" if cv else None
+    if meta and meta.is_file() and profile.get("personal"):
+        try:
+            letter = letter_plain_text(job, profile, json.loads(meta.read_text(encoding="utf-8"))["letter"])
+        except (KeyError, ValueError):
+            letter = ""
+    return {"answers": answers, "letter": letter}
+
+
+def create_app(settings: Settings | None = None, store: Store | None = None, launcher=None, opener=None):
     settings = settings or load_settings()
     store = store or Store(settings.database_url)
     search = settings.search
@@ -114,6 +144,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
     pages = Jinja2Templates(directory=str(Path(__file__).parent / "dashboard_templates"))
     pages.env.globals.update(age_text=age_text)
     pages.env.filters["link"] = web_link
+    app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "dashboard_static")), name="static")
 
     def launch(uid: str) -> None:                   # "Apply": the form filler in its own window
         if launcher:
@@ -187,7 +218,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         if not job:
             raise HTTPException(status_code=404, detail="No such job")
         return view(request, "job.html", j=enrich(job), statuses=STATUSES,
-                    earlier=store.applied_versions(job))
+                    earlier=store.applied_versions(job), kit=manual_kit(job, settings))
+
+    @app.post("/job/{uid}/files")
+    def files_to_upload_folder(uid: str, token_: str = Form("", alias="token")):
+        """Put this job's CV + letter in job-hunter/_UPLOAD and open that folder."""
+        from .autofill import answer_sheet
+        from .upload import UPLOAD_DIR, fill_upload_folder, open_folder
+        check(token_)
+        job = store.get(uid)
+        cv = local_file((job or {}).get("cv_path") or "")
+        if not job or not cv:
+            raise HTTPException(status_code=400, detail="Prepare the CV and cover letter first.")
+        folder = getattr(settings, "upload_dir", None) or UPLOAD_DIR
+        try:
+            fill_upload_folder(job, cv, local_file(job.get("letter_path") or ""),
+                               answer_sheet(job, settings.profile), settings.profile, folder=folder)
+        except OSError as exc:
+            raise HTTPException(status_code=409, detail=f"Close the file in Word first ({exc}).") from None
+        (opener or open_folder)(folder)
+        return RedirectResponse(f"/job/{job['uid']}?files=1", status_code=303)
 
     @app.post("/job/{uid}/status")
     def set_status(uid: str, status: str = Form(...), token_: str = Form("", alias="token"), back: str = Form("/")):
@@ -233,10 +283,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
     @app.get("/file/{uid}/{kind}")
     def file(uid: str, kind: str):
         job = store.get(uid)
-        raw = (job or {}).get({"cv": "cv_path", "letter": "letter_path"}.get(kind, ""), "") or ""
-        path = (OUTPUT_DIR / Path(raw).relative_to("/app/output")) if raw.startswith("/app/output") else Path(raw)
-        path = path.resolve() if raw else None
-        if not path or not path.is_file() or OUTPUT_DIR.resolve() not in path.parents:   # only files Job Hunter made
+        path = local_file((job or {}).get({"cv": "cv_path", "letter": "letter_path"}.get(kind, ""), "") or "")
+        if not path:
             raise HTTPException(status_code=404, detail="File not found")
         return FileResponse(path, filename=path.name)
 
