@@ -1,6 +1,0 @@
-{% extends "base.html" %}{% block title %}Forgot password · Job Hunter{% endblock %}
-{% block body %}<div class="card narrow"><h1>Forgot your password?</h1>
-{% if sent %}<p>If an account exists for that email, we sent a link to reset the password. It works for one hour.</p>
-<p><a href="/login">Back to log in</a></p>
-{% else %}<form method="post" action="/forgot"><label>Your email</label><input name="email" type="email" required autocomplete="username">
-<p><button>Send me a reset link</button></p></form>{% endif %}</div>{% endblock %}
