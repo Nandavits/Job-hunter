@@ -291,9 +291,21 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
     return app
 
 
+def already_running(port: int) -> bool:
+    import socket
+    with socket.socket() as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
 def serve(port: int = 8095, open_browser: bool = True) -> None:
     import uvicorn
+    import webbrowser
+    if already_running(port):                     # started at sign-in already: just show it
+        if open_browser:
+            webbrowser.open(f"http://127.0.0.1:{port}")
+        print("The dashboard is already running - opened it in your browser. You can close this window.")
+        return
     if open_browser:
-        import webbrowser
         threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
     uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")

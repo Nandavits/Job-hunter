@@ -2,15 +2,31 @@
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 title Job Hunter - dashboard
+rem dashboard.bat         = start it (or, if it is already running, just open it in the browser)
+rem dashboard.bat --boot  = quiet start when you sign in to Windows (used by the Startup shortcut)
+set "BOOT="
+if /i "%~1"=="--boot" set "BOOT=1"
+if not defined BOOT (
+  rem already running (it starts at sign-in): just open it, no waiting
+  curl -s -o nul --max-time 2 http://127.0.0.1:8095/ && (start "" http://127.0.0.1:8095/ & exit /b 0)
+)
 set PYTHONUTF8=1
 set DATABASE_URL=postgresql+psycopg://jobhunter:jobhunter@127.0.0.1:5433/jobhunter
 
+if defined BOOT (
+  rem right after sign-in Docker Desktop needs a minute or two
+  for /l %%i in (1,1,90) do (
+    docker info >nul 2>&1 && goto dockerup
+    timeout /t 4 /nobreak >nul
+  )
+)
 docker info >nul 2>&1
 if errorlevel 1 (
   echo Docker Desktop is not running. Start it, wait until it says "running", then double-click dashboard again.
-  pause
+  if not defined BOOT pause
   exit /b 1
 )
+:dockerup
 echo Starting the job database...
 docker compose up -d db >nul 2>&1
 for /l %%i in (1,1,20) do (
@@ -47,6 +63,15 @@ if errorlevel 1 (
 echo Setup finished.
 
 :ready
+if not exist data mkdir data
+if not exist data\dashboard-autostart.done (
+  powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\Job Hunter dashboard.lnk'); $s.TargetPath='%~f0'; $s.Arguments='--boot'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=7; $s.Description='Start the Job Hunter dashboard'; $s.Save()"
+  powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\Job Hunter.lnk'); $s.TargetPath='%~f0'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=7; $s.IconLocation='%SystemRoot%\System32\shell32.dll,22'; $s.Description='Open the Job Hunter dashboard'; $s.Save()"
+  echo done> data\dashboard-autostart.done
+  echo.
+  echo From now on the dashboard starts by itself when you sign in to Windows,
+  echo and the "Job Hunter" icon on your desktop opens it. To stop the automatic start: dashboard-autostart-off
+)
 ".venv\Scripts\python.exe" -m pip install -q -r requirements.txt -r requirements-dashboard.txt
 if errorlevel 1 (
   echo Installing the dashboard packages failed - see the messages above.
@@ -56,5 +81,9 @@ if errorlevel 1 (
 echo.
 echo The dashboard opens in your browser: http://127.0.0.1:8095
 echo It runs only on this computer. Close this window to stop it.
-".venv\Scripts\python.exe" -m jobhunter dashboard
-pause
+if defined BOOT (
+  ".venv\Scripts\python.exe" -m jobhunter dashboard --no-browser
+) else (
+  ".venv\Scripts\python.exe" -m jobhunter dashboard
+)
+if not defined BOOT pause
