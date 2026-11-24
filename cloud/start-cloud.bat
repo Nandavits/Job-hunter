@@ -33,5 +33,5 @@ docker compose exec -T web python -m jhcloud.smoke > ..\logs\cloud-check.log 2>&
 type ..\logs\cloud-check.log
 echo DONE >> ..\logs\cloud-start.log
 echo.
-echo Open http://127.0.0.1:8000 in your browser.
+echo Open http://127.0.0.1:8090 in your browser (or the WEB_PORT in .env).
 timeout /t 20
