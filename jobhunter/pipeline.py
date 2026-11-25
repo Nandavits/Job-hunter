@@ -88,7 +88,13 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
     from .filters import evaluate, location_matches, score_job
     from .models import Job
     changed = 0
-    for row in store.list(limit=100_000):
+    from .filters import include_german_ads
+    for row in store.list(limit=100_000, include_skipped=True):
+        if row["status"] == "skipped" and include_german_ads(search) and \
+                str(row.get("excluded_reason") or "").startswith("needs German"):
+            row = {**row, "status": "new"}                 # german_ads: include - give it another look
+            store.update(row["uid"], status="new", excluded_reason="")
+            changed += 1
         if row["status"] not in ("new", "prepared"):
             continue
         job = Job(source=row["source"], external_id=row["external_id"], company=row["company"] or "",

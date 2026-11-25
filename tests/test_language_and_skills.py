@@ -23,7 +23,7 @@ def test_german_titles_are_recognised():
 
 
 def test_german_title_without_ad_text_is_dropped():
-    j = evaluate(job("Datenanalyst (m/w/d) im Controlling"), CFG)
+    j = evaluate(job("Datenanalyst (m/w/d) im Controlling"), {**CFG, "german_ads": "skip"})
     assert j.german_required and "German" in j.excluded_reason
 
 
@@ -36,7 +36,7 @@ def test_short_german_ad_is_dropped():
     text = ("Wir suchen dich für unser Team in Berlin. Du arbeitest mit SQL und Python und bist für die "
             "Auswertung der Daten zuständig. Wir bieten dir eine unbefristete Stelle mit flexiblen "
             "Arbeitszeiten und ein tolles Team, das sich auf dich freut.")
-    j = evaluate(job("Data Analyst", text), CFG)
+    j = evaluate(job("Data Analyst", text), {**CFG, "german_ads": "skip"})
     assert j.excluded_reason == "needs German B2: posting is written in German"
 
 

@@ -125,6 +125,8 @@ def check_text(text: str, name: str = "profile.yaml") -> tuple[bool, list[str]]:
                 if str(c).strip().lower() not in COUNTRY_PLACES:
                     problems.append(f"search > also_countries: '{c}' is not known. Use one of: "
                                     + ", ".join(sorted(COUNTRY_PLACES)) + ".")
+        if str(search.get("german_ads", "include")).lower() not in ("include", "skip"):
+            problems.append(f"search > german_ads must be include or skip (now: {search.get('german_ads')}).")
         level = str(search.get("german_level", "A2")).upper()
         if level not in ("A1", "A2", "B1", "B2", "C1", "C2"):
             problems.append(f"search > german_level must be A1, A2, B1, B2, C1 or C2 (now: {level}).")

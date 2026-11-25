@@ -201,12 +201,28 @@ NOT_A_JOB = re.compile(r"we found (?:these )?new jobs|match(?:es)? your search|t
                        r"^(?:strong|good|great|possible) fit$", re.I)
 
 
+# German names of the same roles, so "Datenanalyst (m/w/d)" counts as "data analyst".
+GERMAN_TITLES = {
+    "data analyst": ["datenanalyst", "datenanalystin", "daten-analyst", "analyst daten"],
+    "data engineer": ["dateningenieur", "daten-ingenieur", "datenarchitekt"],
+    "data scientist": ["datenwissenschaftler", "data-scientist"],
+    "bi analyst": ["bi-analyst", "business-intelligence-analyst", "bi-entwickler", "bi developer"],
+    "business intelligence": ["business-intelligence"],
+    "analytics engineer": ["analytics-engineer"],
+    "reporting": ["reporting-analyst", "berichtswesen"],
+    "etl": ["etl-entwickler"],
+}
+
+
 def title_matches(job: Job, cfg: dict) -> str:
     """Return '' if the title is fine, else a reason for dropping it."""
     title = job.title.lower()
     if NOT_A_JOB.search(job.title or "") or NOT_A_JOB.search((job.company or "").strip()):
         return "not a job (text from an alert email)"
-    if not any(_contains(title, kw) for kw in cfg.get("title_keywords", [])):
+    keywords = list(cfg.get("title_keywords", []))
+    for kw in list(keywords):
+        keywords += GERMAN_TITLES.get(str(kw).lower(), [])
+    if not any(_contains(title, kw) for kw in keywords):
         return "title not in target roles"
     for kw in cfg.get("exclude_title_keywords", []):
         if _contains(title, kw):
@@ -384,6 +400,24 @@ def job_too_old(job: Job, cfg: dict) -> str:
     return ""
 
 
+def german_ask(title: str, description: str) -> tuple[str, str]:
+    """(level, evidence) of the German the ad asks for; ('', '') when none (English ad)."""
+    level, evidence = required_german_level(description)
+    if not level and not ENGLISH_WORKPLACE.search(description):
+        if written_in_german(description, min_words=25):
+            level, evidence = "B2", "posting is written in German"
+        elif german_title(title) and not (description and not written_in_german(description, 25)
+                                          and len(description.split()) >= 60):
+            level, evidence = "B2", "job title is in German"
+    return level, evidence
+
+
+def include_german_ads(cfg: dict) -> bool:
+    """german_ads: include (default) keeps ads that ask for more German than you have - many companies
+    still take English speakers - and marks them; german_ads: skip drops them."""
+    return str(cfg.get("german_ads", "include")).strip().lower() != "skip"
+
+
 def evaluate(job: Job, cfg: dict) -> Job:
     """Fill in score / german_required / excluded_reason on the job."""
     job.excluded_reason = title_matches(job, cfg) or location_matches(job, cfg)
@@ -391,17 +425,13 @@ def evaluate(job: Job, cfg: dict) -> Job:
         return job
 
     my_level = cfg.get("german_level", "A2").upper()
-    level, evidence = required_german_level(job.description)
-    if not level and not ENGLISH_WORKPLACE.search(job.description):
-        if written_in_german(job.description, min_words=25):
-            level, evidence = "B2", "posting is written in German"
-        elif german_title(job.title) and not (job.description and not written_in_german(job.description, 25)
-                                                and len(job.description.split()) >= 60):
-            level, evidence = "B2", "job title is in German"
+    level, evidence = german_ask(job.title, job.description)
     if level and LEVELS.index(level) > LEVELS.index(my_level):
         job.german_required = True
-        job.excluded_reason = f"needs German {level}: {evidence}"
-        return job
+        job.extra["german"] = f"{level}: {evidence}"
+        if not include_german_ads(cfg):
+            job.excluded_reason = f"needs German {level}: {evidence}"
+            return job
     language = other_language(job.description)
     if language and language.lower() not in [str(x).lower() for x in cfg.get("other_languages", [])]:
         job.excluded_reason = f"needs {language} (written in or asks for it)"

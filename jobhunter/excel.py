@@ -60,6 +60,11 @@ def fit_summary(r: dict, search: dict | None) -> str:
         parts.append(f"Missing: {', '.join(missing[:6])}" if missing else "Missing: nothing")
     elif r.get("matched_skills"):
         parts.append(f"You have: {r['matched_skills'].replace(',', ', ')}")
+    from .filters import german_ask
+    level, why = german_ask(r.get("title") or "", text)
+    if level:
+        parts.append(f"German ad (asks {level}) - English speakers often still considered"
+                     if "written in German" in why or "title" in why else f"Asks German {level}")
     if len(text) >= 100:
         years = min_years_required(text)
         parts.append(f"Asks {years}+ years" if years else "Years not stated")

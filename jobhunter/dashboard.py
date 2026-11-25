@@ -28,7 +28,7 @@ from .filters import COUNTRY_PLACES, _also_country
 from .storage import STATUSES, Store
 
 log = logging.getLogger("jobhunter")
-VERSION = "24 Nov 2026 (late)"      # shown top right: tells you the update really arrived
+VERSION = "25 Nov 2026"      # shown top right: tells you the update really arrived
 OPEN = ("new", "prepared")
 APPLIED = ("applied", "interview", "offer", "rejected")
 GERMAN_PLACES = ("germany", "deutschland", "berlin", "munich", "münchen", "hamburg", "cologne", "köln", "frankfurt",
@@ -264,7 +264,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
 
     @app.get("/", response_class=HTMLResponse)
     def jobs(request: Request, status: str = "open", country: str = "", min_score: int = 0, q: str = "",
-             age: str = ""):
+             age: str = "", lang: str = ""):
         age = age if age in AGE_CHOICES else default_age
         if status == "open":
             rows = [r for s in OPEN for r in store.list(status=s, limit=5000)]
@@ -276,6 +276,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
                 and (not q or q.lower() in f"{r['company']} {r['title']}".lower())]
         if age != "all":                                   # posted within the last N days
             rows = [r for r in rows if (job_age(r) if job_age(r) is not None else 0) <= AGE_CHOICES[age]]
+        if lang in ("en", "de"):                           # English-only ads, or ads asking for German
+            from .filters import german_ask
+            rows = [r for r in rows if bool(german_ask(r.get("title") or "", r.get("description") or "")[0])
+                    == (lang == "de")]
         countries = sorted({r["country"] for r in rows})
         if country:
             rows = [r for r in rows if r["country"] == country]
@@ -283,7 +287,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         rows.sort(key=lambda r: -(r.get("score") or 0))                          # ... within each score
         no_ad = sum(1 for r in rows if needs_ad(r))
         return view(request, "jobs.html", rows=rows[:300], no_ad=no_ad, ads_busy=ads_busy, status=status, country=country, countries=countries,
-                    min_score=min_score, q=q, statuses=STATUSES, age=age, age_choices=AGE_LABELS)
+                    min_score=min_score, q=q, statuses=STATUSES, age=age, age_choices=AGE_LABELS, lang=lang)
 
     @app.get("/tracker", response_class=HTMLResponse)
     def tracker(request: Request):

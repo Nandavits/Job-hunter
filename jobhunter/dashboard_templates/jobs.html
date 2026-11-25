@@ -4,6 +4,7 @@
 <select name="status"><option value="open" {{ 'selected' if status=='open' }}>Open (new + prepared)</option>
 {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if status==s }}>{{ s|capitalize }}</option>{% endfor %}<option value="all" {{ 'selected' if status=='all' }}>All</option></select>
 <select name="age">{% for k, label in age_choices.items() %}<option value="{{ k }}" {{ 'selected' if age==k }}>{{ label }}</option>{% endfor %}</select>
+<select name="lang"><option value="">English + German ads</option><option value="en" {{ 'selected' if lang=='en' }}>English ads only</option><option value="de" {{ 'selected' if lang=='de' }}>German ads only</option></select>
 <select name="country"><option value="">All countries</option>{% for c in countries %}<option {{ 'selected' if country==c }}>{{ c }}</option>{% endfor %}</select>
 <label class="muted">Min score <input name="min_score" type="number" min="0" max="100" value="{{ min_score }}" style="width:70px"></label>
 <input name="q" value="{{ q }}" placeholder="Company or title" style="width:220px"><button>Filter</button>
@@ -15,6 +16,6 @@
 {% for r in rows %}<tr><td class="score">{{ r.score or 0 }}</td>
 <td><a href="/job/{{ r.uid }}">{{ r.title }}</a><div class="muted">{{ r.company }}</div></td>
 <td>{{ r.country }}<div class="muted">{{ r.location or '' }}{% if r.posted_at %} · {{ age_text(r.posted_at) }}{% endif %}</div></td>
-<td class="muted">{% for part in r.why.split(' · ') %}{% if part.startswith('MISSING MUST-HAVE') %}<span class="must">{{ part }}</span>{% else %}{{ part }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+<td class="muted">{% for part in r.why.split(' · ') %}{% if part.startswith('MISSING MUST-HAVE') %}<span class="must">{{ part }}</span>{% elif part.startswith('German ad') or part.startswith('Asks German') %}<span style="color:var(--gold2)">{{ part }}</span>{% else %}{{ part }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</td>
 <td><span class="tag">{{ r.status }}</span>{% if r.busy %}<div class="muted">{{ r.busy }}</div>{% endif %}</td></tr>{% endfor %}</table>
 {% else %}<p class="muted">No jobs match these filters.</p>{% endif %}</div>{% endblock %}

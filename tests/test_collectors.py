@@ -112,7 +112,7 @@ def test_empty_feed_description_is_filled_from_page(session, config, profile):
     jobs = collect_all(Settings(config, profile), keep=quick_keep(config["search"]), session=session)
     job = next(j for j in jobs if j.title == "Junior Data Analyst")
     assert "Datenmodelle" in job.description
-    assert evaluate(job, config["search"]).excluded_reason.startswith("needs German C1")
+    assert evaluate(job, {**config["search"], "german_ads": "skip"}).excluded_reason.startswith("needs German C1")
 
 
 def test_linkedin_alert_plain_text():

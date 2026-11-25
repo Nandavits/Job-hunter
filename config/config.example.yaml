@@ -70,8 +70,13 @@ search:
   # language (Dutch, French ...) are skipped. Example:  other_languages: [french]
   other_languages: []
 
-  # Your German level: A1, A2, B1, B2, C1, C2. Jobs that clearly require a higher level are dropped.
+  # Your German level: A1, A2, B1, B2, C1, C2.
   german_level: A2
+  # Ads written in German or asking for more German than you have:
+  #   include  keep them, scored on your skills and marked "German ad" (many companies still hire
+  #            English speakers; the dashboard can show English-only or German-only ads)
+  #   skip     leave them out
+  german_ads: include
 
   # Skills used for scoring (higher weight = more important to you).
   skills:

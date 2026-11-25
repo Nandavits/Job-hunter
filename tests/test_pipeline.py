@@ -8,6 +8,7 @@ from jobhunter.storage import Store
 
 
 def test_full_run_and_dedup(settings, session):
+    settings.config.setdefault("search", {})["german_ads"] = "skip"   # default (include) keeps German ads: test_german_ads
     result = run(settings, send_digest=False, session=session)
 
     store = Store(settings.database_url)

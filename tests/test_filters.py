@@ -55,7 +55,7 @@ def test_evaluate_drops_senior_title(config):
 
 
 def test_evaluate_drops_german_required(config):
-    job = evaluate(_job(desc=GOOD + " Fluent German is required."), config["search"])
+    job = evaluate(_job(desc=GOOD + " Fluent German is required."), {**config["search"], "german_ads": "skip"})
     assert job.german_required and job.excluded_reason.startswith("needs German C1")
 
 
