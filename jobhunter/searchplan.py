@@ -38,6 +38,11 @@ FAMILIES = [
     (r"software (?:engineer|developer)|developer|programmer|entwickler|backend|full.?stack",
      ["software engineer", "software developer", "python developer", "backend developer", "softwareentwickler"],
      ["Software Engineer", "Softwareentwickler", "Python Developer"]),
+    (r"network|netzwerk|firewall|routing|\bccn[ap]\b|cisco|\bnoc\b",
+     ["network engineer", "network security engineer", "netzwerkadministrator", "netzwerkingenieur", "noc engineer"],
+     ["Network Engineer", "Netzwerkadministrator", "Network Security Engineer"]),
+    (r"security|sicherheit|\bsoc\b|cyber",
+     ["security engineer", "security analyst", "soc analyst", "it-security"], ["IT Security Engineer", "SOC Analyst"]),
     (r"devops|cloud|site reliability|\bsre\b|platform engineer",
      ["devops engineer", "cloud engineer", "platform engineer"], ["DevOps Engineer", "Cloud Engineer"]),
     (r"frontend|front-end|web developer|webentwickl",
@@ -66,7 +71,8 @@ def plan(profile: dict) -> dict:
     wanted = [_clean(t) for t in profile.get("target_titles") or [] if _clean(t)]
     titles += wanted                                        # your own words first
     queries += [t.title() for t in wanted]
-    text = " | ".join(_profile_text(profile)).lower()
+    # target_titles set: search only for those (and their close variants) - you decide, not your old jobs
+    text = " | ".join(wanted if wanted else _profile_text(profile)).lower()
     for pattern, family_titles, family_queries in FAMILIES:
         if re.search(pattern, text):
             titles += family_titles

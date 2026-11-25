@@ -19,9 +19,15 @@ def test_tester_with_data_science_degree_gets_her_own_jobs():
     assert "Data Scientist" in p["queries"] and "Softwaretester" in p["queries"]
 
 
-def test_target_titles_come_first():
+def test_target_titles_come_first_and_old_jobs_do_not_add_titles():
     p = plan({**TESTER, "target_titles": ["Data Scientist (m/w/d)", "Junior ML Engineer"]})
     assert p["title_keywords"][:2] == ["data scientist", "ml engineer"]
+    assert "qa engineer" not in p["title_keywords"] and "bi analyst" not in p["title_keywords"]
+
+
+def test_network_titles():
+    p = plan({"target_titles": ["Network Security Engineer"]})
+    assert "network engineer" in p["title_keywords"] and "Netzwerkadministrator" in p["queries"]
 
 
 def test_settings_use_the_profile_and_not_the_example(config, profile):
