@@ -468,4 +468,26 @@ def serve(port: int = 8095, open_browser: bool = True) -> None:
         return
     if open_browser:
         threading.Timer(1.5, lambda: open_in_browser(f"http://127.0.0.1:{port}")).start()
+    threading.Thread(target=_restart_when_updated, daemon=True).start()
     uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")
+
+
+def _code_stamp() -> float:
+    here = Path(__file__).parent
+    return max((p.stat().st_mtime for pattern in ("*.py", "collectors/*.py", "dashboard_templates/*.html")
+                for p in here.glob(pattern)), default=0.0)
+
+
+def _restart_when_updated(every: int = 30) -> None:
+    """New Job Hunter code on disk: stop with code 3 so dashboard.bat starts the new version at once."""
+    import os
+    import time
+    start = _code_stamp()
+    while True:
+        time.sleep(every)
+        try:
+            if _code_stamp() > start:
+                time.sleep(5)                      # let the rest of the update land
+                os._exit(3)
+        except OSError:
+            pass

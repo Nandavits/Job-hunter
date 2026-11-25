@@ -25,7 +25,7 @@ def _person(profile: dict) -> str:
 
 
 def fill_upload_folder(job: dict, cv: Path, letter: Path | None, answers: str, profile: dict,
-                       folder: Path = UPLOAD_DIR) -> list[Path]:
+                       folder: Path = UPLOAD_DIR, make_pdf: bool = True) -> list[Path]:
     """Replace what is in _UPLOAD with this job's CV, cover letter and answers. Returns the files."""
     folder.mkdir(parents=True, exist_ok=True)
     for old in folder.iterdir():                     # only files Job Hunter itself put here
@@ -33,6 +33,9 @@ def fill_upload_folder(job: dict, cv: Path, letter: Path | None, answers: str, p
             old.unlink()
     me, made = _person(profile), []
     for src, stem in ((cv, f"CV_{me}"), (letter, f"Cover_Letter_{me}")):
+        if src and Path(src).is_file() and not Path(src).with_suffix(".pdf").is_file() and make_pdf:
+            from .documents import to_pdf            # most upload forms only take PDF: make it if missing
+            to_pdf(Path(src).with_suffix(".docx"))
         if src and Path(src).is_file():
             for twin in {Path(src), Path(src).with_suffix(".pdf"), Path(src).with_suffix(".docx")}:
                 if twin.is_file():                   # PDF and Word, whichever exist

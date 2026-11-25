@@ -125,7 +125,8 @@ def test_upload_folder_holds_only_the_current_job(tmp_path):
     profile = {"personal": {"first_name": "Nanda Kishore Reddy", "last_name": "Mummadireddy"}}
     fill_upload_folder({"company": "Jobgether", "title": "Revenue Data Analyst", "url": "https://x"},
                        out / "CV_Nanda_Mummadireddy_Jobgether.docx",
-                       out / "Cover_Letter_Nanda_Mummadireddy_Jobgether.docx", "Email  me@x", profile, folder=folder)
+                       out / "Cover_Letter_Nanda_Mummadireddy_Jobgether.docx", "Email  me@x", profile, folder=folder,
+                       make_pdf=False)
     names = sorted(p.name for p in folder.iterdir())
     assert names == ["CV_Nanda_Mummadireddy.docx", "CV_Nanda_Mummadireddy.pdf", "Cover_Letter_Nanda_Mummadireddy.docx",
                      "answers.txt", "keep-me.png"]
@@ -320,3 +321,23 @@ def test_saving_again_fills_a_missing_date(tmp_path):
     job.posted_at = "2026-11-24"
     store.save([job])
     assert store.get(job.uid)["posted_at"] == "2026-11-24"
+
+
+def test_missing_pdf_is_made_before_filling_the_upload_folder(tmp_path, monkeypatch):
+    from jobhunter import documents
+    from jobhunter.upload import fill_upload_folder
+    made = []
+
+    def fake_pdf(docx):
+        made.append(docx.name)
+        docx.with_suffix(".pdf").write_text("pdf")
+        return docx.with_suffix(".pdf")
+    monkeypatch.setattr(documents, "to_pdf", fake_pdf)
+    out = tmp_path / "o"
+    out.mkdir()
+    (out / "CV_A.docx").write_text("cv")
+    (out / "Letter_A.docx").write_text("l")
+    folder = tmp_path / "_UPLOAD"
+    fill_upload_folder({"company": "Rockstar"}, out / "CV_A.docx", out / "Letter_A.docx", "", {}, folder=folder)
+    assert made == ["CV_A.docx", "Letter_A.docx"]
+    assert {p.suffix for p in folder.iterdir()} == {".pdf", ".docx", ".txt"}

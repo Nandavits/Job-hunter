@@ -195,16 +195,46 @@ def soffice_path() -> str | None:
     return None
 
 
-def to_pdf(docx_path: Path) -> Path | None:
-    exe = soffice_path()
-    if not exe:
-        return None
+def _run(cmd: list[str], cwd=None, timeout: int = 180) -> bool:
     try:
-        subprocess.run([exe, "--headless", "--convert-to", "pdf", "--outdir", str(docx_path.parent),
-                        str(docx_path)], check=True, capture_output=True, timeout=120)
+        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout, cwd=cwd)
+        return True
     except (subprocess.SubprocessError, OSError):
-        return None
+        return False
+
+
+def _pdf_in_docker(docx_path: Path) -> None:
+    """The dashboard runs on Windows without LibreOffice: let the Job Hunter container (which has it) convert.
+    Same converter and fonts as the automatic runs, so the CV still fits on one page."""
+    from .config import OUTPUT_DIR, ROOT
+    try:
+        rel = docx_path.resolve().relative_to(OUTPUT_DIR.resolve()).as_posix()
+    except ValueError:
+        return
+    inside = f"/app/output/{rel}"
+    _run(["docker", "compose", "exec", "-T", "jobhunter", "soffice", "--headless", "--convert-to", "pdf",
+          "--outdir", inside.rsplit("/", 1)[0], inside], cwd=str(ROOT))
+
+
+def _pdf_with_word(docx_path: Path) -> None:
+    """Last resort on Windows: Microsoft Word, if installed."""
+    src, dst = str(docx_path.resolve()), str(docx_path.resolve().with_suffix(".pdf"))
+    script = ("$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
+              f"$d = $w.Documents.Open('{src}', $false, $true); $d.SaveAs([ref]'{dst}', [ref]17); "
+              "$d.Close($false); $w.Quit()")
+    _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
+
+
+def to_pdf(docx_path: Path) -> Path | None:
     pdf = docx_path.with_suffix(".pdf")
+    exe = soffice_path()
+    if exe:
+        _run([exe, "--headless", "--convert-to", "pdf", "--outdir", str(docx_path.parent), str(docx_path)],
+             timeout=120)
+    elif os.name == "nt":
+        _pdf_in_docker(docx_path)
+        if not pdf.exists() and "'" not in str(docx_path):
+            _pdf_with_word(docx_path)
     return pdf if pdf.exists() else None
 
 

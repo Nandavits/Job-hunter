@@ -120,9 +120,13 @@ if defined NEEDPIP (
 echo.
 echo The dashboard opens in your browser: http://127.0.0.1:8095
 if not defined BOOT echo It runs only on this computer. Close this window to stop it.
-if defined BOOT (
-  ".venv\Scripts\python.exe" -m jobhunter dashboard --no-browser
-) else (
-  ".venv\Scripts\python.exe" -m jobhunter dashboard
-)
-if not defined BOOT pause
+if not defined BOOT goto visible
+:serve
+".venv\Scripts\python.exe" -m jobhunter dashboard --no-browser
+rem exit code 3 = Job Hunter was updated: start the new version straight away
+if errorlevel 3 if not errorlevel 4 goto serve
+exit /b 0
+:visible
+".venv\Scripts\python.exe" -m jobhunter dashboard
+if errorlevel 3 if not errorlevel 4 goto visible
+pause
