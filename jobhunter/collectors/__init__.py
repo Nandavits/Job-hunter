@@ -132,4 +132,10 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
 
     if sources.get("discover_companies", True):
         discovery.learn(jobs, configured)          # companies linked from these ads: checked from now on
+        # companies with matching ads whose careers page no ad links to: look it up by name
+        names = [j.company for j in jobs if j.source not in ats.FETCHERS and (keep is None or keep(j))]
+        try:
+            discovery.probe(session, names, configured)
+        except Exception as exc:
+            log.warning("Looking up careers pages failed: %s", exc)
     return jobs
