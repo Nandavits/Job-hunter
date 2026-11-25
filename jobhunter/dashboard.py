@@ -30,7 +30,8 @@ from .filters import COUNTRY_PLACES, _also_country
 from .storage import STATUSES, Store
 
 log = logging.getLogger("jobhunter")
-VERSION = "25 Nov 2026"      # shown top right: tells you the update really arrived
+_STARTED_STAMP = 0.0
+VERSION = "25 Nov 2026"      # fallback; the label shows when the running code was last updated
 OPEN = ("new", "prepared")
 APPLIED = ("applied", "interview", "offer", "rejected")
 GERMAN_PLACES = ("germany", "deutschland", "berlin", "munich", "münchen", "hamburg", "cologne", "köln", "frankfurt",
@@ -253,7 +254,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         except (OSError, IndexError):
             ctx["upload_for"] = ""
         counts = store.stats()
-        ctx.update(token=token, counts=counts, version=VERSION, open_count=sum(counts.get(s, 0) for s in OPEN),
+        ctx.update(token=token, counts=counts, version=_version_label(), open_count=sum(counts.get(s, 0) for s in OPEN),
                    applied_count=sum(counts.get(s, 0) for s in APPLIED))
         return pages.TemplateResponse(request, name, ctx)
 
@@ -468,8 +469,17 @@ def serve(port: int = 8095, open_browser: bool = True) -> None:
         return
     if open_browser:
         threading.Timer(1.5, lambda: open_in_browser(f"http://127.0.0.1:{port}")).start()
+    global _STARTED_STAMP
+    _STARTED_STAMP = _code_stamp()
     threading.Thread(target=_restart_when_updated, daemon=True).start()
     uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")
+
+
+def _version_label() -> str:
+    """Top right: date and time of the newest Job Hunter code this dashboard runs (proves an update arrived)."""
+    import datetime as _dt
+    stamp = _STARTED_STAMP or _code_stamp()
+    return _dt.datetime.fromtimestamp(stamp).strftime("%d %b %Y, %H:%M") if stamp else VERSION
 
 
 def _code_stamp() -> float:
