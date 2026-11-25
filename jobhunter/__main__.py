@@ -522,9 +522,13 @@ def cmd_schedule(args, settings):
         now = datetime.now()
         if (due_interval(now, int(every), last_run) if every else due_today(now, at, last_run)):
             # A fresh process each time, so updated code and settings are used without restarting.
+            from .runstatus import update as run_status
+            run_status(started=now.isoformat(timespec="seconds"), running=True, every_minutes=int(every or 0))
             result = subprocess.run([sys.executable, "-m", "jobhunter", "run"], check=False)
             if result.returncode:
                 log.warning("Run failed with exit code %s", result.returncode)
+            run_status(running=False, finished=datetime.now().isoformat(timespec="seconds"),
+                       ok=result.returncode == 0)
             marker.write_text(now.isoformat(timespec="minutes"))
         time.sleep(args.check_every * 60)
 

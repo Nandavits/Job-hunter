@@ -7,7 +7,7 @@ import json
 import re
 import time
 import logging
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from . import notify
@@ -285,6 +285,12 @@ def check_application_replies(settings: Settings, store: Store) -> list[str]:
 
 
 def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True, session=None) -> dict:
+    from .runstatus import update as run_status
+    try:
+        run_status(started=datetime.now().isoformat(timespec="seconds"), running=True,
+                   every_minutes=int((settings.config.get("schedule") or {}).get("every_minutes") or 30))
+    except Exception:
+        pass
     store = Store(settings.database_url)
     search = settings.search
     excel_path = DATA_DIR / "applications.xlsx"
@@ -376,6 +382,11 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
             sent["telegram"] = notify.send_telegram(settings.env("TELEGRAM_BOT_TOKEN"),
                                                     settings.env("TELEGRAM_CHAT_ID"), md)
 
+    try:
+        run_status(collected=len(raw), matching=len(kept), new=len(new_jobs), prepared=len(prepared),
+                   running=False, finished=datetime.now().isoformat(timespec="seconds"), ok=True)
+    except Exception:
+        pass
     return {"collected": len(raw), "matching": len(kept), "new": len(new_jobs),
             "prepared": len(prepared), "dropped": len(dropped), "tracker": str(tracker),
             "interview_prep": [str(p) for p in interview_packs], "replies": replies,

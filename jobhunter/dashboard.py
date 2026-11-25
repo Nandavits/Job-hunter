@@ -254,7 +254,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         except (OSError, IndexError):
             ctx["upload_for"] = ""
         counts = store.stats()
-        ctx.update(token=token, counts=counts, version=_version_label(), open_count=sum(counts.get(s, 0) for s in OPEN),
+        ctx.update(token=token, counts=counts, version=_version_label(), last_run=_last_run(), open_count=sum(counts.get(s, 0) for s in OPEN),
                    applied_count=sum(counts.get(s, 0) for s in APPLIED))
         return pages.TemplateResponse(request, name, ctx)
 
@@ -473,6 +473,14 @@ def serve(port: int = 8095, open_browser: bool = True) -> None:
     _STARTED_STAMP = _code_stamp()
     threading.Thread(target=_restart_when_updated, daemon=True).start()
     uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")
+
+
+def _last_run() -> dict:
+    try:
+        from .runstatus import label
+        return label()
+    except Exception:
+        return {"text": "", "warn": False}
 
 
 def _version_label() -> str:

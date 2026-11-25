@@ -106,3 +106,9 @@ def _own_employer_list(tmp_path, monkeypatch):
     """Tests never read or write your real list of IT employers."""
     from jobhunter import employers
     monkeypatch.setattr(employers, "FILE", tmp_path / "employers.json")
+
+
+@pytest.fixture(autouse=True)
+def _own_run_status(tmp_path, monkeypatch):
+    from jobhunter import runstatus
+    monkeypatch.setattr(runstatus, "FILE", tmp_path / "last-run.json")
