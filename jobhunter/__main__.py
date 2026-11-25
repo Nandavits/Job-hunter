@@ -341,6 +341,23 @@ def cmd_check_links(args, settings):
     close_dead_links(_store(settings), make_session(), dry_run=True)
 
 
+def cmd_use_cv_search(args, settings):
+    """Search for jobs that fit your CV (profile.yaml) instead of the titles written in config.yaml."""
+    import shutil
+    from .config import CONFIG_DIR
+    from .searchplan import switch_on
+    cfg = CONFIG_DIR / "config.yaml"
+    if not cfg.exists():
+        print("config/config.yaml not found.")
+        return
+    shutil.copy2(cfg, CONFIG_DIR / "config.backup-before-cv-search.yaml")
+    if switch_on(cfg):
+        print("Done: Job Hunter now searches for jobs that fit your CV (config/profile.yaml).")
+        print("Your old settings: config/config.backup-before-cv-search.yaml")
+    else:
+        print("Could not find the  search:  section in config.yaml - nothing changed.")
+
+
 def cmd_check_key(args, settings):
     """One tiny request to see whether the Claude API key works (costs a fraction of a cent)."""
     key = settings.env("ANTHROPIC_API_KEY")
@@ -584,6 +601,8 @@ def main(argv=None):
     p = sub.add_parser("import-jobs", help="copy jobs + applications from an older jobs.db file")
     p.add_argument("file")
     p.set_defaults(func=cmd_import_jobs)
+    sub.add_parser("use-cv-search", help="search for jobs that fit your CV, not the titles in config.yaml"
+                   ).set_defaults(func=cmd_use_cv_search)
     p = sub.add_parser("dashboard", help="your jobs, applications and charts in the browser")
     p.add_argument("--port", type=int, default=8095)
     p.add_argument("--no-browser", action="store_true")

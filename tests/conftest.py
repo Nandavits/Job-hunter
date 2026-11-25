@@ -73,6 +73,7 @@ def config():
     cfg["sources"]["arbeitsagentur"]["queries"] = ["Data Engineer"]
     cfg["sources"]["arbeitsagentur"]["include_remote"] = False
     cfg["tailoring"]["make_pdf"] = False
+    cfg["search"]["from_profile"] = False         # these tests check the hand-written example search
     return cfg
 
 

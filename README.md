@@ -75,7 +75,9 @@ You need Docker Desktop and Python 3.11+.
    ```
 2. Copy the three example files and fill them in:
    - `config/profile.example.yaml` → `config/profile.yaml`: your CV data and form answers
-   - `config/config.example.yaml` → `config/config.yaml`: job titles, skills, locations, companies
+   - `config/config.example.yaml` → `config/config.yaml`: locations, companies, job sites. The job titles,
+     search words and skills come from **your own** `profile.yaml` (`from_profile: true`), so you get jobs
+     for your skills; add `target_titles: [...]` to profile.yaml to name the jobs you want.
    - `.env.example` → `.env`: your Claude API key and Gmail app password (both optional)
 3. Double-click **`start-jobhunter.bat`**. It starts the database and the scheduler, checks every job
    source and runs the first search. From then on it runs every 30 minutes while the computer is on.

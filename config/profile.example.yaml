@@ -12,6 +12,9 @@ personal:
   github: https://github.com/janedoe
 relocation: Open to relocating anywhere in Germany
 
+# The jobs you want. Job Hunter searches for these (and similar titles from your experience/degree).
+# target_titles: [Data Scientist, QA Automation Engineer]
+
 default_title: Data & Analytics Engineer
 default_summary: Data engineer with production experience building analytics infrastructure for a German healthcare billing
   platform. Strong in SQL and PostgreSQL, data modelling with dbt, pipeline orchestration with Apache Airflow and Docker,

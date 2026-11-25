@@ -1,7 +1,14 @@
 # Job Hunter configuration. Copy to config/config.yaml and adjust.
 
 search:
-  # Job titles you want. A job must match at least one (case-insensitive) in its title.
+  # true  = work out the job titles to search for, the job agency search words and the scoring skills
+  #         from YOUR CV data (config/profile.yaml: target_titles, default_title, experience, education,
+  #         skills). Recommended: everyone gets jobs for their own skills, nothing to edit here.
+  #         Tip: add  target_titles: [Data Scientist, QA Automation Engineer]  to profile.yaml.
+  # false = use title_keywords, skills and the arbeitsagentur queries below exactly as written.
+  from_profile: true
+
+  # Job titles you want (used when from_profile is false). A job must match at least one in its title.
   title_keywords:
     - data engineer
     - analytics engineer

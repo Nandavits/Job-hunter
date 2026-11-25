@@ -99,6 +99,14 @@ def effective_skills(config_skills: dict, profile: dict) -> dict:
     return skills
 
 
+def _example_list(key: str) -> list:
+    try:
+        example = yaml.safe_load((CONFIG_DIR / "config.example.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    return list((example.get("search") or {}).get(key) or [])
+
+
 def _example_skills() -> dict:
     try:
         example = yaml.safe_load((CONFIG_DIR / "config.example.yaml").read_text(encoding="utf-8")) or {}
@@ -112,15 +120,34 @@ class Settings:
     config: dict
     profile: dict
 
+    def _from_profile(self) -> dict | None:
+        """The search worked out from profile.yaml, when config.yaml does not set its own (see searchplan)."""
+        from .searchplan import plan, uses_profile
+        search = self.config.get("search", {}) or {}
+        if not self.profile or not uses_profile(search, _example_list("title_keywords")):
+            return None
+        found = plan(self.profile)
+        return found if found["title_keywords"] else None
+
     @property
     def search(self) -> dict:
         search = dict(self.config.get("search", {}))
+        mine = self._from_profile()
+        if mine:
+            search["title_keywords"] = mine["title_keywords"]
+            skills = {str(k).lower(): v for k, v in (search.get("skills") or {}).items()}
+            if skills == _example_skills():                 # the example's skills are someone else's
+                search["skills"] = {}
         search["skills"] = effective_skills(search.get("skills") or {}, self.profile)
         return search
 
     @property
     def sources(self) -> dict:
-        return self.config.get("sources", {})
+        sources = dict(self.config.get("sources", {}))
+        mine = self._from_profile()
+        if mine and mine["queries"] and isinstance(sources.get("arbeitsagentur"), dict):
+            sources["arbeitsagentur"] = {**sources["arbeitsagentur"], "queries": mine["queries"]}
+        return sources
 
     def env(self, key: str, default: str = "") -> str:
         value = (os.environ.get(key, default) or default).strip().strip('"').strip("'")

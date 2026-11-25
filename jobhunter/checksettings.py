@@ -155,5 +155,24 @@ def run(paths: list[str], config_dir: Path) -> int:
         all_ok &= ok
         print(f"\n=== {path} ===")
         print("\n".join(report))
+    if all_ok and not paths:
+        _show_search()
     print("\nEverything is fine." if all_ok else "\nSome things need fixing (see above).")
     return 0 if all_ok else 1
+
+
+def _show_search() -> None:
+    """Which jobs will be searched: from your CV data, or the titles written in config.yaml."""
+    try:
+        from .config import load_settings
+        settings = load_settings()
+        search = settings.search
+    except Exception:
+        return
+    mine = settings._from_profile()
+    print("\n=== Your job search ===")
+    print("Worked out from YOUR CV data (profile.yaml)." if mine else "Written by hand in config.yaml (title_keywords).")
+    print("Job titles: " + ", ".join(search.get("title_keywords") or [])[:600])
+    print("Top skills: " + ", ".join(sorted(search.get("skills") or {}, key=lambda k: -search["skills"][k])[:20]))
+    if mine:
+        print("Wrong jobs? Add  target_titles: [Your Title, Another Title]  to profile.yaml.")
