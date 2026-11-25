@@ -135,9 +135,7 @@ class Settings:
         mine = self._from_profile()
         if mine:
             search["title_keywords"] = mine["title_keywords"]
-            skills = {str(k).lower(): v for k, v in (search.get("skills") or {}).items()}
-            if skills == _example_skills():                 # the example's skills are someone else's
-                search["skills"] = {}
+            search["skills"] = {}           # skills in config.yaml may be someone else's: use only yours
         search["skills"] = effective_skills(search.get("skills") or {}, self.profile)
         return search
 

@@ -141,8 +141,9 @@ def rescore_open_jobs(store: Store, search: dict) -> int:
             changed += 1
             continue
         score = score_job(job, search)
-        if score != row["score"]:
-            store.update(row["uid"], score=score, matched_skills=",".join(job.matched_skills))
+        matched = ",".join(job.matched_skills)
+        if score != row["score"] or matched != (row.get("matched_skills") or ""):   # your skills may have changed
+            store.update(row["uid"], score=score, matched_skills=matched)
             changed += 1
     return changed
 

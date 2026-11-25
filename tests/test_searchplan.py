@@ -54,3 +54,11 @@ def test_switch_on_keeps_the_rest(tmp_path):
     f.write_text("search:\n  from_profile: false\n", encoding="utf-8")
     switch_on(f)
     assert yaml.safe_load(f.read_text())["search"]["from_profile"] is True
+
+
+def test_someone_elses_skills_in_config_are_ignored(config):
+    config["search"]["from_profile"] = True
+    config["search"]["skills"] = {"dbt": 3, "airflow": 3, "n8n": 2, "superset": 1}     # Nan's, not the example
+    s = Settings(config=config, profile=TESTER)
+    assert not {"dbt", "airflow", "n8n", "superset"} & set(s.search["skills"])
+    assert {"selenium", "pytest", "python"} <= set(s.search["skills"])
