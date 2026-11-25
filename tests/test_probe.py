@@ -78,3 +78,9 @@ def test_known_companies_are_skipped(tmp_path):
     discovery.probe(s, ["Stripe"], configured=[{"name": "Stripe", "ats": "greenhouse", "slug": "stripe"}],
                     path=tmp_path / "d.json")
     assert s.asked == []
+
+
+def test_shortened_name_needs_a_board_that_names_the_company(tmp_path):
+    xml = "<workzag-jobs><position><name>Data Analyst</name><office>Berlin</office></position></workzag-jobs>"
+    s = FakeSession({"amazon.jobs.personio.de/xml": Resp(text=xml)})
+    assert discovery.probe(s, ["Amazon Business EU SARL, Niederlassung Deutschland"], path=tmp_path / "d.json") == 0

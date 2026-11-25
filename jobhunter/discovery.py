@@ -149,8 +149,9 @@ def _quiet_get(session, url: str, **kw):
     return resp if resp.status_code == 200 else None
 
 
-def probe_one(session, name: str, slug: str) -> dict | None:
-    """Is there a careers page for `name` at `slug`? Returns the company entry, or None."""
+def probe_one(session, name: str, slug: str, strict: bool = False) -> dict | None:
+    """Is there a careers page for `name` at `slug`? Returns the company entry, or None.
+    strict (a shortened name like 'amazon' for 'Amazon Business EU SARL'): only boards that name the company."""
     resp = _quiet_get(session, f"https://boards-api.greenhouse.io/v1/boards/{slug}")
     if resp is not None:
         try:
@@ -161,9 +162,8 @@ def probe_one(session, name: str, slug: str) -> dict | None:
     for domain in ("jobs.personio.de", "jobs.personio.com"):
         resp = _quiet_get(session, f"https://{slug}.{domain}/xml", headers={"Accept": "application/xml"})
         if resp is not None and b"<position" in resp.content:
-            subs = re.findall(rb"<subcompany>(.*?)</subcompany>", resp.content)
-            if not subs or any(_same_company(name, s.decode("utf-8", "ignore")) for s in subs) \
-                    or GERMANY.search(resp.content.decode("utf-8", "ignore")):
+            subs = [x.decode("utf-8", "ignore") for x in re.findall(rb"<subcompany>(.*?)</subcompany>", resp.content)]
+            if any(_same_company(name, x) for x in subs) or (not subs and not strict):
                 return {"ats": "personio", "slug": slug}
     resp = _quiet_get(session, f"https://{slug}.recruitee.com/api/offers/")
     if resp is not None:
@@ -178,6 +178,8 @@ def probe_one(session, name: str, slug: str) -> dict | None:
         title = re.search(r"<title>(.*?)</title>", resp.text, re.S)
         if title and _same_company(name, title.group(1)):
             return {"ats": "teamtailor", "slug": slug}
+    if strict:
+        return None
     # These boards don't name the company: only keep them when they have jobs in Germany.
     resp = _quiet_get(session, f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
     if resp is not None:
@@ -233,8 +235,8 @@ def _pick(names, data, configured, limit):
 
 
 def _probe_name(session, name):
-    for slug in slugs_for(name):
-        entry = probe_one(session, name, slug)
+    for i, slug in enumerate(slugs_for(name)):
+        entry = probe_one(session, name, slug, strict=i >= 2)      # 3rd/4th guesses are shortened names
         if entry:
             return entry
     return None
