@@ -169,6 +169,16 @@ def _show_search() -> None:
         search = settings.search
     except Exception:
         return
+    from .documents import photo_path, photo_too_small
+    photo = photo_path(settings.profile)
+    if (settings.profile.get("personal") or {}).get("photo") and not photo:
+        print("\nCV photo: the file named in profile.yaml (photo:) was not found in the config folder,"
+              " or it is not a JPG/PNG. Check the exact file name (Windows may hide '.jpg').")
+    elif photo and photo_too_small(photo):
+        print(f"\nCV photo: {photo.name} is small, so it looks blurry on the CV. Use a photo at least"
+              " 600 pixels wide (e.g. the original from your phone, not a WhatsApp copy or screenshot).")
+    elif photo:
+        print(f"\nCV photo: {photo.name} found - it is shown top right on every new CV.")
     mine = settings._from_profile()
     print("\n=== Your job search ===")
     print("Worked out from YOUR CV data (profile.yaml)." if mine else "Written by hand in config.yaml (title_keywords).")

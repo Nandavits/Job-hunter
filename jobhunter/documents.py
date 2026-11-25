@@ -114,6 +114,40 @@ def photo_path(profile: dict) -> Path | None:
     return None
 
 
+def photo_too_small(photo: Path) -> bool:
+    """Under ~300 pixels wide the photo looks blurry in print (it is shown 2.8 cm wide)."""
+    try:
+        from PIL import Image
+        with Image.open(photo) as im:
+            return im.size[0] < 300
+    except Exception:
+        return False
+
+
+def _sharp_photo(photo: Path) -> Path:
+    """Crop to the usual CV shape (3.5 x 4.5), scale to print quality (600 dpi) and save it sharp.
+    Without Pillow the photo is used as it is."""
+    try:
+        from PIL import Image, ImageFilter, ImageOps
+    except ImportError:
+        return photo
+    out = photo.with_name(f".cv-{photo.stem}.jpg")
+    if out.exists() and out.stat().st_mtime >= photo.stat().st_mtime:
+        return out
+    try:
+        with Image.open(photo) as im:
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            target = (660, 850)                                  # 2.8 cm x 3.6 cm at 600 dpi
+            im = ImageOps.fit(im, target, Image.LANCZOS, centering=(0.5, 0.35)) \
+                if im.size[0] >= target[0] else ImageOps.fit(im, (im.size[0], round(im.size[0] * 45 / 35)),
+                                                             Image.LANCZOS, centering=(0.5, 0.35))
+            im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=60, threshold=2))
+            im.save(out, "JPEG", quality=95, subsampling=0, dpi=(600, 600))
+        return out
+    except Exception:
+        return photo
+
+
 def build_cv(profile: dict, t: Tailoring, path: Path, body_pt: float = 9.5) -> Path:
     w = _Writer(body_pt, (0.88, 0.67, 1.41, 1.41))
     me = profile["personal"]
@@ -140,7 +174,7 @@ def build_cv(profile: dict, t: Tailoring, path: Path, body_pt: float = 9.5) -> P
         cell._tc.remove(cell.paragraphs[0]._p)          # the empty paragraph every new cell starts with
         pic = pic_cell.paragraphs[0]
         pic.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        pic.add_run().add_picture(str(photo), width=Cm(PHOTO_CM))
+        pic.add_run().add_picture(str(_sharp_photo(photo)), width=Cm(PHOTO_CM))
         w.target = w.doc
 
     w.heading("PROFESSIONAL SUMMARY")
@@ -231,6 +265,11 @@ def soffice_path() -> str | None:
     return None
 
 
+# PDF export that keeps the CV photo sharp: no JPEG re-compression, no lowering of the resolution.
+PDF_FILTER = ('pdf:writer_pdf_Export:{"UseLosslessCompression":{"type":"boolean","value":"true"},'
+              '"ReduceImageResolution":{"type":"boolean","value":"false"}}')
+
+
 def _run(cmd: list[str], cwd=None, timeout: int = 180) -> bool:
     try:
         subprocess.run(cmd, check=True, capture_output=True, timeout=timeout, cwd=cwd)
@@ -248,7 +287,7 @@ def _pdf_in_docker(docx_path: Path) -> None:
     except ValueError:
         return
     inside = f"/app/output/{rel}"
-    _run(["docker", "compose", "exec", "-T", "jobhunter", "soffice", "--headless", "--convert-to", "pdf",
+    _run(["docker", "compose", "exec", "-T", "jobhunter", "soffice", "--headless", "--convert-to", PDF_FILTER,
           "--outdir", inside.rsplit("/", 1)[0], inside], cwd=str(ROOT))
 
 
@@ -265,7 +304,7 @@ def to_pdf(docx_path: Path) -> Path | None:
     pdf = docx_path.with_suffix(".pdf")
     exe = soffice_path()
     if exe:
-        _run([exe, "--headless", "--convert-to", "pdf", "--outdir", str(docx_path.parent), str(docx_path)],
+        _run([exe, "--headless", "--convert-to", PDF_FILTER, "--outdir", str(docx_path.parent), str(docx_path)],
              timeout=120)
     elif os.name == "nt":
         _pdf_in_docker(docx_path)
