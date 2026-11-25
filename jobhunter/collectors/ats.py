@@ -280,7 +280,42 @@ def fetch_recruitee(session, company: dict) -> list[Job]:
     return jobs
 
 
+def parse_teamtailor(xml: str, company: str) -> list[Job]:
+    """Teamtailor careers sites (<company>.teamtailor.com or their own domain) publish /jobs.rss with the full ad."""
+    import email.utils
+    import html as htmllib
+    jobs = []
+    for item in re.findall(r"<item>(.*?)</item>", xml or "", re.S):
+        def tag(name: str) -> str:
+            m = re.search(rf"<{name}[^>]*>(.*?)</{name}>", item, re.S)
+            text = (m.group(1) if m else "").strip()
+            text = re.sub(r"^<!\[CDATA\[(.*)\]\]>$", r"\1", text, flags=re.S)
+            return htmllib.unescape(text)
+        cities = [htmllib.unescape(c.strip()) for c in re.findall(r"<tt:city>(.*?)</tt:city>", item, re.S) if c.strip()]
+        remote = tag("remoteStatus")
+        location = ", ".join(dict.fromkeys(cities)) + (", remote" if remote in ("fully", "hybrid") else "")
+        posted = ""
+        try:
+            posted = email.utils.parsedate_to_datetime(tag("pubDate")).date().isoformat()
+        except (TypeError, ValueError):
+            pass
+        link = tag("link")
+        jobs.append(Job(source="teamtailor", external_id=tag("guid") or link, company=company,
+                        title=tag("title"), url=link, apply_url=link, location=location.strip(", "),
+                        description=html_to_text(tag("description")), posted_at=posted))
+    return jobs
+
+
+def fetch_teamtailor(session, company: dict) -> list[Job]:
+    host = company["slug"] if "." in company["slug"] else f"{company['slug']}.teamtailor.com"
+    resp = session.get(f"https://{host}/jobs.rss", timeout=20)
+    if resp.status_code != 200:
+        return []
+    return parse_teamtailor(resp.text, company["name"])
+
+
 FETCHERS = {
+    "teamtailor": fetch_teamtailor,
     "recruitee": fetch_recruitee,
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
@@ -313,6 +348,7 @@ ATS_PATTERNS = [
     (re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([\w-]+)"), "smartrecruiters", ""),
     (re.compile(r"api\.smartrecruiters\.com/v1/companies/([\w-]+)"), "smartrecruiters", ""),
     (re.compile(r"([\w-]+)\.recruitee\.com"), "recruitee", ""),
+    (re.compile(r"([\w-]+)\.teamtailor\.com"), "teamtailor", ""),
 ]
 
 IGNORED_SLUGS = {"embed", "v1", "js", "api", "www", "jobs", "job", "careers", "app", "static", "assets", "cdn",

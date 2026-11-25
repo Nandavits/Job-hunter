@@ -44,3 +44,19 @@ def test_recruitee():
     [job] = fetch_recruitee(S(), {"name": "Tiny", "slug": "tiny"})
     assert (job.title, job.location, job.posted_at) == ("Junior Data Analyst", "Berlin, Germany", "2026-11-24")
     assert "SQL and Python" in job.description
+
+
+def test_teamtailor_rss():
+    from jobhunter.collectors.ats import parse_teamtailor
+    xml = """<rss><channel><item>
+      <title>Data Scientist (w/m/d) &#8211; Applied AI</title>
+      <description>&lt;h2&gt;Python, Spark, Trino&lt;/h2&gt;&lt;p&gt;Airflow passt genauso.&lt;/p&gt;</description>
+      <pubDate>Mon, 23 Nov 2026 10:00:00 +0100</pubDate>
+      <link>https://careers.smartclip.tv/jobs/8550364-data-scientist-w-m-d-applied-ai</link>
+      <remoteStatus>fully</remoteStatus><guid>abc-123</guid>
+      <tt:locations><tt:location><tt:city>Berlin</tt:city><tt:country>Germany</tt:country></tt:location></tt:locations>
+    </item></channel></rss>"""
+    [job] = parse_teamtailor(xml, "smartclip")
+    assert job.title == "Data Scientist (w/m/d) – Applied AI" and job.location == "Berlin, remote"
+    assert job.posted_at == "2026-11-23" and "Spark" in job.description and job.external_id == "abc-123"
+    assert detect_ats("https://smartclip.teamtailor.com/jobs/1")[0] == {"ats": "teamtailor", "slug": "smartclip"}
