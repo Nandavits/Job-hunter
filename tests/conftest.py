@@ -98,3 +98,10 @@ def _own_hidden_companies(tmp_path, monkeypatch):
     """Tests never read or write your real list of hidden companies."""
     from jobhunter import hidden
     monkeypatch.setattr(hidden, "FILE", tmp_path / "hidden-companies.json")
+
+
+@pytest.fixture(autouse=True)
+def _own_employer_list(tmp_path, monkeypatch):
+    """Tests never read or write your real list of IT employers."""
+    from jobhunter import employers
+    monkeypatch.setattr(employers, "FILE", tmp_path / "employers.json")

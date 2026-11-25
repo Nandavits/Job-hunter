@@ -126,6 +126,10 @@ sources:
     max_details: 80
 
   # Bundesagentur für Arbeit (Germany's federal job board, public API, covers many boards).
+  # Once a day: collect every company in Germany with IT/data job ads at the job agency and look up
+  # their own careers pages (a few hundred per day). false = only companies with ads that match you.
+  all_it_employers: true
+
   arbeitsagentur:
     enabled: true
     queries:

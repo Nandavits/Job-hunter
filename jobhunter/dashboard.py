@@ -313,6 +313,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         data["companies"] = len(settings.sources.get("companies") or []) + len(found) \
             if hasattr(settings, "sources") else len(found)
         data["companies_hiring"] = sum(1 for c in found.values() if c.get("jobs"))
+        from . import employers
+        data["employers"] = len(employers.load().get("firms", {}))
+        data["looked_up"] = len(discovery.load().get("_tried", {}))
         return view(request, "charts.html", d=data, week_svg=bar_chart(data["per_week"]),
                     source_svg=bar_chart(data["by_source"]), country_svg=bar_chart(data["by_country"]))
 

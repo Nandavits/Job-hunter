@@ -138,4 +138,12 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
             discovery.probe(session, names, configured)
         except Exception as exc:
             log.warning("Looking up careers pages failed: %s", exc)
+        # every company hiring IT/data people in Germany (job agency, once a day): look up their pages too
+        if sources.get("all_it_employers", True):
+            from .. import employers
+            try:
+                employers.harvest(session)
+                discovery.probe(session, employers.names(), configured, limit=employers.PER_RUN)
+            except Exception as exc:
+                log.warning("Looking up IT employers failed: %s", exc)
     return jobs

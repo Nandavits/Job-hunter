@@ -208,35 +208,61 @@ def probe_one(session, name: str, slug: str) -> dict | None:
     return None
 
 
-def probe(session, names, configured: list[dict] | None = None, path=None,
-          limit: int = PROBE_PER_RUN) -> int:
-    """Look up careers pages for companies with matching ads. Returns how many were found."""
-    data = load(path)
+AGENCIES = re.compile(r"personal(?:dienst|service|vermittlung|beratung)|zeitarbeit|recruit|staffing|headhunt|"
+                      r"\b(?:hays|brunel|ferchau|randstad|adecco|manpower|gulp|akkodis|experis|amadeus fire|"
+                      r"orizon|piening|dis ag|persona service|jobactive|tempton|avanti|westhouse|etengo|"
+                      r"solcom|computer futures|darwin recruitment|michael page|robert half|page personnel)\b", re.I)
+
+
+def _pick(names, data, configured, limit):
+    """The names to look up now: not known, not tried recently, no recruitment agencies."""
     tried = data.setdefault("_tried", {})
     known = {_fold(c.get("name", "")) for k, c in list(data.items()) + [("", c) for c in configured or []]
              if not k.startswith("_") and isinstance(c, dict) and c.get("name")}
-    known_keys = set(data) | {_key(c) for c in configured or [] if c.get("ats") and c.get("slug")}
-    today = dt.date.today()
-    found = done = 0
+    today, picked = dt.date.today(), []
     for name in dict.fromkeys(n.strip() for n in names if n and n.strip()):
-        if done >= limit:
+        if len(picked) >= limit:
             break
         folded = _fold(name)
         last = tried.get(folded)
-        if folded in known or (last and (today - dt.date.fromisoformat(last)).days < PROBE_AGAIN_DAYS):
+        if folded in known or AGENCIES.search(name) or \
+                (last and (today - dt.date.fromisoformat(last)).days < PROBE_AGAIN_DAYS):
             continue
-        done += 1
-        tried[folded] = today.isoformat()
-        for slug in slugs_for(name):
-            entry = probe_one(session, name, slug)
-            if entry and _key(entry) not in known_keys:
-                data[_key(entry)] = {**entry, "name": name[:80], "found": today.isoformat(),
-                                     "checked": "", "jobs": None, "how": "name"}
-                known_keys.add(_key(entry))
-                found += 1
-                log.info("Found the careers page of %s (%s: %s)", name, entry["ats"], entry["slug"])
-                break
+        picked.append(name)
+    return picked
+
+
+def _probe_name(session, name):
+    for slug in slugs_for(name):
+        entry = probe_one(session, name, slug)
+        if entry:
+            return entry
+    return None
+
+
+def probe(session, names, configured: list[dict] | None = None, path=None,
+          limit: int = PROBE_PER_RUN, workers: int = 8) -> int:
+    """Look up careers pages for these companies (several at once). Returns how many were found."""
+    data = load(path)
+    picked = _pick(names, data, configured, limit)
+    if not picked:
+        return 0
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        results = list(pool.map(lambda n: _probe_name(session, n), picked))
+    data = load(path)                                   # fresh: the run may have marked pages meanwhile
+    tried = data.setdefault("_tried", {})
+    known_keys = set(data) | {_key(c) for c in configured or [] if c.get("ats") and c.get("slug")}
+    today = dt.date.today().isoformat()
+    found = 0
+    for name, entry in zip(picked, results):
+        tried[_fold(name)] = today
+        if entry and _key(entry) not in known_keys:
+            data[_key(entry)] = {**entry, "name": name[:80], "found": today, "checked": "", "jobs": None,
+                                 "how": "name"}
+            known_keys.add(_key(entry))
+            found += 1
+            log.info("Found the careers page of %s (%s: %s)", name, entry["ats"], entry["slug"])
     save(data, path)
-    if done:
-        log.info("Looked up the careers pages of %d companies, found %d", done, found)
+    log.info("Looked up the careers pages of %d companies, found %d", len(picked), found)
     return found
