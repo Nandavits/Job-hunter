@@ -43,9 +43,10 @@ class _Writer:
         fmt.space_before = fmt.space_after = Pt(0)
         self._plain_bullets()
         fmt.line_spacing = 1.0
+        self.target = self.doc                    # where paragraphs go (the document, or a table cell)
 
     def para(self, runs, *, before=0.0, after=0.0, align=None, keep_next=False):
-        p = self.doc.add_paragraph()
+        p = self.target.add_paragraph()
         p.paragraph_format.space_before = Pt(before)
         p.paragraph_format.space_after = Pt(after)
         p.paragraph_format.keep_with_next = keep_next
@@ -96,16 +97,51 @@ class _Writer:
         r.font.name, r.font.size = FONT, Pt(self.body_pt)
 
 
+PHOTO_CM = 2.8                                   # width of the CV photo (German CVs: small, top right)
+PHOTO_TYPES = {".jpg", ".jpeg", ".png"}
+
+
+def photo_path(profile: dict) -> Path | None:
+    """Your CV photo, if profile.yaml names one (photo: photo.jpg, a file in the config folder)."""
+    from .config import CONFIG_DIR
+    raw = (profile.get("personal") or {}).get("photo") or profile.get("photo")
+    if not raw:
+        return None
+    path = Path(str(raw))
+    for candidate in (path, CONFIG_DIR / path, CONFIG_DIR / path.name):
+        if candidate.is_file() and candidate.suffix.lower() in PHOTO_TYPES:
+            return candidate
+    return None
+
+
 def build_cv(profile: dict, t: Tailoring, path: Path, body_pt: float = 9.5) -> Path:
     w = _Writer(body_pt, (0.88, 0.67, 1.41, 1.41))
     me = profile["personal"]
     name = f"{me['first_name']} {me['last_name']}"
+    photo = photo_path(profile)
+    cell = None
+    if photo:                                   # name and contact on the left, photo on the right
+        table = w.doc.add_table(rows=1, cols=2)
+        table.autofit = False
+        widths = (Cm(21.0 - 2 * 1.41 - PHOTO_CM - 0.3), Cm(PHOTO_CM + 0.3))
+        for col, width in zip(table.columns, widths):
+            col.width = width
+            for c in col.cells:
+                c.width = width
+        cell, pic_cell = table.rows[0].cells
+        w.target = cell
     w.para([(name, {"bold": True, "size": 14})])
     w.para([(t.title, {"size": 10.5})], before=2, after=1)
     contact = [me.get("city") and f"{me['city']}, {me.get('country', '')}".strip(", "), me.get("phone"),
                me.get("email"), me.get("linkedin", "").replace("https://", ""),
                me.get("github", "").replace("https://", "")]
     w.para([" | ".join(c for c in contact if c)])
+    if cell is not None:
+        cell._tc.remove(cell.paragraphs[0]._p)          # the empty paragraph every new cell starts with
+        pic = pic_cell.paragraphs[0]
+        pic.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        pic.add_run().add_picture(str(photo), width=Cm(PHOTO_CM))
+        w.target = w.doc
 
     w.heading("PROFESSIONAL SUMMARY")
     w.para([t.summary], align=WD_ALIGN_PARAGRAPH.JUSTIFY)

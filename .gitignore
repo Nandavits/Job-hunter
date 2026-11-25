@@ -1,6 +1,9 @@
 # Personal data — never commit
 config/config.yaml
 config/profile.yaml
+config/*.jpg
+config/*.jpeg
+config/*.png
 .env
 data/
 output/

@@ -39,18 +39,51 @@ flowchart LR
 
 ## Job sources
 
-| Source | What it gives | How it is read |
+Every website Job Hunter reads. The first group works by itself; for the second group you set up a job
+alert on the site (with the Gmail address Job Hunter reads) and Job Hunter reads the alert emails.
+The job titles it searches for come from **your** CV data (`profile.yaml`), see "Getting started".
+
+### Read automatically (nothing to set up)
+
+| Website | What it gives | How it is read |
 |---|---|---|
-| Company career pages (Greenhouse, Lever, Ashby, Personio, SmartRecruiters, Workday) | Jobs at companies I chose, from startups to Bosch and Delivery Hero | Public job-board feeds |
-| Amazon (amazon.jobs) | Amazon and AWS jobs in Germany | Amazon's public job search |
-| Bundesagentur für Arbeit | Jobs from all of Germany (also what "Make it in Germany" shows) | Public job-search API |
-| Arbeitnow | English-speaking jobs in Germany | Public API |
-| Data Berlin (databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
-| LinkedIn, StepStone, XING, Indeed, Glassdoor | Jobs from my saved job alerts | Alert emails in Gmail (read-only) |
-| jobvector, yourfirm, Jobware, GOODJOBS, kimeta, Empfehlungsbund, Interamt, Karriere Familienunternehmen, joblift | Jobs from job alerts I set up on each board (STEM, Mittelstand, impact, public sector, family businesses) | Alert emails in Gmail (read-only) |
+| [Bundesagentur für Arbeit – Jobsuche](https://www.arbeitsagentur.de/jobsuche/) | Jobs from all of Germany (also what "Make it in Germany" shows) | Public job-search API, with your job titles |
+| [Arbeitnow](https://www.arbeitnow.com) | English-speaking jobs in Germany | Public API |
+| [Data Berlin](https://databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
+| [Amazon jobs](https://www.amazon.jobs) | Amazon and AWS jobs in Germany | Amazon's public job search |
+| Company careers pages on Greenhouse, Lever, Ashby, Personio, SmartRecruiters, Workday, Recruitee, Teamtailor | The companies in `config.yaml`, plus every company Job Hunter finds by itself (below) | Public job-board feeds |
+| Every company hiring IT/data people in Germany | Once a day the job agency is searched for all IT and data ads; the careers page of each employer is looked up and then checked on every run (recruitment agencies are skipped) | Public job-board feeds |
+
+### Read from your job alert emails (set up an alert on each site)
+
+| Website | Good for | Alert is called |
+|---|---|---|
+| [LinkedIn](https://www.linkedin.com/jobs/) | Everything | Job alert (set it in LinkedIn yourself) |
+| [StepStone](https://www.stepstone.de) | Large German job board | Jobagent |
+| [Indeed](https://de.indeed.com) | Large job board | Job-E-Mail |
+| [XING](https://www.xing.com/jobs) | German professional network | Job search notifications (turn on email) |
+| [Glassdoor](https://www.glassdoor.de) | Jobs with company reviews | Job alert |
+| [Jobware](https://www.jobware.de) | Specialists and graduates | Jobagent |
+| [Interamt](https://www.interamt.de) | Public sector | Suchagent (register first) |
+| [GOODJOBS](https://goodjobs.eu) | Impact and sustainability jobs | Job alert |
+| [GermanTechJobs](https://germantechjobs.de) | English-speaking IT jobs with salaries | Job alert |
+| [Absolventa](https://www.absolventa.de) | Graduates and juniors | Suchanfrage with email |
+| [jobvector](https://www.jobvector.de) | STEM, IT and science | Jobmail |
+| [kimeta](https://www.kimeta.de) | Job search engine | Job-Alarm |
+| [yourfirm](https://www.yourfirm.de) | Mittelstand companies | Job-Alarm |
+| [Empfehlungsbund](https://www.empfehlungsbund.de) | Recommended employers and their portals | E-Mail-Jobabo |
+| [Karriere im Familienunternehmen](https://www.karriere-familienunternehmen.de) | Family businesses | Job alert |
+| [Berlin Startup Jobs](https://berlinstartupjobs.com/newsletter) | English start-up jobs in Berlin | Newsletter (IT / Tech / Software) |
+| [get in IT](https://www.get-in-it.de) | IT jobs for graduates and juniors | Job-Roboter (fill in your profile) |
+| [Welcome to the Jungle](https://www.welcometothejungle.com) | Start-ups and scale-ups (formerly Otta) | Alerts (currently paused by the site) |
+| [joblift](https://joblift.de) | Job search engine | Job-Alarm |
+
+Emails from all of these are read for everyone: you only create the alerts, there is nothing to add to
+the settings. Many sites send a "confirm your email" message first; click it or no alerts arrive.
+A site that is not in this list can be added under `email_alerts: senders:` in `config.yaml`.
 
 For good matches from LinkedIn or StepStone, Job Hunter also looks for the same job on the company's own
-careers site, so I apply there instead of on the job board.
+careers site, so you apply there instead of on the job board.
 
 ## How a job is scored
 
@@ -84,6 +117,20 @@ You need Docker Desktop and Python 3.11+.
 4. In Docker Desktop, turn on *Settings → General → Start Docker Desktop when you sign in*.
 
 Without an API key everything still works. Letters then come from a simple template.
+
+## CV photo (optional)
+
+Many German employers expect a photo on the CV. Put a passport-style photo (JPG or PNG, portrait) in the
+`config` folder and add one line to `profile.yaml` under `personal:`
+
+```yaml
+personal:
+  photo: photo.jpg
+```
+
+Every CV then shows the photo small at the top right; it still fits on one page. Remove the line to
+leave the photo out (for example for companies in the UK or US, where photos are not expected).
+The photo stays on your computer: it is never uploaded to GitHub.
 
 ## Applying to a job
 

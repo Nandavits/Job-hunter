@@ -10,6 +10,7 @@ personal:
   country: Germany
   linkedin: https://linkedin.com/in/janedoe
   github: https://github.com/janedoe
+  # photo: photo.jpg        # optional CV photo: put the file in the config folder (see README)
 relocation: Open to relocating anywhere in Germany
 
 # The jobs you want. Job Hunter searches for these (and similar titles from your experience/degree).
