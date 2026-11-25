@@ -261,7 +261,27 @@ def fetch_workday(session, company: dict) -> list[Job]:
     return wanted
 
 
+def fetch_recruitee(session, company: dict) -> list[Job]:
+    """Recruitee careers sites (many German start-ups): https://<slug>.recruitee.com/api/offers/"""
+    slug = company["slug"]
+    resp = session.get(f"https://{slug}.recruitee.com/api/offers/", timeout=20)
+    if resp.status_code != 200:
+        return []
+    jobs = []
+    for item in resp.json().get("offers") or []:
+        location = ", ".join(x for x in (item.get("city"), item.get("country")) if x) or item.get("location") or ""
+        jobs.append(Job(
+            source="recruitee", external_id=str(item.get("id")), company=company["name"],
+            title=item.get("title") or "", url=item.get("careers_url") or f"https://{slug}.recruitee.com",
+            apply_url=item.get("careers_apply_url") or item.get("careers_url") or "",
+            location=location + (", remote" if item.get("remote") else ""),
+            description="\n".join(html_to_text(item.get(k)) for k in ("description", "requirements") if item.get(k)),
+            posted_at=(item.get("published_at") or item.get("created_at") or "")[:10]))
+    return jobs
+
+
 FETCHERS = {
+    "recruitee": fetch_recruitee,
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
     "ashby": fetch_ashby,
@@ -290,9 +310,13 @@ ATS_PATTERNS = [
     (re.compile(r"jobs\.ashbyhq\.com/([\w.%-]+)"), "ashby", ""),
     (re.compile(r"api\.ashbyhq\.com/posting-api/job-board/([\w.%-]+)"), "ashby", ""),
     (re.compile(r"([\w-]+)\.jobs\.personio\.(?:de|com)"), "personio", ""),
+    (re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([\w-]+)"), "smartrecruiters", ""),
+    (re.compile(r"api\.smartrecruiters\.com/v1/companies/([\w-]+)"), "smartrecruiters", ""),
+    (re.compile(r"([\w-]+)\.recruitee\.com"), "recruitee", ""),
 ]
 
-IGNORED_SLUGS = {"embed", "v1", "js", "api", "www", "jobs", "job"}
+IGNORED_SLUGS = {"embed", "v1", "js", "api", "www", "jobs", "job", "careers", "app", "static", "assets", "cdn",
+                 "oneclick-ui", "company", "companies", "search"}
 
 
 def detect_ats(text: str) -> list[dict]:

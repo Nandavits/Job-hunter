@@ -286,6 +286,11 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     search = settings.search
     excel_path = DATA_DIR / "applications.xlsx"
     sync_from_excel(store, excel_path)   # statuses you changed in Excel (e.g. applied on LinkedIn)
+    from . import discovery
+    discovery.FILE = DATA_DIR / "discovered-companies.json"
+    if not discovery.FILE.exists() and settings.sources.get("discover_companies", True):
+        # first run with discovery: learn the careers pages linked from every job seen so far
+        discovery.learn(store.list(limit=100_000, include_skipped=True), settings.sources.get("companies"))
     replies = check_application_replies(settings, store)
     try:
         backfill_descriptions(store, session=session)

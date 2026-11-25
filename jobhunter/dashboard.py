@@ -300,6 +300,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
     @app.get("/charts", response_class=HTMLResponse)
     def charts(request: Request):
         data = charts_data(store.list(limit=100_000, include_skipped=True), search)
+        from . import discovery
+        found = discovery.load()
+        data["companies"] = len(settings.sources.get("companies") or []) + len(found) \
+            if hasattr(settings, "sources") else len(found)
+        data["companies_hiring"] = sum(1 for c in found.values() if c.get("jobs"))
         return view(request, "charts.html", d=data, week_svg=bar_chart(data["per_week"]),
                     source_svg=bar_chart(data["by_source"]), country_svg=bar_chart(data["by_country"]))
 

@@ -69,12 +69,19 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
     sources = settings.sources
     jobs: list[Job] = []
 
-    for company in sources.get("companies") or []:
+    from .. import discovery
+    configured = list(sources.get("companies") or [])
+    found_ones = [c for c in discovery.due() if (sources.get("discover_companies", True))]
+    for company in configured + found_ones:
         try:
             found = ats.fetch_company(session, company)
         except Exception as exc:  # one broken board must not stop the run
             log.warning("Failed %s: %s", company.get("name"), exc)
+            if company in found_ones:
+                discovery.mark(company, None)
             continue
+        if company in found_ones:
+            discovery.mark(company, len(found))
         log.info("%-20s %3d jobs", company.get("name", "?"), len(found))
         if keep:
             fill_missing_descriptions(session, [j for j in found if keep(j)])
@@ -123,4 +130,6 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
         except Exception as exc:
             log.warning("Email alerts failed: %s", exc)
 
+    if sources.get("discover_companies", True):
+        discovery.learn(jobs, configured)          # companies linked from these ads: checked from now on
     return jobs

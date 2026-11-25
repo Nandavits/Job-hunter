@@ -1,7 +1,8 @@
 {% extends "base.html" %}{% set page='charts' %}{% block title %}Charts · Job Hunter{% endblock %}
 {% block body %}<h1>Charts</h1>
 <div class="tiles"><div class="tile"><b>{{ d.applied }}</b>applications</div><div class="tile"><b>{{ d.reply_rate }}%</b>got a reply ({{ d.replies }})</div>
-<div class="tile"><b>{{ d.interview_rate }}%</b>led to an interview ({{ d.interviews }})</div><div class="tile"><b>{{ open_count }}</b>open jobs to look at</div></div>
+<div class="tile"><b>{{ d.interview_rate }}%</b>led to an interview ({{ d.interviews }})</div><div class="tile"><b>{{ open_count }}</b>open jobs to look at</div>
+<div class="tile"><b>{{ d.companies }}</b>company careers pages watched ({{ d.companies_hiring }} found ones hiring now)</div></div>
 <div class="card"><h2>Applications per week</h2>{{ week_svg|safe }}</div>
 <div class="card"><h2>Open jobs per country</h2>{{ country_svg|safe }}</div>
 <div class="card"><h2>Jobs found per source, last 30 days</h2>{{ source_svg|safe }}</div>{% endblock %}
