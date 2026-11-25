@@ -53,7 +53,7 @@ def description_for(session, url: str) -> str:
 def fill_missing_descriptions(session, jobs: list[Job], limit: int = 40) -> None:
     """Some feeds (company boards, job-alert emails) have no ad text; read the job page instead."""
     for job in [j for j in jobs if (j.source in PAGE_SOURCES or j.source == "email")
-                and len(j.description) < 100][:limit]:
+                and len(j.description) < 100 and "glassdoor." not in j.url][:limit]:   # Glassdoor blocks reading
         try:
             text = description_for(session, job.url)
         except Exception as exc:
