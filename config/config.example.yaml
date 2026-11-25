@@ -191,6 +191,12 @@ sources:
       - entrepreneursclub    # karriere-familienunternehmen.de sends its alerts from entrepreneursclub.eu
       - joblift              # joblift.de (Job-Alarm)
       - arbeitnow            # arbeitnow.com alerts (its public API is read as well)
+      - germantechjobs       # germantechjobs.de: English-speaking IT jobs with salaries (Job-Alert)
+      - berlinstartupjobs    # berlinstartupjobs.com: English startup jobs
+      - get-in-it            # get-in-it.de: IT jobs for graduates and juniors (Jobmail)
+      - welcometothejungle   # welcometothejungle.com (formerly Otta): start-ups and scale-ups
+      - otta
+      - absolventa           # absolventa.de: graduates and young professionals (Jobletter)
 
 tailoring:
   # How many top new jobs get a tailored CV + cover letter each run.

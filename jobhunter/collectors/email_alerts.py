@@ -105,6 +105,8 @@ BOARD_SENDERS = {
     "karriere-familienunternehmen": "karriere-familienunternehmen", "entrepreneursclub": "karriere-familienunternehmen",
     "joblift": "joblift",
     "arbeitnow": "arbeitnow",
+    "germantechjobs": "germantechjobs", "berlinstartupjobs": "berlinstartupjobs", "get-in-it": "get-in-it",
+    "welcometothejungle": "welcometothejungle", "otta": "welcometothejungle", "absolventa": "absolventa",
 }
 NOT_A_JOB_LINK = re.compile(
     r"^(alle|weitere|mehr|more|all|show|see|view all|zur übersicht|übersicht|job[ -]?mail|job[ -]?alert|jobagent|"
