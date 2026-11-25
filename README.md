@@ -108,7 +108,7 @@ answer for get "Prefer not to say".
 
 ## The dashboard
 
-Double-click **dashboard** once (or `python -m jobhunter dashboard`): it opens http://127.0.0.1:8095 in your browser. From then on it starts by itself (quietly) when you sign in to Windows, and the **Job Hunter** icon on your desktop opens it instantly; a browser bookmark to http://127.0.0.1:8095 works too. `dashboard-autostart-off` stops the automatic start.
+Double-click **dashboard** once (or `python -m jobhunter dashboard`): it opens http://127.0.0.1:8095 in your browser. From then on it keeps itself running in the background (no window): a Windows scheduled task checks every 5 minutes and starts it again if it stopped (after sign-in, a restart, or once Docker Desktop is up). The **Job Hunter** icon on your desktop opens it instantly, and a browser bookmark to http://127.0.0.1:8095 works whenever your laptop is on. `dashboard-autostart-off` stops the automatic start.
 
 - **Jobs**: every open job with its score, country, posting date and *why this score* (a missing must-have is shown in red). Filter by status, country, minimum score or company.
 - **A job's page**: the ad, buttons to prepare your CV + cover letter, to open the ad, and **Apply**, which opens the application in a new window and fills it in. You check it and click Submit yourself.

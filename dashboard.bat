@@ -6,9 +6,41 @@ rem dashboard.bat         = start it (or, if it is already running, just open it
 rem dashboard.bat --boot  = quiet start when you sign in to Windows (used by the Startup shortcut)
 set "BOOT="
 if /i "%~1"=="--boot" set "BOOT=1"
+if not exist data mkdir data
+if not exist data\dashboard-autostart-off.flag if not exist data\dashboard-autostart-v3.done (
+  rem keep it running: a hidden check every 5 minutes starts it again if it stopped
+  powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue ([Environment]::GetFolderPath('Startup')+'\Job Hunter dashboard.lnk')"
+  schtasks /create /f /tn "Job Hunter dashboard" /sc minute /mo 5 /tr "wscript.exe \"%~dp0dashboard-hidden.vbs\"" >nul
+  if not errorlevel 1 (
+    echo done> data\dashboard-autostart-v3.done
+    echo.
+    echo From now on the dashboard keeps itself running in the background: it starts after you sign in
+    echo and starts again within 5 minutes if it ever stops. To switch this off: dashboard-autostart-off
+  )
+)
+rem already running: --boot has nothing to do, the icon just opens it
+curl -s -o nul --max-time 2 http://127.0.0.1:8095/ && (
+  if defined BOOT exit /b 0
+  start "" chrome http://127.0.0.1:8095/ || start "" http://127.0.0.1:8095/
+  exit /b 0
+)
+if not defined BOOT if exist ".venv\Scripts\python.exe" if exist "dashboard-hidden.vbs" (
+  rem start it in the background - no window to close by mistake - then open it when it answers
+  echo Starting the Job Hunter dashboard... this takes up to 1-2 minutes when the laptop is busy.
+  echo Your browser opens by itself when it is ready. This window closes by itself.
+  wscript.exe "%~dp0dashboard-hidden.vbs"
+  for /l %%i in (1,1,90) do (
+    timeout /t 2 /nobreak >nul
+    curl -s -o nul --max-time 2 http://127.0.0.1:8095/ && (
+      start "" chrome http://127.0.0.1:8095/ || start "" http://127.0.0.1:8095/
+      exit /b 0
+    )
+  )
+  echo The dashboard did not start. Is Docker Desktop running? Start it, then double-click Job Hunter again.
+  pause
+  exit /b 1
+)
 if not defined BOOT (
-  rem already running (it starts at sign-in): just open it, no waiting
-  curl -s -o nul --max-time 2 http://127.0.0.1:8095/ && (start "" chrome http://127.0.0.1:8095/ || start "" http://127.0.0.1:8095/) && exit /b 0
   echo Starting the Job Hunter dashboard... this takes up to 1-2 minutes when the laptop is busy.
   echo Your browser opens by itself when it is ready. Keep this window open.
   echo.
@@ -18,7 +50,7 @@ set DATABASE_URL=postgresql+psycopg://jobhunter:jobhunter@127.0.0.1:5433/jobhunt
 
 if defined BOOT (
   rem right after sign-in Docker Desktop needs a minute or two
-  for /l %%i in (1,1,90) do (
+  for /l %%i in (1,1,60) do (
     docker info >nul 2>&1 && goto dockerup
     timeout /t 4 /nobreak >nul
   )
@@ -37,7 +69,7 @@ for /l %%i in (1,1,20) do (
   timeout /t 2 /nobreak >nul
 )
 echo The database did not start. Run start-jobhunter once, then try again.
-pause
+if not defined BOOT pause
 exit /b 1
 :dbready
 
@@ -71,14 +103,6 @@ if not exist data\dashboard-icon-v2.done (
   powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\Job Hunter.lnk'); $s.TargetPath='%~f0'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=1; $s.IconLocation='%SystemRoot%\System32\shell32.dll,22'; $s.Description='Open the Job Hunter dashboard'; $s.Save()"
   echo done> data\dashboard-icon-v2.done
 )
-if not exist data\dashboard-autostart.done (
-  powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\Job Hunter dashboard.lnk'); $s.TargetPath='%~f0'; $s.Arguments='--boot'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=7; $s.Description='Start the Job Hunter dashboard'; $s.Save()"
-  powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\Job Hunter.lnk'); $s.TargetPath='%~f0'; $s.WorkingDirectory='%CD%'; $s.WindowStyle=1; $s.IconLocation='%SystemRoot%\System32\shell32.dll,22'; $s.Description='Open the Job Hunter dashboard'; $s.Save()"
-  echo done> data\dashboard-autostart.done
-  echo.
-  echo From now on the dashboard starts by itself when you sign in to Windows,
-  echo and the "Job Hunter" icon on your desktop opens it. To stop the automatic start: dashboard-autostart-off
-)
 set "NEEDPIP="
 fc /b requirements.txt data\packages-main.txt >nul 2>&1 || set "NEEDPIP=1"
 fc /b requirements-dashboard.txt data\packages-dashboard.txt >nul 2>&1 || set "NEEDPIP=1"
@@ -87,7 +111,7 @@ if defined NEEDPIP (
   ".venv\Scripts\python.exe" -m pip install -q -r requirements.txt -r requirements-dashboard.txt
   if errorlevel 1 (
     echo Installing the dashboard packages failed - see the messages above.
-    pause
+    if not defined BOOT pause
     exit /b 1
   )
   copy /y requirements.txt data\packages-main.txt >nul
@@ -95,7 +119,7 @@ if defined NEEDPIP (
 )
 echo.
 echo The dashboard opens in your browser: http://127.0.0.1:8095
-echo It runs only on this computer. Close this window to stop it.
+if not defined BOOT echo It runs only on this computer. Close this window to stop it.
 if defined BOOT (
   ".venv\Scripts\python.exe" -m jobhunter dashboard --no-browser
 ) else (
