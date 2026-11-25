@@ -7,12 +7,16 @@ rem dashboard.bat --boot  = quiet start when you sign in to Windows (used by the
 set "BOOT="
 if /i "%~1"=="--boot" set "BOOT=1"
 if not exist data mkdir data
-if not exist data\dashboard-autostart-off.flag if not exist data\dashboard-autostart-v3.done (
+rem the background check and the desktop icon point at THIS folder: set up again if the folder moved
+set "TASKWHERE="
+if exist data\dashboard-autostart-v3.done set /p TASKWHERE=<data\dashboard-autostart-v3.done
+if not exist data\dashboard-autostart-off.flag if /i not "%TASKWHERE%"=="%~dp0" (
   rem keep it running: a hidden check every 5 minutes starts it again if it stopped
   powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue ([Environment]::GetFolderPath('Startup')+'\Job Hunter dashboard.lnk')"
   schtasks /create /f /tn "Job Hunter dashboard" /sc minute /mo 5 /tr "wscript.exe \"%~dp0dashboard-hidden.vbs\"" >nul
   if not errorlevel 1 (
-    echo done> data\dashboard-autostart-v3.done
+    >data\dashboard-autostart-v3.done echo %~dp0
+    if exist data\dashboard-icon-v2.done del data\dashboard-icon-v2.done
     echo.
     echo From now on the dashboard keeps itself running in the background: it starts after you sign in
     echo and starts again within 5 minutes if it ever stops. To switch this off: dashboard-autostart-off
