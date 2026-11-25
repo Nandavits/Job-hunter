@@ -278,3 +278,45 @@ def test_jobs_without_ad_text_get_their_ad_read(tmp_path):
     assert "No ad text yet" not in page and "dbt" in page
     assert store.get(job.uid)["description"].startswith("English speaking team")
     assert "Read their ads now" not in c.get("/").text
+
+
+def test_hide_company_removes_its_jobs_now_and_later(app):
+    c, store, j = app["client"], app["store"], app["jobs"][1]
+    assert "Data Analyst" in c.get("/").text
+    assert c.post(f"/job/{j.uid}/hide-company", data={}).status_code == 400            # token needed
+    r = c.post(f"/job/{j.uid}/hide-company", data={"token": app["token"]}, follow_redirects=False)
+    assert r.status_code == 303 and store.get(j.uid)["status"] == "skipped"
+    page = c.get(r.headers["location"]).text
+    assert "Data Analyst" not in page and "see jobs from" in page
+    from jobhunter.filters import evaluate
+    again = Job(source="email", external_id="9", company="Acme <b>bold</b> GmbH", title="Data Engineer",
+                url="https://x/9", location="Berlin", description=AD)
+    assert evaluate(again, {"titles": ["data engineer"]}).excluded_reason == "company hidden by you"
+
+
+def test_same_job_from_several_alerts_shows_once_and_undated_shows_found(app):
+    c, store = app["client"], app["store"]
+    dupes = [Job(source="email", external_id=f"d{i}", company="Deutsche Bahn", title="Data & Analytics Engineer:in",
+                 url=f"https://x/d{i}", location="Berlin") for i in range(3)]
+    store.save(dupes)
+    page = c.get("/").text
+    assert page.count("Data &amp; Analytics Engineer:in") == 1
+    assert "found today" in page
+
+
+def test_config_exclude_companies():
+    from jobhunter.filters import evaluate
+    job = Job(source="email", external_id="g", company="Grainset Data", title="Junior Data Platform Engineer",
+              url="https://x/g", location="Hamburg", description=AD)
+    assert evaluate(job, {"titles": ["data"], "exclude_companies": ["Grainset Data"]}).excluded_reason \
+        == "company hidden by you"
+
+
+def test_saving_again_fills_a_missing_date(tmp_path):
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    job = Job(source="email", external_id="z", company="Tchibo", title="Analytics Engineer", url="https://x/z")
+    store.save([job])
+    assert not store.get(job.uid)["posted_at"]
+    job.posted_at = "2026-11-24"
+    store.save([job])
+    assert store.get(job.uid)["posted_at"] == "2026-11-24"

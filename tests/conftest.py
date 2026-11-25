@@ -91,3 +91,10 @@ def settings(config, profile, tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "DATA_DIR", tmp_path / "data")
     (tmp_path / "data").mkdir()
     return cfgmod.Settings(config=config, profile=profile)
+
+
+@pytest.fixture(autouse=True)
+def _own_hidden_companies(tmp_path, monkeypatch):
+    """Tests never read or write your real list of hidden companies."""
+    from jobhunter import hidden
+    monkeypatch.setattr(hidden, "FILE", tmp_path / "hidden-companies.json")

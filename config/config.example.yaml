@@ -99,6 +99,10 @@ search:
 
   # Match score 0-100 (how well you fit what the job asks for). Jobs below this are skipped.
   # Roughly: 85+ excellent, 70-84 good, 55-69 worth a look.
+  # Companies you never want to see (e.g. ones that keep reposting ads that are not really open).
+  # The "Hide this company" button in the dashboard adds to data/hidden-companies.json instead.
+  exclude_companies: []
+
   min_score: 55
 
   # true = only keep jobs whose ad text could be read, so skills and experience are really checked.

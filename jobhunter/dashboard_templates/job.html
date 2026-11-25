@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% set page='jobs' %}{% block title %}{{ j.title }} · Job Hunter{% endblock %}
 {% block body %}<p><a href="/">&larr; All jobs</a></p>
 <div class="card"><h1>{{ j.title }}</h1>
-<p class="muted">{{ j.company }} · {{ j.country }} · {{ j.location or '' }}{% if j.posted_at %} · posted {{ age_text(j.posted_at) }}{% endif %} · {{ j.source }}</p>
+<p class="muted">{{ j.company }} · {{ j.country }} · {{ j.location or '' }}{% if j.posted_at %} · posted {{ age_text(j.posted_at) }}{% elif j.collected_at %} · found {{ age_text((j.collected_at|string)[:10]) }} (the ad gives no date){% endif %} · {{ j.source }}</p>
 <p><span class="score">{{ j.score or 0 }}</span> &nbsp; {% for part in j.why.split(' · ') %}{% if part.startswith('MISSING MUST-HAVE') %}<span class="must">{{ part }}</span>{% else %}<span class="muted">{{ part }}</span>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>
 {% if earlier %}<div class="note">You already applied to this role: {{ earlier[0].company }} - {{ earlier[0].title }} on {{ earlier[0].applied_at or '?' }}.</div>{% endif %}
 {% if request.query_params.get('closed') %}<div class="note">This job no longer accepts applications, so Job Hunter removed it from your list (status: skipped).</div>{% endif %}
@@ -13,7 +13,8 @@
 <form method="post" action="/job/{{ j.uid }}/apply"><input type="hidden" name="token" value="{{ token }}"><button class="ghost">Auto-fill the form</button></form>
 {% if j.apply_url or j.url %}<a class="btn" style="background:none;color:var(--text);border:1px solid var(--line)" href="{{ (j.apply_url or j.url)|link }}" target="_blank" rel="noopener noreferrer">Open the ad</a>{% endif %}
 <form method="post" action="/job/{{ j.uid }}/status" class="row"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="back" value="/job/{{ j.uid }}">
-<select name="status">{% for s in statuses %}<option {{ 'selected' if s==j.status }}>{{ s }}</option>{% endfor %}</select><button class="ghost">Save status</button></form></div>
+<select name="status">{% for s in statuses %}<option {{ 'selected' if s==j.status }}>{{ s }}</option>{% endfor %}</select><button class="ghost">Save status</button></form>
+<form method="post" action="/job/{{ j.uid }}/hide-company" title="Never show jobs from {{ j.company }} again"><input type="hidden" name="token" value="{{ token }}"><button class="ghost">Hide this company</button></form></div>
 {% if request.query_params.get('myself') %}<div class="note">The application opened in Chrome and the <b>_UPLOAD</b> folder opened next to it with this job's CV and cover letter. Upload them from there, copy your answers below, submit, then set the status to "applied".</div>{% endif %}
 {% if request.query_params.get('files') %}<div class="note">Your CV, cover letter and answers are in the <b>_UPLOAD</b> folder (it just opened). In the site's upload window pick that folder once; next time it opens there by itself.</div>{% endif %}
 {% if upload_for %}<p class="muted">_UPLOAD folder now holds the CV + letter for: <b>{{ upload_for }}</b>{% if upload_for != (j.company ~ ' - ' ~ j.title) %} &mdash; press the button below to put this job's files there{% endif %}.</p>{% endif %}

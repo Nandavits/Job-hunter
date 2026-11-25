@@ -7,6 +7,8 @@ Nothing is ever submitted: "Apply" opens the application in a browser and fills 
 """
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import datetime as dt
 import logging
 import secrets
@@ -280,6 +282,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
             from .filters import german_ask
             rows = [r for r in rows if bool(german_ask(r.get("title") or "", r.get("description") or "")[0])
                     == (lang == "de")]
+        from .hidden import is_hidden, norm
+        rows = [r for r in rows if not is_hidden(r.get("company") or "", search)]
+        best: dict = {}                                    # the same job from several alerts: show it once
+        for r in sorted(rows, key=lambda r: (-(r.get("score") or 0), -len(r.get("description") or ""))):
+            best.setdefault((norm(r.get("company") or ""), norm(r.get("title") or "")), r)
+        rows = list(best.values())
         countries = sorted({r["country"] for r in rows})
         if country:
             rows = [r for r in rows if r["country"] == country]
@@ -350,6 +358,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         else:
             store.update(job["uid"], status=status)
         return RedirectResponse(back if back.startswith("/") else "/", status_code=303)
+
+    @app.post("/job/{uid}/hide-company")
+    def hide_company(uid: str, token_: str = Form("", alias="token")):
+        check(token_)
+        job = store.get(uid)
+        if not job or not job.get("company"):
+            raise HTTPException(status_code=404, detail="No such job")
+        from . import hidden
+        hidden.add(job["company"])
+        for r in store.list(limit=100_000):            # its open ads go too
+            if r.get("status") in OPEN and hidden.is_hidden(r.get("company") or ""):
+                store.update(r["uid"], status="skipped", notes=((r.get("notes") or "") +
+                                                                "\ncompany hidden by you").strip())
+        return RedirectResponse("/?hidden=" + quote(job["company"]), status_code=303)
 
     @app.post("/job/{uid}/prepare")
     def prepare(uid: str, token_: str = Form("", alias="token")):

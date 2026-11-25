@@ -420,6 +420,10 @@ def include_german_ads(cfg: dict) -> bool:
 
 def evaluate(job: Job, cfg: dict) -> Job:
     """Fill in score / german_required / excluded_reason on the job."""
+    from .hidden import is_hidden
+    if is_hidden(job.company, cfg):
+        job.excluded_reason = "company hidden by you"
+        return job
     job.excluded_reason = title_matches(job, cfg) or location_matches(job, cfg)
     if job.excluded_reason:
         return job

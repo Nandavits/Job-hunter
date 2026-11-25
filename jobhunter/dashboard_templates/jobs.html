@@ -9,13 +9,14 @@
 <label class="muted">Min score <input name="min_score" type="number" min="0" max="100" value="{{ min_score }}" style="width:70px"></label>
 <input name="q" value="{{ q }}" placeholder="Company or title" style="width:220px"><button>Filter</button>
 <span class="muted">{{ rows|length }} shown</span></form>
+{% if request.query_params.get('hidden') %}<div class="note">You won't see jobs from <b>{{ request.query_params.get('hidden') }}</b> again. To undo: remove it from data/hidden-companies.json.</div>{% endif %}
 {% if ads_busy.running %}<div class="note">Reading the ads of jobs that had no ad text ({{ ads_busy.done }} done so far)... reload this page in a minute: their scores become real.</div>
 {% elif no_ad %}<form class="note row" method="post" action="/read-ads"><input type="hidden" name="token" value="{{ token }}">
 <span>{{ no_ad }} of these jobs have no ad text yet, so their score is only a guess (they came from alert emails).</span><button>Read their ads now</button></form>{% endif %}
 <div class="card">{% if rows %}<table><tr><th>Score</th><th>Job</th><th>Where · posted</th><th>Why this score</th><th>Status</th></tr>
 {% for r in rows %}<tr><td class="score">{{ r.score or 0 }}</td>
 <td><a href="/job/{{ r.uid }}">{{ r.title }}</a><div class="muted">{{ r.company }}</div></td>
-<td>{{ r.country }}<div class="muted">{{ r.location or '' }}{% if r.posted_at %} · {{ age_text(r.posted_at) }}{% endif %}</div></td>
+<td>{{ r.country }}<div class="muted">{{ r.location or '' }}{% if r.posted_at %} · {{ age_text(r.posted_at) }}{% elif r.collected_at %} · found {{ age_text((r.collected_at|string)[:10]) }}{% endif %}</div></td>
 <td class="muted">{% for part in r.why.split(' · ') %}{% if part.startswith('MISSING MUST-HAVE') %}<span class="must">{{ part }}</span>{% elif part.startswith('German ad') or part.startswith('Asks German') %}<span style="color:var(--gold2)">{{ part }}</span>{% else %}{{ part }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</td>
 <td><span class="tag">{{ r.status }}</span>{% if r.busy %}<div class="muted">{{ r.busy }}</div>{% endif %}</td></tr>{% endfor %}</table>
 {% else %}<p class="muted">No jobs match these filters.</p>{% endif %}</div>{% endblock %}

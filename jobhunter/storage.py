@@ -63,15 +63,19 @@ class Store:
         """Insert jobs not seen before (by uid). Returns uids of newly inserted jobs."""
         new_uids = []
         with self.engine.begin() as conn:
-            existing = {r[0] for r in conn.execute(select(jobs_table.c.uid))}
+            existing = {r[0]: r[1] for r in conn.execute(select(jobs_table.c.uid, jobs_table.c.posted_at))}
             for job in jobs:
                 if job.uid in existing:
+                    if job.posted_at and not existing[job.uid]:     # date known now (older rows had none)
+                        conn.execute(update(jobs_table).where(jobs_table.c.uid == job.uid)
+                                     .values(posted_at=job.posted_at))
+                        existing[job.uid] = job.posted_at
                     continue
                 row = job.to_row()
                 row = {k: v for k, v in row.items() if k in jobs_table.c}
                 row["status"] = "skipped" if job.excluded_reason else "new"
                 conn.execute(jobs_table.insert().values(**row))
-                existing.add(job.uid)
+                existing[job.uid] = job.posted_at
                 new_uids.append(job.uid)
         return new_uids
 
