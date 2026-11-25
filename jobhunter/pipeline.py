@@ -1,6 +1,8 @@
 """The daily run: collect → filter → store → tailor documents → tracker → digest."""
 from __future__ import annotations
 
+from .collectors.email_alerts import all_senders
+
 import json
 import re
 import time
@@ -275,7 +277,7 @@ def check_application_replies(settings: Settings, store: Store) -> list[str]:
         from .inbox import check_replies
         return check_replies(store, settings.env("GMAIL_ADDRESS"), settings.env("GMAIL_APP_PASSWORD"),
                              {"imap_host": alerts.get("imap_host", "imap.gmail.com"), **cfg},
-                             DATA_DIR / "inbox_seen.json", skip_senders=alerts.get("senders", []))
+                             DATA_DIR / "inbox_seen.json", skip_senders=all_senders(alerts))
     except Exception as exc:
         log.warning("Could not read replies to your applications: %s", exc)
         return []

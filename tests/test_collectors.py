@@ -380,3 +380,9 @@ def test_board_alerts_jobvector_kimeta_and_confirmation_links():
 
     confirm = '<a href="https://www.empfehlungsbund.de/email-job-abo/x/confirm">E-Mail-Adresse bestätigen und Job-Newsletter aktivieren</a>'
     assert parse_board_html(confirm, "empfehlungsbund") == []
+
+
+def test_every_known_job_site_is_read_even_if_config_lists_few():
+    from jobhunter.collectors.email_alerts import all_senders
+    s = all_senders({"senders": ["my-own-site.de"]})
+    assert s[0] == "my-own-site.de" and "germantechjobs" in s and "absolventa" in s and len(s) == len(set(s))

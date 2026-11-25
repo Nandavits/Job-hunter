@@ -99,6 +99,19 @@ def parse_glassdoor_html(html: str) -> list[Job]:
 
 
 # Job boards whose alert emails are read with the general parser below: sender-address part -> site name.
+# Every job site Job Hunter knows: read for everyone, even if config.yaml lists only some of them.
+KNOWN_SENDERS = ["jobalerts-noreply@linkedin.com", "jobs-listings@linkedin.com", "jobagent.stepstone.de", "indeed",
+                 "mail.xing.com", "glassdoor.com", "jobvector", "yourfirm", "jobware", "goodjobs", "kimeta",
+                 "empfehlungsbund", "interamt", "karriere-familienunternehmen", "entrepreneursclub", "joblift",
+                 "arbeitnow", "germantechjobs", "berlinstartupjobs", "get-in-it", "welcometothejungle", "otta",
+                 "absolventa"]
+
+
+def all_senders(cfg: dict) -> list[str]:
+    """Your senders from config.yaml plus every known job site (new sites work without editing settings)."""
+    return list(dict.fromkeys([*(cfg.get("senders") or []), *KNOWN_SENDERS]))
+
+
 BOARD_SENDERS = {
     "jobvector": "jobvector", "yourfirm": "yourfirm", "jobware": "jobware", "goodjobs": "goodjobs",
     "kimeta": "kimeta", "empfehlungsbund": "empfehlungsbund", "interamt": "interamt",
@@ -317,7 +330,7 @@ def fetch(cfg: dict, address: str, app_password: str) -> list[Job]:
     with imaplib.IMAP4_SSL(cfg.get("imap_host", "imap.gmail.com")) as imap:
         imap.login(address, app_password)
         imap.select(cfg.get("folder", "INBOX"), readonly=True)  # read-only: nothing is changed
-        for sender in cfg.get("senders", []):
+        for sender in all_senders(cfg):
             status, data = imap.search(None, "SINCE", since, "FROM", f'"{sender}"')
             if status != "OK":
                 continue
