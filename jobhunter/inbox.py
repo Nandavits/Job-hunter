@@ -44,7 +44,7 @@ INTERVIEW = re.compile(
     r"einladung zu|vorstellungsgespräch|kennenlerngespräch|kennenlernen möchten|nächste(?:n)? (?:schritt|runde)|"
     r"termin (?:vereinbaren|vorschlagen)", re.I)
 RECEIVED = re.compile(
-    r"thank(?:s| you) for (?:your )?(?:application|applying)|(?:we have |we've )?received your application|"
+    r"thank(?:s| you) for (?:your |submitting your )?(?:application|applying)|confirmation that we received|(?:we have |we've )?received your application|"
     r"application (?:received|confirmation)|landed in our pipeline|vielen dank für (?:ihre|deine) bewerbung|"
     r"eingangsbestätigung|bewerbung (?:ist )?(?:bei uns )?eingegangen", re.I)
 INCOMPLETE = re.compile(
@@ -71,7 +71,9 @@ def classify(text: str) -> str:
         return "rejected"
     if INTERVIEW.search(text):
         return "interview"
-    if WEAK_REJECTION.search(text) and re.search(r"application|bewerbung|position|stelle|role", text, re.I):
+    # a receipt confirmation often explains what happens to those who "unfortunately" don't go on (Sandvik)
+    if WEAK_REJECTION.search(text) and re.search(r"application|bewerbung|position|stelle|role", text, re.I) \
+            and not RECEIVED.search(text):
         return "rejected"
     if INCOMPLETE.search(text):
         return "incomplete"
@@ -131,6 +133,11 @@ def apply_reply(store, job: dict, kind: str, subject: str, day: str) -> str:
     status = job["status"]
     if kind in ("rejected", "interview") and STEP.get(kind, 0) > STEP.get(status, 0) and status != "offer":
         values["status"] = kind
+    elif kind == "interview" and status == "rejected":
+        # invited after the "rejection": that email was misread (e.g. a receipt that explains rejections)
+        rejected_on = re.findall(r"\[(\d{4}-\d{2}-\d{2})\] rejection:", notes)
+        if rejected_on and day >= max(rejected_on):
+            values["status"] = "interview"
     store.update(job["uid"], **values)
     job.update(values)
     return values.get("status", "note")
@@ -159,7 +166,7 @@ def _text(msg) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"(?is)<(style|script).*?</\1>", " ", html)))
 
 
-RULES_VERSION = 2          # raise when the rules above change: emails read before are then read again
+RULES_VERSION = 3          # raise when the rules above change: emails read before are then read again
 
 
 def _load_seen(path: Path) -> set:

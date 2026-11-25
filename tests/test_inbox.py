@@ -146,3 +146,32 @@ def test_check_replies_end_to_end(store, tmp_path, monkeypatch):
     assert _by(store, "Ablefy")["status"] == "applied"           # job-alert email is ignored
     assert len(changes) == 2
     assert check_replies(store, "me@gmail.com", "pw", {}, seen) == []   # already read: nothing twice
+
+
+def test_receipt_that_explains_rejections_is_not_a_rejection():
+    from jobhunter.inbox import classify
+    sandvik = ("Thank you for submitting your application for Data Analyst. Hello! Thank you for applying for a "
+               "position with us, this is a confirmation that we received your application. We have a limited "
+               "ability to give personal feedback to those who unfortunately don't proceed to the next step of "
+               "the process. If that's the case, you'll receive your feedback by e-mail.")
+    assert classify(sandvik) == "received"
+    assert classify("Unfortunately we have decided not to continue with your application.") == "rejected"
+    alva = ("Thank you for interest in Sandvik - please conduct an assessment to complete your application. "
+            "Sandvik has invited you to take part in an online assessment as part of a recruitment process")
+    assert classify(alva) == "interview"
+
+
+def test_invitation_after_a_misread_rejection_wins(tmp_path):
+    from jobhunter.inbox import apply_reply
+    from jobhunter.models import Job
+    from jobhunter.storage import Store
+    store = Store(f"sqlite:///{tmp_path / 'j.db'}")
+    job = Job(source="email", external_id="s", company="Sandvik", title="Data Analyst", url="https://x/s")
+    store.save([job])
+    store.update(job.uid, status="rejected", notes="[2026-11-24] rejection: Thank you for submitting")
+    row = store.get(job.uid)
+    assert apply_reply(store, row, "interview", "please conduct an assessment", "2026-11-25") == "interview"
+    old = Job(source="email", external_id="o", company="Acme", title="Data Analyst", url="https://x/o")
+    store.save([old])
+    store.update(old.uid, status="rejected", notes="[2026-11-20] rejection: we regret")
+    assert apply_reply(store, store.get(old.uid), "interview", "invite", "2026-11-10") == "note"
