@@ -41,6 +41,8 @@ For each requirement:
 - candidate_has: true only if the profile clearly shows it (skills list, experience bullets, education,
   certifications). A related but different tool is false (Metabase is not Tableau, PostgreSQL is not
   SQL Server/SSMS, GCP is not AWS). A degree requirement is met by a related degree the ad accepts.
+  Everyday abilities that someone doing the candidate's work clearly has count as true when the profile
+  shows related work (e.g. using AI tools for someone in AI engineering, Git for a developer).
 min_years: the minimum years of professional experience the ad asks for (lowest number of a range;
 "mindestens drei Jahre" = 3; "erste Berufserfahrung"/"first experience" = 0; null if not stated).
 german_level: the German the ad asks for (none, A1..C2; "sehr gute/fließende/verhandlungssichere
@@ -98,12 +100,23 @@ def check(job: dict, profile: dict, api_key: str, model: str = "", client=None) 
             from .llm import make_client
             client = make_client(api_key)
         ad = f"Title: {job.get('title')}\nCompany: {job.get('company')}\n\n{(job.get('description') or '')[:12000]}"
-        msg = client.messages.create(
-            model=model or MODEL, max_tokens=1500, system=SYSTEM, tools=[TOOL], tool_choice={"type": "auto"},
-            messages=[{"role": "user", "content": f"<candidate_profile>\n{json.dumps(_profile_text(profile), ensure_ascii=False)}"
-                                                  f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}])
-        data = next((dict(b.input) for b in msg.content if getattr(b, "type", "") == "tool_use"), None)
-        if not data or not isinstance(data.get("requirements"), list):
+        messages = [{"role": "user", "content": f"<candidate_profile>\n{json.dumps(_profile_text(profile), ensure_ascii=False)}"
+                                                f"\n</candidate_profile>\n\n<job_ad>\n{ad}\n</job_ad>"}]
+        data = None
+        for attempt in range(3):
+            choice = {"type": "tool", "name": "save_check"} if attempt else {"type": "auto"}
+            try:
+                msg = client.messages.create(model=model or MODEL, max_tokens=3000, system=SYSTEM, tools=[TOOL],
+                                             tool_choice=choice, messages=messages)
+            except Exception:
+                if attempt:
+                    raise
+                continue
+            data = _parse(msg)
+            if data:
+                break
+        if not data:
+            log.info("AI check: no usable answer for %s", job.get("company"))
             return None
     except Exception as exc:
         log.warning("AI check failed for %s: %s", job.get("company"), exc)
@@ -112,6 +125,30 @@ def check(job: dict, profile: dict, api_key: str, model: str = "", client=None) 
     folder = _folder()
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"{job['uid']}.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return data
+
+
+def _parse(msg) -> dict | None:
+    """The tool call's input, or JSON in the text; requirements sometimes come back as a JSON string."""
+    data = next((dict(b.input) for b in msg.content if getattr(b, "type", "") == "tool_use"), None)
+    if data is None:
+        from .tailor import _extract_json
+        try:
+            data = _extract_json("".join(getattr(b, "text", "") for b in msg.content))
+        except ValueError:
+            return None
+    reqs = data.get("requirements")
+    if isinstance(reqs, str):
+        try:
+            reqs = json.loads(reqs)
+        except ValueError:
+            return None
+    if not isinstance(reqs, list):
+        return None
+    data["requirements"] = [r for r in reqs if isinstance(r, dict) and r.get("skill")]
+    data.setdefault("all_required_needed", True)
+    data.setdefault("german_level", "none")
+    data.setdefault("min_years", None)
     return data
 
 

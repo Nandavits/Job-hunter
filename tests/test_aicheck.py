@@ -69,3 +69,22 @@ def test_summary_text():
               "min_years": 2, "german_level": "none", "all_required_needed": True}
     text = aicheck.summary(result, {})
     assert "MISSING REQUIRED: SSMS" in text and "Asks 2 years" in text and text.endswith("(AI check)")
+
+
+def test_answer_as_text_or_string_is_understood():
+    from jobhunter.aicheck import _parse
+    msg = SimpleNamespace(content=[SimpleNamespace(type="text", text='{"requirements": "[{\\"skill\\": \\"SQL\\", \\"required\\": true, \\"candidate_has\\": true}]", "min_years": 2}')])
+    data = _parse(msg)
+    assert data["requirements"][0]["skill"] == "SQL" and data["min_years"] == 2 and data["german_level"] == "none"
+
+
+def test_retries_with_the_tool_forced():
+    class Flaky(FakeClient):
+        def create(self, **kw):
+            self.calls += 1
+            if kw["tool_choice"]["type"] == "auto":
+                return SimpleNamespace(content=[SimpleNamespace(type="text", text="Let me think...")])
+            return SimpleNamespace(content=[SimpleNamespace(type="tool_use", input=self.result)])
+    client = Flaky({"requirements": [{"skill": "SQL", "required": True, "candidate_has": True}]})
+    assert aicheck.check(job("u9"), PROFILE, "", client=client)["requirements"][0]["skill"] == "SQL"
+    assert client.calls == 2
