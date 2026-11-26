@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import logging
 import subprocess
 import sys
@@ -43,6 +44,30 @@ def _need(store: Store, uid: str) -> dict:
     return job
 
 
+RUN_LIMIT_MINUTES = 60          # a run that takes longer is stuck (a site that never answers): stop it
+
+
+def _watchdog(settings) -> None:
+    """Never let one stuck run block all later runs: network calls time out, and the whole run stops
+    after RUN_LIMIT_MINUTES (the scheduler then starts the next one as usual)."""
+    import socket
+    socket.setdefaulttimeout(90)                  # e.g. a mail server or website that stops answering
+    import signal
+    if not hasattr(signal, "SIGALRM"):            # Windows: no alarm (runs there are started by hand)
+        return
+
+    def stuck(signum, frame):
+        log.error("This run took more than %d minutes and was stopped; the next run starts as usual.",
+                  RUN_LIMIT_MINUTES)
+        try:
+            from .runstatus import update
+            update(running=False, finished=datetime.now().isoformat(timespec="seconds"), ok=False)
+        finally:
+            os._exit(3)
+    signal.signal(signal.SIGALRM, stuck)
+    signal.alarm(RUN_LIMIT_MINUTES * 60)
+
+
 def cmd_run(args, settings):
     from .config import DATA_DIR, OUTPUT_DIR
     from .pipeline import run
@@ -51,6 +76,7 @@ def cmd_run(args, settings):
     handler = logging.FileHandler(DATA_DIR / "last-run.log", mode="w", encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%H:%M:%S"))
     logging.getLogger().addHandler(handler)          # data/last-run.log: what the latest run did
+    _watchdog(settings)
     result = run(settings, send_digest=not args.no_digest, make_docs=not args.no_docs)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
@@ -524,7 +550,12 @@ def cmd_schedule(args, settings):
             # A fresh process each time, so updated code and settings are used without restarting.
             from .runstatus import update as run_status
             run_status(started=now.isoformat(timespec="seconds"), running=True, every_minutes=int(every or 0))
-            result = subprocess.run([sys.executable, "-m", "jobhunter", "run"], check=False)
+            try:
+                result = subprocess.run([sys.executable, "-m", "jobhunter", "run"], check=False,
+                                        timeout=(RUN_LIMIT_MINUTES + 5) * 60)
+            except subprocess.TimeoutExpired:
+                log.error("A run was stuck and was stopped.")
+                result = subprocess.CompletedProcess([], 3)
             if result.returncode:
                 log.warning("Run failed with exit code %s", result.returncode)
             run_status(running=False, finished=datetime.now().isoformat(timespec="seconds"),
