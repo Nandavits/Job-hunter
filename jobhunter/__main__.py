@@ -367,6 +367,16 @@ def cmd_check_links(args, settings):
     close_dead_links(_store(settings), make_session(), dry_run=True)
 
 
+def cmd_ai_check(args, settings):
+    """Let Claude read every open job's ad against your profile now (hides jobs you don't fully match)."""
+    from .aicheck import apply_to_open_jobs
+    if not settings.env("ANTHROPIC_API_KEY"):
+        print("No ANTHROPIC_API_KEY in .env - the AI check needs it.")
+        return
+    changed = apply_to_open_jobs(_store(settings), settings, limit=args.limit)
+    print(f"Done: {changed} jobs updated. Reload the dashboard.")
+
+
 def cmd_use_cv_search(args, settings):
     """Search for jobs that fit your CV (profile.yaml) instead of the titles written in config.yaml."""
     import shutil
@@ -636,6 +646,9 @@ def main(argv=None):
     p = sub.add_parser("import-jobs", help="copy jobs + applications from an older jobs.db file")
     p.add_argument("file")
     p.set_defaults(func=cmd_import_jobs)
+    p = sub.add_parser("ai-check", help="Claude reads every open ad against your profile now")
+    p.add_argument("--limit", type=int, default=300)
+    p.set_defaults(func=cmd_ai_check)
     sub.add_parser("use-cv-search", help="search for jobs that fit your CV, not the titles in config.yaml"
                    ).set_defaults(func=cmd_use_cv_search)
     p = sub.add_parser("dashboard", help="your jobs, applications and charts in the browser")
