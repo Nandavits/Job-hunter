@@ -211,7 +211,9 @@ def apply_to_open_jobs(store, settings, limit: int = 80) -> int:
     search, profile = settings.search, settings.profile
     model = settings.env("ANTHROPIC_CHECK_MODEL", MODEL)
     changed = checked = 0
-    rows = [r for r in store.list(limit=100_000) if r["status"] in ("new", "prepared")]
+    rows = [r for r in store.list(limit=100_000, include_skipped=True)
+            if r["status"] in ("new", "prepared")
+            or (r["status"] == "skipped" and str(r.get("excluded_reason") or "").startswith("AI check"))]
     log.info("AI check: %d open jobs, model %s", len(rows), model)
     rows.sort(key=lambda r: cached(r, profile) is None)               # cached ones are free: first
     for row in rows:
@@ -226,6 +228,14 @@ def apply_to_open_jobs(store, settings, limit: int = 80) -> int:
                          row.get("title"), len(row.get("description") or ""))
                 continue
         v = verdict(result, search)
+        if row["status"] == "skipped":                               # hidden by an earlier check
+            if not v["skip"]:
+                store.update(row["uid"], status="new", excluded_reason="", score=v["score"],
+                             matched_skills=",".join(v["have"]))
+                changed += 1
+            elif v["skip"] != row.get("excluded_reason"):
+                store.update(row["uid"], excluded_reason=v["skip"])
+            continue
         if v["skip"]:
             store.update(row["uid"], status="skipped", excluded_reason=v["skip"])
             changed += 1
