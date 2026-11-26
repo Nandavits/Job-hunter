@@ -175,3 +175,13 @@ def test_invitation_after_a_misread_rejection_wins(tmp_path):
     store.save([old])
     store.update(old.uid, status="rejected", notes="[2026-11-20] rejection: we regret")
     assert apply_reply(store, store.get(old.uid), "interview", "invite", "2026-11-10") == "note"
+
+
+def test_talent_pool_and_data_protection_mail_is_not_an_interview():
+    from jobhunter.inbox import classify
+    constaff = ("Constaff GmbH - Data protection in the application process. First of all, we would like to thank "
+                "you for your application and your interest in our company. May we also reach out to you in the "
+                "future with suitable project inquiries? If so, we would gladly invite you to become part of our "
+                "pool of experts by consenting to the inclusion of your personal data through the feedback portal.")
+    assert classify(constaff) == "received"
+    assert classify("We would like to invite you to an interview next week.") == "interview"

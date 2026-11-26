@@ -65,11 +65,16 @@ GENERIC_WORDS = {"data", "the", "group", "jobs", "digital", "tech", "solutions",
 STEP = {"applied": 0, "interview": 1, "rejected": 2, "offer": 3}
 
 
+# "we would gladly invite you to become part of our pool of experts" is not an interview (Constaff)
+NOT_AN_INVITATION = re.compile(r"[^.!?\n]*(?:(?:talent|expert|candidate|bewerber|kandidaten)[- ]?pool|pool of "
+                               r"(?:experts|talents?|candidates)|feedback portal|newsletter)[^.!?\n]*[.!?]?", re.I)
+
+
 def classify(text: str) -> str:
     """'rejected', 'interview', 'received', 'incomplete' or ''. A rejection wins over everything else."""
     if REJECTION.search(text):
         return "rejected"
-    if INTERVIEW.search(text):
+    if INTERVIEW.search(NOT_AN_INVITATION.sub(" ", text)):
         return "interview"
     # a receipt confirmation often explains what happens to those who "unfortunately" don't go on (Sandvik)
     if WEAK_REJECTION.search(text) and re.search(r"application|bewerbung|position|stelle|role", text, re.I) \
