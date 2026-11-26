@@ -112,3 +112,9 @@ def _own_employer_list(tmp_path, monkeypatch):
 def _own_run_status(tmp_path, monkeypatch):
     from jobhunter import runstatus
     monkeypatch.setattr(runstatus, "FILE", tmp_path / "last-run.json")
+
+
+@pytest.fixture(autouse=True)
+def _own_ai_checks(tmp_path, monkeypatch):
+    from jobhunter import aicheck
+    monkeypatch.setattr(aicheck, "FOLDER", tmp_path / "ai-checks")

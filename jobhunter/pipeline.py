@@ -341,6 +341,13 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     new_jobs = [store.get(j.uid) for j in kept if j.uid in new_uids]
     new_jobs, reposts, duplicates = skip_known_jobs(store, new_jobs, search.get("reapply_after_days", 180))
     log.info("Collected %d · matching %d · new %d", len(raw), len(kept), len(new_jobs))
+    try:   # Claude reads every open ad against your profile: only jobs whose required skills you all have stay
+        from .aicheck import apply_to_open_jobs
+        if apply_to_open_jobs(store, settings, limit=int(search.get("ai_checks_per_run", 120))):
+            new_jobs = [store.get(j["uid"]) for j in new_jobs]
+            new_jobs = [j for j in new_jobs if j and j["status"] in ("new", "prepared")]
+    except Exception as exc:
+        log.warning("AI check failed: %s", exc)
 
     prepared: dict[str, dict] = {}
     if make_docs:

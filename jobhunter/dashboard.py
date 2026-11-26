@@ -472,6 +472,7 @@ def serve(port: int = 8095, open_browser: bool = True) -> None:
     global _STARTED_STAMP
     _STARTED_STAMP = _code_stamp()
     threading.Thread(target=_restart_when_updated, daemon=True).start()
+    threading.Thread(target=_ai_check_now, daemon=True).start()    # corrections show at once, not next run
     uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")
 
 
@@ -488,6 +489,18 @@ def _version_label() -> str:
     import datetime as _dt
     stamp = _STARTED_STAMP or _code_stamp()
     return _dt.datetime.fromtimestamp(stamp).strftime("%d %b %Y, %H:%M") if stamp else VERSION
+
+
+def _ai_check_now() -> None:
+    """Read every open job's ad against your profile now (cached ads cost nothing)."""
+    try:
+        from .aicheck import apply_to_open_jobs
+        from .config import load_settings
+        from .storage import Store
+        settings = load_settings()
+        apply_to_open_jobs(Store(settings.database_url), settings, limit=300)
+    except Exception as exc:
+        log.warning("AI check in the dashboard failed: %s", exc)
 
 
 def _code_stamp() -> float:

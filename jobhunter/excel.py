@@ -40,10 +40,29 @@ STATUS_FILLS = {"applied": "DDEBF7", "interview": "E2EFDA", "offer": "C6E0B4", "
                 "prepared": "FFF2CC", "skipped": "EDEDED"}
 
 
+_PROFILE: dict = {}
+
+
+def _profile() -> dict:
+    if not _PROFILE:
+        from .config import load_settings
+        _PROFILE.update(load_settings().profile)
+    return _PROFILE
+
+
 def fit_summary(r: dict, search: dict | None) -> str:
     """'You have: SQL, dbt · Missing: Spark · Asks 2 years · Posted yesterday' for one job."""
     from .filters import min_years_required, score_job
     text = r.get("description") or ""
+    if r.get("uid") and search is not None:          # Claude read this ad against your profile: use that
+        try:
+            from .aicheck import cached, summary
+            from .config import load_settings
+            hit = cached(r, _profile())
+            if hit:
+                return summary(hit, search)
+        except Exception:
+            pass
     parts = []
     if len(text) < 100:
         parts.append("No ad text yet: score is a guess")
