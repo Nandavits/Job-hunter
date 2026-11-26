@@ -70,11 +70,19 @@ NOT_AN_INVITATION = re.compile(r"[^.!?\n]*(?:(?:talent|expert|candidate|bewerber
                                r"(?:experts|talents?|candidates)|feedback portal|newsletter)[^.!?\n]*[.!?]?", re.I)
 
 
+# "If you don't hear from us within 4 weeks, ... nicht weiter berücksichtigt" is not a rejection (GENO Broker)
+IF_SENTENCE = re.compile(r"(?:^|(?<=[.!?\n]))\s*(?:sollte[n]?|falls|wenn|if|should)\b[^.!?\n]*[.!?]?", re.I)
+# "Im nächsten Schritt werden wir Ihre Unterlagen prüfen" is a receipt, not an interview (GOLDBECK)
+REVIEW_STEP = re.compile(r"[^.!?\n]*(?:nächsten? schritt|next steps?)[^.!?\n]*(?:prüfen|sichten|review|melden|"
+                         r"zukommen|get back|contact you|reach out|look at)[^.!?\n]*[.!?]?", re.I)
+
+
 def classify(text: str) -> str:
     """'rejected', 'interview', 'received', 'incomplete' or ''. A rejection wins over everything else."""
+    text = IF_SENTENCE.sub(" ", text)
     if REJECTION.search(text):
         return "rejected"
-    if INTERVIEW.search(NOT_AN_INVITATION.sub(" ", text)):
+    if INTERVIEW.search(REVIEW_STEP.sub(" ", NOT_AN_INVITATION.sub(" ", text))):
         return "interview"
     # a receipt confirmation often explains what happens to those who "unfortunately" don't go on (Sandvik)
     if WEAK_REJECTION.search(text) and re.search(r"application|bewerbung|position|stelle|role", text, re.I) \
@@ -171,7 +179,7 @@ def _text(msg) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"(?is)<(style|script).*?</\1>", " ", html)))
 
 
-RULES_VERSION = 3          # raise when the rules above change: emails read before are then read again
+RULES_VERSION = 4          # raise when the rules above change: emails read before are then read again
 
 
 def _load_seen(path: Path) -> set:

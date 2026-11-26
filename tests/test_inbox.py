@@ -185,3 +185,17 @@ def test_talent_pool_and_data_protection_mail_is_not_an_interview():
                 "pool of experts by consenting to the inclusion of your personal data through the feedback portal.")
     assert classify(constaff) == "received"
     assert classify("We would like to invite you to an interview next week.") == "interview"
+
+
+def test_receipts_with_conditions_and_next_steps():
+    from jobhunter.inbox import classify
+    geno = ("vielen Dank für Ihre Bewerbung auf die Position: Data Analyst (m/w/d). Wir haben Ihre Unterlagen erhalten "
+            "und werden diese sorgfältig prüfen. Sollte Ihr Profil unseren Anforderungen entsprechen, werden wir im "
+            "nächsten Schritt auf Sie zukommen. Sollten wir uns innerhalb der nächsten 4 Wochen nicht bei Ihnen gemeldet "
+            "haben, gehen Sie bitte davon aus, dass Ihr Profil im Bewerbungsprozess nicht weiter berücksichtigt werden konnte.")
+    assert classify(geno) == "received"
+    goldbeck = ("vielen Dank für Ihre Bewerbung auf die Stelle Data Engineer. Wir freuen uns sehr über Ihr Interesse. "
+                "Im nächsten Schritt werden wir Ihre Unterlagen prüfen und uns bezüglich des weiteren Vorgehens bei Ihnen melden.")
+    assert classify(goldbeck) == "received"
+    assert classify("Leider müssen wir Ihnen mitteilen, dass wir Sie nicht weiter berücksichtigen können.") == "rejected"
+    assert classify("Gerne möchten wir Sie zu einem Vorstellungsgespräch einladen.") == "interview"
