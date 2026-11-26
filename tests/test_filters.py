@@ -163,3 +163,30 @@ def test_european_cities_outside_germany_are_dropped(config):
         assert evaluate(_job("Data Engineer", "SQL Python", location=loc), cfg).excluded_reason, loc
     for loc in ("Cologne", "Berlin", "Freiburg im Breisgau", "Germany"):
         assert not evaluate(_job("Data Engineer", "SQL Python", location=loc), cfg).excluded_reason, loc
+
+
+RITTAL = """Completed studies in (business) informatics, statistics, data science or quantitatively oriented economics or comparable qualification
+Professional experience in Business Intelligence, Data Analytics or Data Science, ideally in B2B sales, marketing or e-commerce
+Good SQL and Python skills; experience with automated ETL processes, confident use of SSMS, experience with Windows VMs
+Solid experience with Power BI in complex data models and KPI dashboards; SAP BW, SAP Datasphere/SAC, GA4 and Contentsquare are desirable.
+Excellent German and English skills, both spoken and written.
+Strong analytical skills, good understanding of complex relationships
+Communication and teamwork skills as well as entrepreneurial thinking"""
+
+
+def test_rittal_ad_shows_what_is_missing_and_scores_honestly():
+    from jobhunter.filters import evaluate
+    from jobhunter.models import Job
+    cfg = {"title_keywords": ["data analyst", "business intelligence"], "locations": ["germany"],
+           "german_level": "A2",
+           "skills": {"sql": 3, "python": 2, "power bi": 1, "etl": 2, "dbt": 3, "airflow": 3}}
+    job = evaluate(Job(source="email", external_id="r", company="Rittal", title="Data Analyst Business Intelligence (m/w/d)",
+                       url="u", location="Herborn, Germany", description=RITTAL), cfg)
+    missing = job.extra["missing_skills"]
+    for tool in ("ssms", "windows vms", "sap bw", "datasphere", "ga4", "contentsquare"):
+        assert tool in missing, tool
+    assert "ssms" in job.extra["missing_must"]                  # "confident use of SSMS"
+    assert "ga4" not in job.extra["missing_must"]               # "are desirable"
+    assert job.extra.get("german", "").startswith("C1")         # "Excellent German"
+    assert "sap" not in missing                                 # counted once, as "sap bw"
+    assert job.score <= 60

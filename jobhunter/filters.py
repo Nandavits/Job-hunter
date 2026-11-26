@@ -32,7 +32,8 @@ LEVEL_NEAR_GERMAN = [
 OPTIONAL_MARKERS = re.compile(
     r"\bplus\b|nice[- ]to[- ]have|an advantage|advantageous|\bbonus\b|beneficial|"
     r"\bpreferred\b|not (?:a )?(?:must|required|necessary)|no german|von vorteil|"
-    r"wünschenswert|wuenschenswert|optional|is helpful|would be great|keine deutsch", re.I)
+    r"wünschenswert|wuenschenswert|optional|is helpful|would be great|keine deutsch|desirable|"
+    r"\bideally\b|idealerweise|gerne auch|ein plus", re.I)
 
 ENGLISH_WORKPLACE = re.compile(
     r"(?:working|company|office|team|business) language is english|english[- ]speaking (?:team|company|environment)|"
@@ -292,7 +293,13 @@ OTHER_TOOLS = ["kubernetes", "bigquery", "snowflake", "databricks", "spark", "ka
                "airbyte", "sqlmesh", "qlik", "sas", "hadoop", "mongodb", "elasticsearch", "golang",
                # AI and software-engineering tools: their absence keeps AI / backend roles from scoring high
                "pytorch", "tensorflow", "langchain", "llamaindex", "typescript", "javascript", "c++",
-               "c#", "rust", "kotlin", "computer vision", "reinforcement learning", "matlab"]
+               "c#", "rust", "kotlin", "computer vision", "reinforcement learning", "matlab",
+               # BI, Microsoft and SAP stacks, web analytics and business tools (Rittal: SSMS, SAP BW, GA4 ...)
+               "ssms", "sql server", "t-sql", "ssis", "ssas", "windows server", "windows vms", "windows vm", "vmware",
+               "sap bw", "sap hana", "datasphere", "sap analytics cloud", "s/4hana", "sap",
+               "ga4", "google analytics", "adobe analytics", "contentsquare", "salesforce", "hubspot",
+               "informatica", "talend", "alteryx", "knime", "microstrategy", "cognos", "dax", "power query",
+               "vba", "spss", "stata", "sharepoint", "dynamics 365", "oracle", "teradata", "dbeaver"]
 SKILL_ALIASES = {"postgres": ["postgres", "postgresql"], "data modelling": ["data modelling", "data modeling"],
                  "data modeling": ["data modeling", "data modelling"], "airflow": ["airflow"], "etl": ["etl"],
                  "elt": ["elt"], "google cloud": ["google cloud", "gcp"], "gcp": ["gcp", "google cloud"]}
@@ -304,8 +311,11 @@ SKILL_ALIASES = {"postgres": ["postgres", "postgresql"], "data modelling": ["dat
 MUST_HAVE = re.compile(
     r"\bproven\b|\brequired\b|\brequirements?\b|\bmust\b|\bmandatory\b|\bessential\b|\bexpert\b|"
     r"in-depth|\bdeep\b|\bsolid\b|\bstrong\b|hands-on experience|extensive|\bseveral years\b|"
-    r"\bvoraussetzung\b|zwingend|fundierte|umfassende|sehr gute kenntnisse|mehrjährige", re.I)
+    r"\bvoraussetzung\b|zwingend|fundierte|umfassende|sehr gute kenntnisse|mehrjährige|\bconfident\b|"
+    r"\bproficient\b|sicherer? umgang|routinierte?r? umgang", re.I)
 MUST_HAVE_CAP = {1: 65, 2: 55}
+# The ad asks for more German than you have: a real gap, so the score says so ("excellent German" = C1).
+GERMAN_CAP = {"B1": 80, "B2": 75, "C1": 60, "C2": 55}
 
 
 def score_job(job: Job, cfg: dict) -> int:
@@ -347,6 +357,11 @@ def score_job(job: Job, cfg: dict) -> int:
             missing[tool] = weight
         elif tool in must_missing:
             must_missing.remove(tool)              # an "or similar" elsewhere in the ad: not a hard need
+    for tool in list(missing):                      # "sap" when "sap bw" is already listed: count it once
+        if any(other != tool and _contains(other, tool) for other in missing):
+            missing.pop(tool)
+            if tool in must_missing:
+                must_missing.remove(tool)
     job.matched_skills = matched
     job.extra["missing_skills"] = list(missing)
     job.extra["missing_must"] = must_missing
@@ -381,6 +396,9 @@ def score_job(job: Job, cfg: dict) -> int:
     score = int(min(100, round(skill_part + title_part + exp_part + lang_part)))
     if must_missing:
         score = min(score, MUST_HAVE_CAP.get(len(must_missing), 50))
+    german = str(job.extra.get("german") or "")[:2].upper()      # set when the ad asks more German than you have
+    if german in GERMAN_CAP:
+        score = min(score, GERMAN_CAP[german])
     return score
 
 
