@@ -23,7 +23,7 @@ from .config import DATA_DIR
 
 log = logging.getLogger("jobhunter")
 FOLDER = None                                    # default: data/ai-checks
-MODEL = "claude-haiku-5-5"                       # cheap and fast: about 0.3 cents per ad
+MODEL = "claude-sonnet-5-5"                      # careful reading: about 1-2 cents per ad, each ad read once
 LEVELS = ["none", "A1", "A2", "B1", "B2", "C1", "C2"]
 
 SYSTEM = """You check job ads against one candidate's profile, very strictly and honestly.
@@ -31,8 +31,9 @@ Read the whole ad, in whatever language it is written (German, English, ...). Nu
 words ("drei Jahre", "two to three years").
 
 List every concrete requirement: tools, technologies, programming languages, platforms, methods
-(e.g. A/B testing, data modelling), domain knowledge, degrees and certifications. Do NOT list soft
-skills (communication, teamwork, analytical thinking) or spoken languages (report German separately).
+(e.g. A/B testing, data modelling), domain knowledge, degrees and certifications. NEVER list soft
+skills (communication, teamwork, analytical thinking, ownership) and NEVER list spoken languages such
+as German or English - report German only in german_level.
 For each requirement:
 - required: false only if the ad marks it optional (nice to have, desirable, ideally, a plus, preferred,
   von Vorteil, wünschenswert, idealerweise, gerne). Everything else the ad asks for is required: true.
@@ -41,8 +42,15 @@ For each requirement:
 - candidate_has: true only if the profile clearly shows it (skills list, experience bullets, education,
   certifications). A related but different tool is false (Metabase is not Tableau, PostgreSQL is not
   SQL Server/SSMS, GCP is not AWS). A degree requirement is met by a related degree the ad accepts.
-  Everyday abilities that someone doing the candidate's work clearly has count as true when the profile
-  shows related work (e.g. using AI tools for someone in AI engineering, Git for a developer).
+  Judge like a fair recruiter, not a keyword matcher:
+  * everyday working practices of the candidate's field are true when the profile shows that kind of
+    work: agile ways of working, code reviews, documentation, testing your own pipelines, using AI tools
+    (the candidate works in AI engineering), Git;
+  * a degree covers its core subjects: an M.Sc. in Data Science covers statistics, hypothesis testing,
+    machine learning fundamentals; a computer science degree covers programming fundamentals;
+  * work the profile describes counts even if the ad uses other words (building an analytics layer with
+    dbt on PostgreSQL IS data warehouse development; Airflow DAGs ARE orchestration).
+  Specific tools, platforms and domain experience the profile does not show stay false.
 min_years: the minimum years of professional experience the ad asks for (lowest number of a range;
 "mindestens drei Jahre" = 3; "erste Berufserfahrung"/"first experience" = 0; null if not stated).
 german_level: the German the ad asks for (none, A1..C2; "sehr gute/fließende/verhandlungssichere
