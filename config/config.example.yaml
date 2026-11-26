@@ -110,6 +110,11 @@ search:
   # The "Hide this company" button in the dashboard adds to data/hidden-companies.json instead.
   exclude_companies: []
 
+  # AI check (needs ANTHROPIC_API_KEY): Claude reads every ad against your profile.yaml.
+  # 0 = show only jobs where you have every required skill; 1 = also jobs missing one required skill
+  # (shown with "MISSING REQUIRED: ..."). Nice-to-haves never hide a job.
+  ai_max_missing: 0
+
   min_score: 55
 
   # true = only keep jobs whose ad text could be read, so skills and experience are really checked.

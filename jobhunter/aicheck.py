@@ -171,7 +171,8 @@ def verdict(result: dict, search: dict) -> dict:
     years = result.get("min_years")
     max_years = search.get("max_years_experience")
     skip = ""
-    if missing and result.get("all_required_needed", True):
+    allowed = int(search.get("ai_max_missing", 0) or 0)            # "show jobs missing 1 required skill"
+    if len(missing) > allowed and result.get("all_required_needed", True):
         skip = "AI check: missing required " + ", ".join(missing[:6])
     elif years is not None and max_years is not None and years > max_years:
         skip = f"AI check: asks for {years}+ years experience"

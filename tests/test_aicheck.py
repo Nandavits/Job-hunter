@@ -88,3 +88,14 @@ def test_retries_with_the_tool_forced():
     client = Flaky({"requirements": [{"skill": "SQL", "required": True, "candidate_has": True}]})
     assert aicheck.check(job("u9"), PROFILE, "", client=client)["requirements"][0]["skill"] == "SQL"
     assert client.calls == 2
+
+
+def test_allow_one_missing_required_skill():
+    result = {"requirements": [{"skill": "SQL", "required": True, "candidate_has": True},
+                               {"skill": "Snowflake", "required": True, "candidate_has": False},
+                               {"skill": "CI/CD", "required": True, "candidate_has": False}],
+              "min_years": None, "german_level": "none", "all_required_needed": True}
+    assert aicheck.verdict(result, {"ai_max_missing": 1})["skip"]          # two missing
+    result["requirements"].pop()
+    v = aicheck.verdict(result, {"ai_max_missing": 1})
+    assert v["skip"] == "" and v["missing"] == ["Snowflake"]
