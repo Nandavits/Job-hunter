@@ -167,6 +167,7 @@ def apply_to_open_jobs(store, settings, limit: int = 80) -> int:
     model = settings.env("ANTHROPIC_CHECK_MODEL", MODEL)
     changed = checked = 0
     rows = [r for r in store.list(limit=100_000) if r["status"] in ("new", "prepared")]
+    log.info("AI check: %d open jobs, model %s", len(rows), model)
     rows.sort(key=lambda r: cached(r, profile) is None)               # cached ones are free: first
     for row in rows:
         result = cached(row, profile)
@@ -176,6 +177,8 @@ def apply_to_open_jobs(store, settings, limit: int = 80) -> int:
             checked += 1
             result = check(row, profile, api_key, model)
             if result is None:
+                log.info("AI check: no result for %s - %s (ad text %d characters)", row.get("company"),
+                         row.get("title"), len(row.get("description") or ""))
                 continue
         v = verdict(result, search)
         if v["skip"]:

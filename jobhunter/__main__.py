@@ -373,6 +373,11 @@ def cmd_ai_check(args, settings):
     if not settings.env("ANTHROPIC_API_KEY"):
         print("No ANTHROPIC_API_KEY in .env - the AI check needs it.")
         return
+    from .config import DATA_DIR
+    handler = logging.FileHandler(DATA_DIR / "ai-check.log", mode="w", encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%H:%M:%S"))
+    logging.getLogger().addHandler(handler)          # data/ai-check.log: what the check did
+    logging.getLogger().setLevel(logging.INFO)
     changed = apply_to_open_jobs(_store(settings), settings, limit=args.limit)
     print(f"Done: {changed} jobs updated. Reload the dashboard.")
 
