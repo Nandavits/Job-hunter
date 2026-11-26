@@ -165,7 +165,18 @@ NOT_A_REQUIREMENT = re.compile(r"\bago\b|\bfounded\b|\blegacy\b|\bhistory\b|for 
                                r"\bour\b|\bseit\b|\bvacation\b", re.I)
 
 
+NUMBER_WORDS = {"ein": 1, "eine": 1, "einen": 1, "einem": 1, "einer": 1, "eins": 1, "zwei": 2, "drei": 3, "vier": 4,
+                "fünf": 5, "fuenf": 5, "sechs": 6, "sieben": 7, "acht": 8, "zehn": 10, "one": 1, "two": 2,
+                "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "ten": 10}
+NUMBER_WORD = re.compile(r"\b(" + "|".join(sorted(NUMBER_WORDS, key=len, reverse=True)) +
+                         r")\b(?=\s*\+?\s*(?:(?:[-–]|to|bis)\s*\w+\s*)?(?:jahr|year))", re.I)
+
+
 def min_years_required(text: str) -> int | None:
+    # "Mindestens drei Jahre", "two to three years": the words count like digits
+    text = NUMBER_WORD.sub(lambda m: str(NUMBER_WORDS[m.group(1).lower()]), text or "")
+    text = re.sub(r"\b(\d{1,2})\s*(?:[-–]|to|bis)\s*(" + "|".join(NUMBER_WORDS) + r")\b",
+                  lambda m: f"{m.group(1)}-{NUMBER_WORDS[m.group(2).lower()]}", text, flags=re.I)
     for sentence in _sentences(text):
         if not EXPERIENCE_WORDS.search(sentence):
             continue
@@ -299,7 +310,8 @@ OTHER_TOOLS = ["kubernetes", "bigquery", "snowflake", "databricks", "spark", "ka
                "sap bw", "sap hana", "datasphere", "sap analytics cloud", "s/4hana", "sap",
                "ga4", "google analytics", "adobe analytics", "contentsquare", "salesforce", "hubspot",
                "informatica", "talend", "alteryx", "knime", "microstrategy", "cognos", "dax", "power query",
-               "vba", "spss", "stata", "sharepoint", "dynamics 365", "oracle", "teradata", "dbeaver"]
+               "vba", "spss", "stata", "sharepoint", "dynamics 365", "oracle", "teradata", "dbeaver",
+               "datavault builder", "data vault", "infor", "microsoft fabric", "synapse", "palantir"]
 SKILL_ALIASES = {"postgres": ["postgres", "postgresql"], "data modelling": ["data modelling", "data modeling"],
                  "data modeling": ["data modeling", "data modelling"], "airflow": ["airflow"], "etl": ["etl"],
                  "elt": ["elt"], "google cloud": ["google cloud", "gcp"], "gcp": ["gcp", "google cloud"]}

@@ -190,3 +190,22 @@ def test_rittal_ad_shows_what_is_missing_and_scores_honestly():
     assert job.extra.get("german", "").startswith("C1")         # "Excellent German"
     assert "sap" not in missing                                 # counted once, as "sap bw"
     assert job.score <= 60
+
+
+def test_years_written_as_words():
+    from jobhunter.filters import min_years_required as years
+    assert years("Mindestens drei Jahre Erfahrung im Data Engineering") == 3
+    assert years("zwei bis drei Jahre Berufserfahrung") == 2
+    assert years("two to three years of experience") == 2
+    assert years("Erfahrung mit mindestens einer Cloud-Plattform (AWS, Azure oder GCP)") is None
+
+
+def test_cloud_alternatives_you_have_are_not_missing():
+    from jobhunter.filters import evaluate
+    from jobhunter.models import Job
+    ad = "Erfahrung mit mindestens einer Cloud-Plattform (AWS, Azure oder GCP). Snowflake und Datavault Builder."
+    job = evaluate(Job(source="email", external_id="s", company="sonotact", title="Data Engineer", url="u",
+                       location="Germany", description=ad),
+                   {"title_keywords": ["data engineer"], "locations": ["germany"], "skills": {"google cloud": 2}})
+    assert "aws" not in job.extra["missing_skills"] and "azure" not in job.extra["missing_skills"]
+    assert {"snowflake", "datavault builder"} <= set(job.extra["missing_skills"])
