@@ -12,6 +12,7 @@ from . import amazon, arbeitnow, arbeitsagentur, ats, databerlin, email_alerts
 from .base import get, log, make_session
 
 PAGE_SOURCES = {"personio", "greenhouse", "lever", "ashby"}   # Workday/SmartRecruiters read details themselves
+SEARCHED_BOARDS = {"smartrecruiters", "workday", "successfactors"}   # searched by word, not read in full
 
 
 def description_from_page(html: str) -> str:
@@ -72,15 +73,26 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
     from .. import discovery
     configured = list(sources.get("companies") or [])
     found_ones = [c for c in discovery.due() if (sources.get("discover_companies", True))]
-    for company in configured + found_ones:
+    big = []
+    if sources.get("big_companies", True):
+        from ..bigcompanies import BIG
+        mine = {(c.get("ats"), str(c.get("slug") or c.get("host") or "").lower()) for c in configured}
+        big = [dict(c) for c in BIG if (c["ats"], c["slug"].lower()) not in mine]
+    # big-company boards hold thousands of jobs: search them with your own job titles
+    words = list((sources.get("arbeitsagentur") or {}).get("queries") or [])[:8] or ["data"]
+    discovered = {id(c) for c in found_ones}
+    for company in configured + big + found_ones:
+        board = company
+        if company.get("ats") in SEARCHED_BOARDS and not company.get("queries"):
+            board = {**company, "queries": words}
         try:
-            found = ats.fetch_company(session, company)
+            found = ats.fetch_company(session, board)
         except Exception as exc:  # one broken board must not stop the run
             log.warning("Failed %s: %s", company.get("name"), exc)
-            if company in found_ones:
+            if id(company) in discovered:
                 discovery.mark(company, None)
             continue
-        if company in found_ones:
+        if id(company) in discovered:
             discovery.mark(company, len(found))
         log.info("%-20s %3d jobs", company.get("name", "?"), len(found))
         if keep:

@@ -51,7 +51,8 @@ The job titles it searches for come from **your** CV data (`profile.yaml`), see 
 | [Arbeitnow](https://www.arbeitnow.com) | English-speaking jobs in Germany | Public API |
 | [Data Berlin](https://databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
 | [Amazon jobs](https://www.amazon.jobs) | Amazon and AWS jobs in Germany | Amazon's public job search |
-| Company careers pages on Greenhouse, Lever, Ashby, Personio, SmartRecruiters, Workday, Recruitee, Teamtailor | The companies in `config.yaml`, plus every company Job Hunter finds by itself (below) | Public job-board feeds |
+| Company careers pages on Greenhouse, Lever, Ashby, Personio, SmartRecruiters, Workday, SAP SuccessFactors, Recruitee, Teamtailor | The companies in `config.yaml`, plus every company Job Hunter finds by itself (below) | Public job-board feeds |
+| Big employers' own careers sites | BMW Group, ZF, Schaeffler (SuccessFactors), Deutsche Bank, Airbus (Workday), Bosch, Continental, Delivery Hero, SIXT (SmartRecruiters), searched with your job titles, Germany only. List in `jobhunter/bigcompanies.py`; switch off with `sources: big_companies: false` | Public career-site feeds |
 | Every company hiring IT/data people in Germany | Once a day the job agency is searched for all IT and data ads; the careers page of each employer is looked up and then checked on every run (recruitment agencies are skipped) | Public job-board feeds |
 
 ### Read from your job alert emails (set up an alert on each site)
@@ -224,7 +225,7 @@ python -m jobhunter stats
 ```
 jobhunter/
   collectors/     one file per source: ats.py (Greenhouse, Lever, Ashby, Personio, SmartRecruiters,
-                  Workday), amazon.py, arbeitsagentur.py, arbeitnow.py, databerlin.py, email_alerts.py
+                  Workday, SuccessFactors), amazon.py, arbeitsagentur.py, arbeitnow.py, databerlin.py, email_alerts.py
   filters.py      title, location, German level, years, match score
   dedupe.py       same job across reposts and job boards
   career.py       finds the company's own application page for job-board matches

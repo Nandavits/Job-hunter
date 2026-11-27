@@ -215,6 +215,30 @@ def fetch_smartrecruiters(session, company: dict) -> list[Job]:
 # --------------------------------------------------------------------------- Workday
 # Workday career sites (many large employers) answer the same JSON calls their own pages make.
 # Config: {name, ats: workday, host: siemens.wd3.myworkdayjobs.com, tenant: siemens, site: Siemens_Careers}
+def _workday_country(session, api: str, country: str = "Germany") -> dict:
+    """The site's own filter for one country ({"Country": [id]}), so only those jobs come back. {} if none."""
+    try:
+        resp = session.post(f"{api}/jobs", json={"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""},
+                            timeout=20)
+        data = resp.json() if resp.status_code == 200 else {}
+    except Exception:
+        return {}
+    names = {country.lower(), {"germany": "deutschland"}.get(country.lower(), country.lower())}
+
+    def walk(facet_list, parameter=None):
+        for facet in facet_list or []:
+            param = facet.get("facetParameter") or parameter
+            for value in facet.get("values") or []:
+                if (value.get("descriptor") or "").strip().lower() in names and value.get("id") and \
+                        "country" in (param or "").lower():
+                    return {param: [value["id"]]}
+                nested = walk([value], param) if value.get("values") else None
+                if nested:
+                    return nested
+        return None
+    return walk(data.get("facets")) or {}
+
+
 def fetch_workday(session, company: dict) -> list[Job]:
     if not all(company.get(k) for k in ("host", "tenant", "site")):
         log.warning("Workday entry for %s needs host, tenant and site", company.get("name"))
@@ -222,10 +246,11 @@ def fetch_workday(session, company: dict) -> list[Job]:
     host, tenant, site = company["host"], company["tenant"], company["site"]
     api = f"https://{host}/wday/cxs/{tenant}/{site}"
     jobs: dict[str, Job] = {}
+    facets = _workday_country(session, api, company.get("country_name", "Germany"))
     for query in company.get("queries") or ["data"]:
         for offset in range(0, int(company.get("max_results", 100)), 20):
             try:
-                resp = session.post(f"{api}/jobs", json={"appliedFacets": {}, "limit": 20, "offset": offset,
+                resp = session.post(f"{api}/jobs", json={"appliedFacets": facets, "limit": 20, "offset": offset,
                                                          "searchText": query}, timeout=20)
             except Exception as exc:
                 log.warning("Workday %s failed: %s", company["name"], exc)
@@ -247,7 +272,7 @@ def fetch_workday(session, company: dict) -> list[Job]:
     country = re.compile(company.get("country_pattern", r"germany|deutschland|berlin|munich|münchen|hamburg|"
                                                        r"frankfurt|cologne|köln|stuttgart|düsseldorf|ingolstadt|"
                                                        r"remote|\blocations\b"), re.I)
-    wanted = [j for j in jobs.values() if country.search(j.location)]
+    wanted = list(jobs.values()) if facets else [j for j in jobs.values() if country.search(j.location)]
     for job in wanted[: int(company.get("max_details", 30))]:
         path = job.url.split(site, 1)[-1]
         detail = get(session, f"{api}{path}")
@@ -314,6 +339,60 @@ def fetch_teamtailor(session, company: dict) -> list[Job]:
     return parse_teamtailor(resp.text, company["name"])
 
 
+# --------------------------------------------------------------------------- SAP SuccessFactors
+# Career sites of many large German employers (BMW, ZF, Schaeffler, ...) run on SAP SuccessFactors.
+# Each has a public RSS feed with the full ad text: https://<host>/services/rss/job/?keywords=...
+# It returns the 20 newest matches per search word; checked every run, so new ads are not missed.
+# Config: {name: BMW Group, ats: successfactors, host: jobs.bmwgroup.com}
+SF_TITLE = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
+SF_COUNTRY_NAMES = {"DE": "Germany", "AT": "Austria", "CH": "Switzerland"}
+
+
+def parse_successfactors(xml: str | bytes, company: str, host: str, country: str = "DE") -> list[Job]:
+    from email.utils import parsedate_to_datetime
+    jobs = []
+    root = ElementTree.fromstring(xml)
+    for item in root.iter("item"):
+        raw = _text(item, "title")
+        link = _text(item, "link") or _text(item, "guid")
+        m = SF_TITLE.match(raw)
+        title, where = (m.group(1), m.group(2)) if m else (raw, "")
+        parts = [p.strip() for p in where.split(",") if p.strip()]
+        if country and parts and country.upper() not in [p.upper() for p in parts]:
+            continue                                     # e.g. "(Marshall, IL, US, 62441)"
+        city = parts[0] if parts else ""
+        posted = ""
+        try:
+            posted = parsedate_to_datetime(_text(item, "pubDate")).date().isoformat()
+        except (TypeError, ValueError):
+            pass
+        ident = re.search(r"/(\d{6,})/?$", link or "")
+        jobs.append(Job(
+            source="successfactors", external_id=f"{host}:{ident.group(1) if ident else link}",
+            company=company, title=title.strip(), url=link, apply_url=link,
+            location=", ".join(x for x in (city, SF_COUNTRY_NAMES.get(country.upper(), country)) if x),
+            description=html_to_text(_text(item, "description")), posted_at=posted,
+        ))
+    return jobs
+
+
+def fetch_successfactors(session, company: dict) -> list[Job]:
+    host = (company.get("host") or company.get("slug") or "").strip().strip("/")
+    if not host:
+        log.warning("SuccessFactors entry for %s needs host", company.get("name"))
+        return []
+    found: dict[str, Job] = {}
+    for query in company.get("queries") or ["data"]:
+        resp = get(session, f"https://{host}/services/rss/job/",
+                   params={"locale": company.get("locale", "en_US"), "keywords": query})
+        if resp is None or b"<rss" not in resp.content[:500]:
+            log.warning("SuccessFactors feed not found: %s (%s)", company["name"], host)
+            return list(found.values())
+        for job in parse_successfactors(resp.content, company["name"], host, company.get("country", "DE")):
+            found.setdefault(job.external_id, job)
+    return list(found.values())
+
+
 FETCHERS = {
     "teamtailor": fetch_teamtailor,
     "recruitee": fetch_recruitee,
@@ -323,6 +402,7 @@ FETCHERS = {
     "personio": fetch_personio,
     "smartrecruiters": fetch_smartrecruiters,
     "workday": fetch_workday,
+    "successfactors": fetch_successfactors,
 }
 
 
@@ -355,9 +435,22 @@ IGNORED_SLUGS = {"embed", "v1", "js", "api", "www", "jobs", "job", "careers", "a
                  "oneclick-ui", "company", "companies", "search"}
 
 
+WORKDAY_LINK = re.compile(r"https?://(([\w-]+)\.wd\d+\.myworkdayjobs\.com)/(?:[a-z]{2}-[A-Z]{2}/)?([\w-]+)")
+SUCCESSFACTORS_LINK = re.compile(r"https?://([\w.-]+\.[a-z]{2,})/job/[^/\s\"'<>?]+/\d{8,11}/")
+
+
 def detect_ats(text: str) -> list[dict]:
     """Find ATS + slug references in a URL or a page's HTML."""
     found, seen = [], set()
+    for host, tenant, site in WORKDAY_LINK.findall(text or ""):
+        if site.lower() in {"wday", "job", "jobs", "login"} or ("workday", f"{tenant}/{site}".lower()) in seen:
+            continue
+        seen.add(("workday", f"{tenant}/{site}".lower()))
+        found.append({"ats": "workday", "slug": f"{tenant}/{site}", "host": host, "tenant": tenant, "site": site})
+    for host in SUCCESSFACTORS_LINK.findall(text or ""):
+        if ("successfactors", host.lower()) not in seen and "myworkdayjobs" not in host:
+            seen.add(("successfactors", host.lower()))
+            found.append({"ats": "successfactors", "slug": host.lower(), "host": host.lower()})
     for pattern, ats, region in ATS_PATTERNS:
         for slug in pattern.findall(text):
             key = (ats, slug.lower())

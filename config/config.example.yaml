@@ -167,6 +167,8 @@ sources:
   companies:
     # Also supported: {name: Bosch, ats: smartrecruiters, slug: BoschGroup} and
     # {name: X, ats: workday, host: x.wd3.myworkdayjobs.com, tenant: x, site: X_Careers}
+    # {name: BMW Group, ats: successfactors, host: jobs.bmwgroup.com}
+    # Big employers (BMW, Bosch, Deutsche Bank, ...) are checked anyway: see jobhunter/bigcompanies.py
     - {name: Talon.One, ats: greenhouse, slug: linkedinjobs}
     - {name: Contentful, ats: greenhouse, slug: contentful}
     - {name: HelloFresh, ats: greenhouse, slug: hellofresh}
