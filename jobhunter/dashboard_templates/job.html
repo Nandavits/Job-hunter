@@ -11,7 +11,7 @@
 <form method="post" action="/job/{{ j.uid }}/prepare"><input type="hidden" name="token" value="{{ token }}"><button>{{ 'Prepare again' if j.cv_path else 'Prepare CV + letter' }}</button></form>
 <form method="post" action="/job/{{ j.uid }}/manual" title="{{ '' if j.cv_path else 'Writes your CV and cover letter first (about a minute)' }}"><input type="hidden" name="token" value="{{ token }}"><button>Apply myself in Chrome</button></form>
 <form method="post" action="/job/{{ j.uid }}/apply"><input type="hidden" name="token" value="{{ token }}"><button class="ghost">Auto-fill the form</button></form>
-{% if j.apply_url or j.url %}<a class="btn" style="background:none;color:var(--text);border:1px solid var(--line)" href="{{ (j.apply_url or j.url)|link }}" target="_blank" rel="noopener noreferrer">Open the ad</a>{% endif %}
+{% if j.apply_url or j.url %}<a class="btn" style="background:none;color:var(--text);border:1px solid var(--line)" href="{{ j|ad_link }}" target="_blank" rel="noopener noreferrer">Open the ad</a>{% endif %}
 <form method="post" action="/job/{{ j.uid }}/status" class="row"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="back" value="/job/{{ j.uid }}">
 <select name="status">{% for s in statuses %}<option {{ 'selected' if s==j.status }}>{{ s }}</option>{% endfor %}</select><button class="ghost">Save status</button></form>
 <form method="post" action="/job/{{ j.uid }}/hide-company" title="Never show jobs from {{ j.company }} again"><input type="hidden" name="token" value="{{ token }}"><button class="ghost">Hide this company</button></form></div>

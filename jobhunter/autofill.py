@@ -408,11 +408,24 @@ def normalize_url(url: str) -> str:
     return url
 
 
+# Path words of a company's general job pages (siemens.de/jobboerse, x.com/de/karriere/stellenangebote):
+# such a link shows the whole job board, or an error, not this ad.
+GENERIC_PAGES = {
+    "jobboerse", "jobbörse", "jobs", "job", "karriere", "career", "careers", "karriereportal", "stellen",
+    "stellenangebote", "stellenmarkt", "jobsuche", "jobportal", "offene-stellen", "vacancies", "openings",
+    "join-us", "joinus", "work-with-us", "arbeiten-bei-uns", "bewerben", "jobangebote", "search", "suche",
+    "index.html", "index.php", "home", "start", "de", "en", "de-de", "en-us", "en-gb", "global", "germany",
+}
+
+
 def is_homepage(url: str) -> bool:
-    """True for links that only point at a company's front page (no specific job)."""
-    from urllib.parse import urlparse
+    """True for links that only point at a company's front page or its general job board (no specific job)."""
+    from urllib.parse import unquote, urlparse
     parts = urlparse(normalize_url(url))
-    return bool(parts.netloc) and parts.path.strip("/") == "" and not parts.query
+    if not parts.netloc or parts.query:
+        return False
+    words = [w.lower() for w in unquote(parts.path).strip("/").split("/") if w]
+    return all(w in GENERIC_PAGES for w in words)
 
 
 def target_url(job: dict) -> str:

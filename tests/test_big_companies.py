@@ -151,3 +151,14 @@ def test_workday_waits_and_retries_when_asked_to_slow_down(monkeypatch):
     jobs = ats.fetch_workday(S(), {"name": "Airbus", "host": "ag.wd3.myworkdayjobs.com", "tenant": "ag",
                                    "site": "Airbus", "queries": ["data"]})
     assert [j.title for j in jobs] == ["Data Analyst"]
+
+
+def test_a_general_job_board_link_is_not_the_ad():
+    from jobhunter.autofill import is_homepage, target_url
+    assert is_homepage("https://www.siemens.de/jobboerse")
+    assert is_homepage("https://www.example.com/de/karriere/stellenangebote/")
+    assert not is_homepage("https://jobs.siemens.com/careers/job/563156123456")
+    assert not is_homepage("https://www.example.com/karriere/data-analyst-berlin")
+    job = {"apply_url": "https://www.siemens.de/jobboerse",
+           "url": "https://www.arbeitsagentur.de/jobsuche/jobdetail/10001-123-S"}
+    assert target_url(job) == job["url"]

@@ -66,6 +66,12 @@ def country_of(location: str, cfg: dict) -> str:
     return "Germany"
 
 
+def _ad_link(job) -> str:
+    """The ad to open: the company's own link, unless it only shows their general job board."""
+    from .autofill import target_url
+    return web_link(target_url(dict(job)))
+
+
 def web_link(url: str) -> str:
     """Links from the job agency come without https:// ("www.allianzdeutschland.de"); make them openable."""
     url = (url or "").strip()
@@ -166,6 +172,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
     pages = Jinja2Templates(directory=str(Path(__file__).parent / "dashboard_templates"))
     pages.env.globals.update(age_text=age_text)
     pages.env.filters["link"] = web_link
+    pages.env.filters["ad_link"] = _ad_link
     app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "dashboard_static")), name="static")
 
     def still_open(job: dict) -> bool | None:
