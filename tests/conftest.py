@@ -126,3 +126,9 @@ def _own_big_company_list(tmp_path, monkeypatch):
     from jobhunter import bigcompanies
     monkeypatch.setattr(bigcompanies, "FILE", tmp_path / "big-companies.json")
     monkeypatch.setattr(bigcompanies, "CHECK_PER_RUN", 0)
+
+
+@pytest.fixture(autouse=True)
+def _no_workday_pause(monkeypatch):
+    from jobhunter.collectors import ats
+    monkeypatch.setattr(ats, "WORKDAY_PAUSE", 0)

@@ -134,3 +134,20 @@ def test_successfactors_feed_is_asked_for_as_rss(monkeypatch):
     monkeypatch.setattr(ats, "get", fake_get)
     ats.fetch_successfactors(object(), {"name": "BMW Group", "host": "jobs.bmwgroup.com", "queries": ["data"]})
     assert "rss" in sent["Accept"]          # BMW answers 406 to the default "Accept: application/json"
+
+
+def test_workday_waits_and_retries_when_asked_to_slow_down(monkeypatch):
+    import time
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    monkeypatch.setattr(ats, "get", lambda *a, **k: None)
+    replies = iter([FakeResp({}, 429), FakeResp({"facets": []}),
+                    FakeResp({}, 429), FakeResp({"jobPostings": [{"title": "Data Analyst",
+                                                                  "externalPath": "/job/Berlin/Data_R2",
+                                                                  "locationsText": "Berlin"}]})])
+
+    class S:
+        def post(self, *a, **k):
+            return next(replies)
+    jobs = ats.fetch_workday(S(), {"name": "Airbus", "host": "ag.wd3.myworkdayjobs.com", "tenant": "ag",
+                                   "site": "Airbus", "queries": ["data"]})
+    assert [j.title for j in jobs] == ["Data Analyst"]

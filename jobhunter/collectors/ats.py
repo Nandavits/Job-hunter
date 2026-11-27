@@ -215,11 +215,27 @@ def fetch_smartrecruiters(session, company: dict) -> list[Job]:
 # --------------------------------------------------------------------------- Workday
 # Workday career sites (many large employers) answer the same JSON calls their own pages make.
 # Config: {name, ats: workday, host: siemens.wd3.myworkdayjobs.com, tenant: siemens, site: Siemens_Careers}
+def _wd_post(session, url: str, body: dict):
+    """POST to a Workday site; on 'too many requests' (429) wait and try again, like a person would."""
+    import time
+    resp = None
+    for wait in (0, 3, 8, 20):
+        if wait:
+            time.sleep(wait)
+        resp = session.post(url, json=body, timeout=20)
+        if resp.status_code != 429:
+            break
+    time.sleep(WORKDAY_PAUSE)                       # gentle: Workday limits fast clients
+    return resp
+
+
+WORKDAY_PAUSE = 0.7
+
+
 def _workday_country(session, api: str, country: str = "Germany") -> dict:
     """The site's own filter for one country ({"Country": [id]}), so only those jobs come back. {} if none."""
     try:
-        resp = session.post(f"{api}/jobs", json={"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""},
-                            timeout=20)
+        resp = _wd_post(session, f"{api}/jobs", {"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""})
         data = resp.json() if resp.status_code == 200 else {}
     except Exception:
         return {}
@@ -247,14 +263,21 @@ def fetch_workday(session, company: dict) -> list[Job]:
     api = f"https://{host}/wday/cxs/{tenant}/{site}"
     jobs: dict[str, Job] = {}
     facets = _workday_country(session, api, company.get("country_name", "Germany"))
+    limited = False
     for query in company.get("queries") or ["data"]:
+        if limited:
+            break
         for offset in range(0, int(company.get("max_results", 100)), 20):
             try:
-                resp = session.post(f"{api}/jobs", json={"appliedFacets": facets, "limit": 20, "offset": offset,
-                                                         "searchText": query}, timeout=20)
+                resp = _wd_post(session, f"{api}/jobs", {"appliedFacets": facets, "limit": 20, "offset": offset,
+                                                         "searchText": query})
             except Exception as exc:
                 log.warning("Workday %s failed: %s", company["name"], exc)
                 return list(jobs.values())
+            if resp.status_code == 429:
+                log.info("Workday %s: too many requests, the rest next run", company["name"])
+                limited = True
+                break
             if resp.status_code != 200:
                 log.warning("Workday board not found: %s (%s, HTTP %s)", company["name"], host, resp.status_code)
                 return list(jobs.values())
