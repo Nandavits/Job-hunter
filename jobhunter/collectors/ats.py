@@ -386,7 +386,7 @@ def fetch_successfactors(session, company: dict) -> list[Job]:
     for query in company.get("queries") or ["data"]:
         resp = get(session, f"https://{host}/services/rss/job/",
                    params={"locale": company.get("locale", "en_US"), "keywords": query}, headers=RSS_ACCEPT)
-        if resp is None or b"<rss" not in resp.content[:500]:
+        if resp is None or b"<rss" not in resp.content[:3000]:
             log.warning("SuccessFactors feed not found: %s (%s)", company["name"], host)
             return list(found.values())
         for job in parse_successfactors(resp.content, company["name"], host, company.get("country", "DE")):
