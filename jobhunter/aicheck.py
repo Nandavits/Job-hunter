@@ -24,6 +24,7 @@ from .config import DATA_DIR
 log = logging.getLogger("jobhunter")
 FOLDER = None                                    # default: data/ai-checks
 MODEL = "claude-sonnet-5-5"                      # careful reading: about 1-2 cents per ad, each ad read once
+CHECK_VERSION = 2                                # raise when the reading rules change: ads are read again
 LEVELS = ["none", "A1", "A2", "B1", "B2", "C1", "C2"]
 
 SYSTEM = """You check job ads against one candidate's profile, very strictly and honestly.
@@ -56,6 +57,10 @@ min_years: the minimum years of professional experience the ad asks for (lowest 
 german_level: the German the ad asks for (none, A1..C2; "sehr gute/fließende/verhandlungssichere
 Deutschkenntnisse", "excellent/fluent German" = C1; "gute Deutschkenntnisse" = B2; an ad written in
 German without saying = B2).
+Eligibility: also list requirements about citizenship, work authorization, security clearance or where
+the candidate must live or work (e.g. "U.S. citizen or Green Card", "must reside in the UK", "EU
+citizenship", "Sicherheitsüberprüfung") with eligibility: true. The candidate lives in Germany with a
+German work permit (no sponsorship needed) and is not an EU, US or UK citizen.
 all_required_needed: false only if the ad says applicants don't need to meet every requirement
 ("you don't need to tick every box", "nicht alle Anforderungen erfüllen").
 Call the save_check tool."""
@@ -64,7 +69,9 @@ TOOL = {"name": "save_check", "description": "Save the result of checking the ad
         "input_schema": {"type": "object", "properties": {
             "requirements": {"type": "array", "items": {"type": "object", "properties": {
                 "skill": {"type": "string"}, "required": {"type": "boolean"},
-                "candidate_has": {"type": "boolean"}}, "required": ["skill", "required", "candidate_has"]}},
+                "candidate_has": {"type": "boolean"},
+                "eligibility": {"type": "boolean", "description": "true for citizenship, work permit, security clearance or where you must live"}},
+                "required": ["skill", "required", "candidate_has"]}},
             "min_years": {"type": ["integer", "null"]},
             "german_level": {"type": "string", "enum": LEVELS},
             "all_required_needed": {"type": "boolean"}},
@@ -83,7 +90,7 @@ def _profile_text(profile: dict) -> dict:
 
 
 def key_for(job: dict, profile: dict) -> str:
-    blob = json.dumps([job.get("title"), job.get("description"), _profile_text(profile), MODEL],
+    blob = json.dumps([job.get("title"), job.get("description"), _profile_text(profile), MODEL, CHECK_VERSION],
                       ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -172,7 +179,10 @@ def verdict(result: dict, search: dict) -> dict:
     max_years = search.get("max_years_experience")
     skip = ""
     allowed = int(search.get("ai_max_missing", 0) or 0)            # "show jobs missing 1 required skill"
-    if len(missing) > allowed and result.get("all_required_needed", True):
+    blocked = [r["skill"] for r in reqs if r.get("eligibility") and not r.get("candidate_has")]
+    if blocked:                                                     # citizenship / permit / must live elsewhere
+        skip = "AI check: not eligible - " + ", ".join(blocked[:3])
+    elif len(missing) > allowed and result.get("all_required_needed", True):
         skip = "AI check: missing required " + ", ".join(missing[:6])
     elif years is not None and max_years is not None and years > max_years:
         skip = f"AI check: asks for {years}+ years experience"

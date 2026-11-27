@@ -99,3 +99,12 @@ def test_allow_one_missing_required_skill():
     result["requirements"].pop()
     v = aicheck.verdict(result, {"ai_max_missing": 1})
     assert v["skip"] == "" and v["missing"] == ["Snowflake"]
+
+
+def test_citizenship_or_residence_requirement_always_hides():
+    result = {"requirements": [{"skill": "Python", "required": True, "candidate_has": True},
+                               {"skill": "U.S. citizen or Green Card holder", "required": True, "candidate_has": False,
+                                "eligibility": True}],
+              "min_years": 1, "german_level": "none", "all_required_needed": True}
+    v = aicheck.verdict(result, {"ai_max_missing": 1})
+    assert v["skip"].startswith("AI check: not eligible")

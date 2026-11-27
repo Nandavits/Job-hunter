@@ -52,7 +52,7 @@ SEVERAL_YEARS = re.compile(r"\b(?:several|multiple|many) years\b|mehrjährig\w*|
 EXPERIENCE_WORDS = re.compile(r"experience|erfahrung", re.I)
 
 FOREIGN = re.compile(
-    r"\b(?:united states|usa|u\.s\.|canada|india|brazil|mexico|singapore|australia|united kingdom|uk|england|"
+    r"\b(?:united states|usa|us|u\.s\.|canada|india|brazil|mexico|singapore|australia|united kingdom|uk|england|"
     r"london|ireland|dublin|netherlands|amsterdam|rotterdam|belgium|brussels|brüssel|france|paris|spain|madrid|"
     r"barcelona|portugal|lisbon|lissabon|italy|milan|mailand|austria|österreich|vienna|wien|switzerland|schweiz|"
     r"zurich|zürich|poland|polen|warsaw|warschau|czech|prague|prag|denmark|copenhagen|sweden|stockholm|"
@@ -74,7 +74,7 @@ FOREIGN = re.compile(
     r"france|frankrijk|españa|nederland)\b", re.I)
 IN_GERMANY = re.compile(r"\b(?:germany|deutschland|bundesweit)\b", re.I)
 
-FAR_AWAY = re.compile(r"\b(?:united states|usa|u\.s\.|canada|india|brazil|mexico|singapore|australia|"
+FAR_AWAY = re.compile(r"\b(?:united states|usa|us|u\.s\.|canada|india|brazil|mexico|singapore|australia|"
                       r"new york|san francisco|london|toronto)\b", re.I)
 
 

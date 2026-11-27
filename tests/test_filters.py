@@ -209,3 +209,12 @@ def test_cloud_alternatives_you_have_are_not_missing():
                    {"title_keywords": ["data engineer"], "locations": ["germany"], "skills": {"google cloud": 2}})
     assert "aws" not in job.extra["missing_skills"] and "azure" not in job.extra["missing_skills"]
     assert {"snowflake", "datavault builder"} <= set(job.extra["missing_skills"])
+
+
+def test_us_locations_are_abroad():
+    from jobhunter.filters import location_matches
+    from jobhunter.models import Job
+    cfg = {"locations": ["germany", "remote"], "anywhere_in_germany": True}
+    for loc in ("US", "Remote - US", "Remote (US)"):
+        assert location_matches(Job(source="x", external_id="1", company="c", title="t", url="u", location=loc), cfg)
+    assert not location_matches(Job(source="x", external_id="1", company="c", title="t", url="u", location="Berlin"), cfg)
