@@ -85,8 +85,26 @@ def fill_posted_date(job) -> str:
     return job.posted_at
 
 
+def reopen_by_years(store: Store, search: dict) -> int:
+    """You allowed more years of experience: jobs hidden only for their years come back."""
+    import re as _re
+    max_years = search.get("max_years_experience")
+    if max_years is None:
+        return 0
+    back = 0
+    for row in store.list(status="skipped", limit=100_000):
+        m = _re.match(r"(?:AI check: )?asks for (\d+)\+ years experience$", row.get("excluded_reason") or "")
+        if m and int(m.group(1)) <= int(max_years):
+            store.update(row["uid"], status="new", excluded_reason="")
+            back += 1
+    if back:
+        log.info("%d jobs came back: they ask for at most %s years", back, max_years)
+    return back
+
+
 def rescore_open_jobs(store: Store, search: dict) -> int:
     """Recompute the match score of jobs you have not applied to yet (scoring can improve over time)."""
+    reopen_by_years(store, search)
     from .filters import evaluate, location_matches, score_job
     from .models import Job
     changed = 0
