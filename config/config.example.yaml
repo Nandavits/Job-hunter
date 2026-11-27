@@ -27,6 +27,10 @@ search:
     - dateningenieur
     - bi-entwickler
 
+  # true = also graduate / trainee programmes (Graduate Programme Technology, Trainee Data & Analytics,
+  # Absolvent Informatik ...) when the title is about data or IT. Good while you finish your degree.
+  graduate_roles: false
+
   # Titles containing any of these are dropped.
   exclude_title_keywords:
     - senior

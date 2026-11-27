@@ -85,6 +85,8 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
         big = [dict(c) for c in listed if (c["ats"], c["slug"].lower()) not in mine]
     # big-company boards hold thousands of jobs: search them with your own job titles
     words = list((sources.get("arbeitsagentur") or {}).get("queries") or [])[:8] or ["data"]
+    if (getattr(settings, "search", None) or {}).get("graduate_roles"):
+        words += [w for w in ("graduate", "trainee") if w not in words]
     taken = {(c.get("ats"), str(c.get("slug") or "").lower()) for c in big}
     found_ones = [c for c in found_ones if (c.get("ats"), str(c.get("slug") or "").lower()) not in taken]
     discovered = {id(c) for c in found_ones}

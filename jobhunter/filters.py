@@ -226,6 +226,16 @@ GERMAN_TITLES = {
 }
 
 
+# Graduate / trainee programmes ("Graduate Programme Technology", "Trainee Data & Analytics (m/w/d)") have no
+# role name in the title. With  graduate_roles: true  they count when the title is also about data or IT.
+GRADUATE = re.compile(r"\b(graduate|grad|trainee|traineeship|trainee-?programm\w*|absolvent(?:in|en|innen)?|"
+                      r"berufseinsteiger(?:in)?|einstiegsprogramm|direkteinstieg|entry[- ]level|young professionals?|"
+                      r"dbgrad\w*)\b", re.I)
+GRADUATE_TECH = re.compile(r"\b(data|daten|analytics?|analyst|it|tech|technology|technologie|digital\w*|ai|ki|"
+                           r"software|engineering|informatik|bi|business intelligence|cloud|cyber\w*|quant\w*|"
+                           r"machine learning|ml)\b", re.I)
+
+
 def title_matches(job: Job, cfg: dict) -> str:
     """Return '' if the title is fine, else a reason for dropping it."""
     title = job.title.lower()
@@ -234,7 +244,8 @@ def title_matches(job: Job, cfg: dict) -> str:
     keywords = list(cfg.get("title_keywords", []))
     for kw in list(keywords):
         keywords += GERMAN_TITLES.get(str(kw).lower(), [])
-    if not any(_contains(title, kw) for kw in keywords):
+    graduate = bool(cfg.get("graduate_roles")) and bool(GRADUATE.search(title)) and bool(GRADUATE_TECH.search(title))
+    if not graduate and not any(_contains(title, kw) for kw in keywords):
         return "title not in target roles"
     for kw in cfg.get("exclude_title_keywords", []):
         if _contains(title, kw):

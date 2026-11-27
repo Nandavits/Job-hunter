@@ -162,3 +162,20 @@ def test_a_general_job_board_link_is_not_the_ad():
     job = {"apply_url": "https://www.siemens.de/jobboerse",
            "url": "https://www.arbeitsagentur.de/jobsuche/jobdetail/10001-123-S"}
     assert target_url(job) == job["url"]
+
+
+def test_graduate_programmes_about_data_or_it_count_when_switched_on():
+    from jobhunter.filters import title_matches
+    from jobhunter.models import Job
+    cfg = {"title_keywords": ["data analyst"], "exclude_title_keywords": ["senior"], "graduate_roles": True}
+
+    def t(title):
+        return title_matches(Job(source="x", external_id=title, company="Deutsche Bank", title=title, url="u"), cfg)
+    assert t("Graduate Programme 2027 – Technology, Data & Innovation") == ""
+    assert t("Trainee Data & Analytics (m/w/d)") == ""
+    assert t("Traineeprogramm IT (w/m/d)") == ""
+    assert t("Absolvent Informatik – Einstiegsprogramm") == ""
+    assert t("Graduate Programme Sales") == "title not in target roles"        # not about data or IT
+    assert t("Trainee Vertrieb (m/w/d)") == "title not in target roles"
+    assert title_matches(Job(source="x", external_id="1", company="c", title="Trainee Data", url="u"),
+                         {**cfg, "graduate_roles": False}) == "title not in target roles"
