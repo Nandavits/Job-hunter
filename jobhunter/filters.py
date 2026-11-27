@@ -463,7 +463,8 @@ def evaluate(job: Job, cfg: dict) -> Job:
     if level and LEVELS.index(level) > LEVELS.index(my_level):
         job.german_required = True
         job.extra["german"] = f"{level}: {evidence}"
-        if not include_german_ads(cfg):
+        limit = str(cfg.get("german_ads_up_to", "")).upper()           # e.g. B2: hide ads asking C1/C2
+        if not include_german_ads(cfg) or (limit in LEVELS and LEVELS.index(level) > LEVELS.index(limit)):
             job.excluded_reason = f"needs German {level}: {evidence}"
             return job
     language = other_language(job.description)

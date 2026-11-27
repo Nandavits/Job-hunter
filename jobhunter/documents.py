@@ -97,6 +97,7 @@ class _Writer:
         r.font.name, r.font.size = FONT, Pt(self.body_pt)
 
 
+MAX_BULLETS = 6                                  # per job on the CV (profile.yaml: max_bullets to change)
 PHOTO_CM = 2.8                                   # width of the CV photo (German CVs: small, top right)
 PHOTO_TYPES = {".jpg", ".jpeg", ".png"}
 
@@ -185,7 +186,8 @@ def build_cv(profile: dict, t: Tailoring, path: Path, body_pt: float = 9.5) -> P
         w.para([(exp["title"], {"bold": True}), f"  |  {exp['company']}, {exp['location']}"],
                before=4, keep_next=True)
         w.para([(exp["dates"], {"italic": True, "color": DATE_COLOR})], after=1, keep_next=True)
-        for k in t.bullet_order.get(i, range(len(exp["bullets"]))):
+        # at most MAX_BULLETS per job: the ones that fit this ad best (recruiters skim, 10 bullets get skipped)
+        for k in list(t.bullet_order.get(i, range(len(exp["bullets"]))))[:int(profile.get("max_bullets", MAX_BULLETS))]:
             w.bullet(exp["bullets"][k]["text"])
 
     w.heading("TECHNICAL SKILLS")

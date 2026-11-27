@@ -218,3 +218,12 @@ def test_us_locations_are_abroad():
     for loc in ("US", "Remote - US", "Remote (US)"):
         assert location_matches(Job(source="x", external_id="1", company="c", title="t", url="u", location=loc), cfg)
     assert not location_matches(Job(source="x", external_id="1", company="c", title="t", url="u", location="Berlin"), cfg)
+
+
+def test_german_ads_up_to_b2_hides_c1_ads():
+    from jobhunter.filters import evaluate
+    from jobhunter.models import Job
+    ad = "Wir suchen dich. Sehr gute Deutschkenntnisse (C1) in Wort und Schrift sind erforderlich. SQL und Python."
+    job = Job(source="x", external_id="1", company="c", title="Data Analyst", url="u", location="Berlin", description=ad * 3)
+    cfg = {"title_keywords": ["data analyst"], "locations": ["berlin"], "german_level": "A2", "german_ads_up_to": "B2"}
+    assert evaluate(job, cfg).excluded_reason.startswith("needs German C1")

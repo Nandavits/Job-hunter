@@ -184,6 +184,10 @@ def verdict(result: dict, search: dict) -> dict:
         skip = "AI check: not eligible - " + ", ".join(blocked[:3])
     elif len(missing) > allowed and result.get("all_required_needed", True):
         skip = "AI check: missing required " + ", ".join(missing[:6])
+    elif (str(search.get("german_ads_up_to", "")).upper() in LEVELS and
+          str(result.get("german_level") or "none") in LEVELS and
+          LEVELS.index(str(result.get("german_level"))) > LEVELS.index(str(search.get("german_ads_up_to")).upper())):
+        skip = f"AI check: needs German {result.get('german_level')}"
     elif years is not None and max_years is not None and years > max_years:
         skip = f"AI check: asks for {years}+ years experience"
     req_part = 70 * (sum(1 for r in required if r.get("candidate_has")) / len(required)) if required else 50

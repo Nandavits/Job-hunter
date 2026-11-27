@@ -115,6 +115,9 @@ search:
   # (shown with "MISSING REQUIRED: ..."). Nice-to-haves never hide a job.
   ai_max_missing: 0
 
+  # Hide German ads that ask for more German than this (e.g. B2 hides "fließend/C1" ads). Empty = show all.
+  german_ads_up_to: ""
+
   min_score: 55
 
   # true = only keep jobs whose ad text could be read, so skills and experience are really checked.
