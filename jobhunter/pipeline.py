@@ -334,6 +334,15 @@ def run(settings: Settings, *, send_digest: bool = True, make_docs: bool = True,
     for job in raw:
         fill_posted_date(job)
     kept, dropped = filter_jobs(raw, search)
+    try:   # why jobs were left out, in plain numbers (data/last-run.log and data/last-run.json)
+        import collections
+        import re as _re
+        why = collections.Counter(_re.sub(r"[:(].*$", "", j.excluded_reason or "other").strip() for j in dropped)
+        log.info("Left out: %s", " · ".join(f"{n} {r}" for r, n in why.most_common(8)))
+        from .runstatus import update as _status
+        _status(left_out=dict(why.most_common(12)))
+    except Exception:
+        pass
     # Only remember skipped jobs that were relevant roles (so you can see why they were skipped);
     # the hundreds of unrelated jobs on big career pages are not stored.
     relevant_dropped = [j for j in dropped if not j.excluded_reason.startswith("title not in target")]
