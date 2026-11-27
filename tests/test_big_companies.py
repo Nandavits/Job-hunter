@@ -95,3 +95,31 @@ def test_big_companies_can_be_switched_off(monkeypatch):
             return ""
     collectors.collect_all(S(), session=object())
     assert seen == []
+
+
+def test_candidates_are_tested_once_and_only_working_ones_used(monkeypatch):
+    from jobhunter import bigcompanies
+    monkeypatch.setattr(bigcompanies, "CHECK_PER_RUN", 10_000)
+    works = {"jobs.mahle.com", "nvidia/NVIDIAExternalCareerSite"}
+    calls = []
+    monkeypatch.setattr(bigcompanies, "answers", lambda s, c: calls.append(c) or c["slug"] in works)
+    first = bigcompanies.boards(session=object())
+    names = {c["name"] for c in first}
+    assert {"MAHLE", "NVIDIA", "BMW Group"} <= names
+    assert "Mercedes-Benz" not in names
+    n = len(calls)
+    second = bigcompanies.boards(session=object())             # nothing tested again before RETRY_DAYS
+    assert len(calls) == n and second == first
+
+
+def test_once_a_company_site_is_found_its_other_addresses_are_not_tried(monkeypatch):
+    from jobhunter import bigcompanies
+    monkeypatch.setattr(bigcompanies, "CHECK_PER_RUN", 10_000)
+    monkeypatch.setattr(bigcompanies, "answers", lambda s, c: c["slug"] == "jobs.mahle.com")
+    bigcompanies.boards(session=object())
+    tried = []
+    monkeypatch.setattr(bigcompanies, "answers", lambda s, c: tried.append(c) or False)
+    bigcompanies._save({**bigcompanies._load(), **{k: {**v, "checked": "2000-01-01"}
+                                                     for k, v in bigcompanies._load().items() if not v["ok"]}})
+    bigcompanies.boards(session=object())
+    assert not [c for c in tried if c["name"] == "MAHLE"]

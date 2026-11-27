@@ -75,9 +75,14 @@ def collect_all(settings, keep: Callable[[Job], bool] | None = None, session=Non
     found_ones = [c for c in discovery.due() if (sources.get("discover_companies", True))]
     big = []
     if sources.get("big_companies", True):
-        from ..bigcompanies import BIG
+        from .. import bigcompanies
         mine = {(c.get("ats"), str(c.get("slug") or c.get("host") or "").lower()) for c in configured}
-        big = [dict(c) for c in BIG if (c["ats"], c["slug"].lower()) not in mine]
+        try:
+            listed = bigcompanies.boards(session)
+        except Exception as exc:
+            log.warning("Testing big-company careers sites failed: %s", exc)
+            listed = list(bigcompanies.BIG)
+        big = [dict(c) for c in listed if (c["ats"], c["slug"].lower()) not in mine]
     # big-company boards hold thousands of jobs: search them with your own job titles
     words = list((sources.get("arbeitsagentur") or {}).get("queries") or [])[:8] or ["data"]
     discovered = {id(c) for c in found_ones}

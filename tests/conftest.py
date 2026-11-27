@@ -118,3 +118,11 @@ def _own_run_status(tmp_path, monkeypatch):
 def _own_ai_checks(tmp_path, monkeypatch):
     from jobhunter import aicheck
     monkeypatch.setattr(aicheck, "FOLDER", tmp_path / "ai-checks")
+
+
+@pytest.fixture(autouse=True)
+def _own_big_company_list(tmp_path, monkeypatch):
+    """Tests never test real careers sites and never touch data/big-companies.json."""
+    from jobhunter import bigcompanies
+    monkeypatch.setattr(bigcompanies, "FILE", tmp_path / "big-companies.json")
+    monkeypatch.setattr(bigcompanies, "CHECK_PER_RUN", 0)

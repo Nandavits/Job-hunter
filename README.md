@@ -52,7 +52,7 @@ The job titles it searches for come from **your** CV data (`profile.yaml`), see 
 | [Data Berlin](https://databerlin.net) | About 1,000 Berlin data and AI jobs, with the employer's apply link | Public web pages |
 | [Amazon jobs](https://www.amazon.jobs) | Amazon and AWS jobs in Germany | Amazon's public job search |
 | Company careers pages on Greenhouse, Lever, Ashby, Personio, SmartRecruiters, Workday, SAP SuccessFactors, Recruitee, Teamtailor | The companies in `config.yaml`, plus every company Job Hunter finds by itself (below) | Public job-board feeds |
-| Big employers' own careers sites | BMW Group, ZF, Schaeffler (SuccessFactors), Deutsche Bank, Airbus (Workday), Bosch, Continental, Delivery Hero, SIXT (SmartRecruiters), searched with your job titles, Germany only. List in `jobhunter/bigcompanies.py`; switch off with `sources: big_companies: false` | Public career-site feeds |
+| Big employers' own careers sites | 13 checked by hand (BMW Group, ZF, Schaeffler, Deutsche Bank, Airbus, Bosch, Continental, Delivery Hero, SIXT, AUTO1, Burda, Vattenfall, ServiceNow) plus about 170 more large employers (Mercedes-Benz, Siemens, SAP, Allianz, Telekom, BASF, Lidl, ...) whose careers sites Job Hunter tests by itself and uses once they answer (`data/big-companies.json`). Searched with your job titles, Germany only. List in `jobhunter/bigcompanies.py`; switch off with `sources: big_companies: false` | Public career-site feeds |
 | Every company hiring IT/data people in Germany | Once a day the job agency is searched for all IT and data ads; the careers page of each employer is looked up and then checked on every run (recruitment agencies are skipped) | Public job-board feeds |
 
 ### Read from your job alert emails (set up an alert on each site)
