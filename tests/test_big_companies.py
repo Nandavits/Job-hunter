@@ -123,3 +123,14 @@ def test_once_a_company_site_is_found_its_other_addresses_are_not_tried(monkeypa
                                                      for k, v in bigcompanies._load().items() if not v["ok"]}})
     bigcompanies.boards(session=object())
     assert not [c for c in tried if c["name"] == "MAHLE"]
+
+
+def test_successfactors_feed_is_asked_for_as_rss(monkeypatch):
+    sent = {}
+
+    def fake_get(session, url, params=None, headers=None, **kw):
+        sent.update(headers or {})
+        return None
+    monkeypatch.setattr(ats, "get", fake_get)
+    ats.fetch_successfactors(object(), {"name": "BMW Group", "host": "jobs.bmwgroup.com", "queries": ["data"]})
+    assert "rss" in sent["Accept"]          # BMW answers 406 to the default "Accept: application/json"

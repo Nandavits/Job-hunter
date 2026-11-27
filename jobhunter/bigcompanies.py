@@ -186,8 +186,9 @@ def answers(session, c: dict) -> bool:
     """Does this careers site exist and answer with jobs?"""
     try:
         if c["ats"] == "successfactors":
+            from .collectors.ats import RSS_ACCEPT
             resp = session.get(f"https://{c['host']}/services/rss/job/", params={"locale": "en_US", "keywords": ""},
-                               timeout=12, allow_redirects=False)
+                               headers=RSS_ACCEPT, timeout=12, allow_redirects=False)
             return resp.status_code == 200 and b"<rss" in resp.content[:500] and b"<channel" in resp.content
         if c["ats"] == "workday":
             resp = session.post(f"https://{c['host']}/wday/cxs/{c['tenant']}/{c['site']}/jobs",

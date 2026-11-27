@@ -345,6 +345,7 @@ def fetch_teamtailor(session, company: dict) -> list[Job]:
 # It returns the 20 newest matches per search word; checked every run, so new ads are not missed.
 # Config: {name: BMW Group, ats: successfactors, host: jobs.bmwgroup.com}
 SF_TITLE = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
+RSS_ACCEPT = {"Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5"}
 SF_COUNTRY_NAMES = {"DE": "Germany", "AT": "Austria", "CH": "Switzerland"}
 
 
@@ -384,7 +385,7 @@ def fetch_successfactors(session, company: dict) -> list[Job]:
     found: dict[str, Job] = {}
     for query in company.get("queries") or ["data"]:
         resp = get(session, f"https://{host}/services/rss/job/",
-                   params={"locale": company.get("locale", "en_US"), "keywords": query})
+                   params={"locale": company.get("locale", "en_US"), "keywords": query}, headers=RSS_ACCEPT)
         if resp is None or b"<rss" not in resp.content[:500]:
             log.warning("SuccessFactors feed not found: %s (%s)", company["name"], host)
             return list(found.values())
