@@ -102,9 +102,25 @@ def reopen_by_years(store: Store, search: dict) -> int:
     return back
 
 
+def reopen_unhidden(store: Store, search: dict) -> int:
+    """A company you no longer hide: its jobs come back (they are checked again like any other job)."""
+    from .hidden import is_hidden
+    back = 0
+    for row in store.list(status="skipped", limit=100_000):
+        hidden_note = "company hidden by you" in ((row.get("excluded_reason") or "") + (row.get("notes") or ""))
+        if hidden_note and not is_hidden(row.get("company") or "", search):
+            notes = (row.get("notes") or "").replace("company hidden by you", "").strip()
+            store.update(row["uid"], status="new", excluded_reason="", notes=notes)
+            back += 1
+    if back:
+        log.info("%d jobs came back: their company is no longer hidden", back)
+    return back
+
+
 def rescore_open_jobs(store: Store, search: dict) -> int:
     """Recompute the match score of jobs you have not applied to yet (scoring can improve over time)."""
     reopen_by_years(store, search)
+    reopen_unhidden(store, search)
     from .filters import evaluate, location_matches, score_job
     from .models import Job
     changed = 0
