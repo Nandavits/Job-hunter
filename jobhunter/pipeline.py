@@ -275,13 +275,28 @@ def add_databerlin_links(store: Store, session, limit: int = 40) -> int:
     return done
 
 
+def profile_for_job(profile: dict, job: dict) -> dict:
+    """Your profile as used for this job's CV and letter.
+
+    Graduate / trainee programmes: experience entries marked  graduate_cv: false  in profile.yaml are left out
+    (every other job keeps them)."""
+    from .filters import GRADUATE
+    if not GRADUATE.search(job.get("title") or ""):
+        return profile
+    kept = [e for e in profile.get("experience") or [] if e.get("graduate_cv", True) is not False]
+    if len(kept) == len(profile.get("experience") or []):
+        return profile
+    return {**profile, "experience": kept}
+
+
 def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
     """Tailor CV + letter for one stored job and mark it 'prepared'."""
     if not settings.env("ANTHROPIC_API_KEY"):
         log.info("No Claude API key here: %s gets the template cover letter", job.get("company"))
-    t = tailor(settings.profile, job, api_key=settings.env("ANTHROPIC_API_KEY"),
+    profile = profile_for_job(settings.profile, job)
+    t = tailor(profile, job, api_key=settings.env("ANTHROPIC_API_KEY"),
                model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
-    docs = make_documents(settings.profile, t, job, OUTPUT_DIR,
+    docs = make_documents(profile, t, job, OUTPUT_DIR,
                           make_pdf=settings.config.get("tailoring", {}).get("make_pdf", True))
     Path(docs["folder"], "tailoring.json").write_text(json.dumps({
         "title": t.title, "summary": t.summary, "letter": t.letter_paragraphs,
@@ -291,7 +306,7 @@ def prepare_job(settings: Settings, store: Store, job: dict) -> dict:
     }, indent=2), encoding="utf-8")
     if settings.config.get("tailoring", {}).get("linkedin_outreach", False):
         from .outreach import as_text, draft
-        o = draft(settings.profile, job, t.letter_paragraphs, t.skill_priority,
+        o = draft(profile, job, t.letter_paragraphs, t.skill_priority,
                   api_key=settings.env("ANTHROPIC_API_KEY"), model=settings.env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
         Path(docs["folder"], "linkedin_message.txt").write_text(as_text(o, job), encoding="utf-8")
         docs["outreach"] = str(Path(docs["folder"], "linkedin_message.txt"))

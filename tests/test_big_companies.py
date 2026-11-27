@@ -179,3 +179,13 @@ def test_graduate_programmes_about_data_or_it_count_when_switched_on():
     assert t("Trainee Vertrieb (m/w/d)") == "title not in target roles"
     assert title_matches(Job(source="x", external_id="1", company="c", title="Trainee Data", url="u"),
                          {**cfg, "graduate_roles": False}) == "title not in target roles"
+
+
+def test_marked_experience_is_left_out_only_for_graduate_programmes():
+    from jobhunter.pipeline import profile_for_job
+    profile = {"experience": [{"company": "Curagita AG"}, {"company": "Versatile Software", "graduate_cv": False}]}
+    grad = profile_for_job(profile, {"title": "Graduate Programme 2027 – Technology, Data & Innovation"})
+    assert [e["company"] for e in grad["experience"]] == ["Curagita AG"]
+    job = profile_for_job(profile, {"title": "Junior Data Analyst (m/w/d)"})
+    assert [e["company"] for e in job["experience"]] == ["Curagita AG", "Versatile Software"]
+    assert len(profile["experience"]) == 2            # the profile itself is unchanged

@@ -21,6 +21,7 @@ default_summary: Data engineer with production experience building analytics inf
   platform. Strong in SQL and PostgreSQL, data modelling with dbt, pipeline orchestration with Apache Airflow and Docker,
   workflow automation with n8n, and dashboard development in Apache Superset. Experienced in diagnosing data-quality issues
   across ETL pipelines. Completing an M.Sc. in Data Science and seeking a full-time role in data or analytics engineering.
+# Add  graduate_cv: false  to a job below to leave it out of CVs for graduate / trainee programmes only.
 experience:
 - title: Working Student, AI Engineering
   company: Example Company
