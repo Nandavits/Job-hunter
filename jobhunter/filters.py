@@ -236,6 +236,16 @@ GRADUATE_TECH = re.compile(r"\b(data|daten|analytics?|analyst|it|tech|technology
                            r"machine learning|ml)\b", re.I)
 
 
+GRADUATE_MAX_AGE = 120    # graduate programmes are advertised for months: older ads still count
+
+
+def is_graduate_programme(title: str, cfg: dict | None = None) -> bool:
+    """A graduate / trainee programme about data or IT (and graduate_roles switched on, when cfg is given)."""
+    if cfg is not None and not cfg.get("graduate_roles"):
+        return False
+    return bool(GRADUATE.search(title or "")) and bool(GRADUATE_TECH.search(title or ""))
+
+
 def title_matches(job: Job, cfg: dict) -> str:
     """Return '' if the title is fine, else a reason for dropping it."""
     title = job.title.lower()
@@ -244,7 +254,7 @@ def title_matches(job: Job, cfg: dict) -> str:
     keywords = list(cfg.get("title_keywords", []))
     for kw in list(keywords):
         keywords += GERMAN_TITLES.get(str(kw).lower(), [])
-    graduate = bool(cfg.get("graduate_roles")) and bool(GRADUATE.search(title)) and bool(GRADUATE_TECH.search(title))
+    graduate = is_graduate_programme(title, cfg)
     if not graduate and not any(_contains(title, kw) for kw in keywords):
         return "title not in target roles"
     for kw in cfg.get("exclude_title_keywords", []):
@@ -432,6 +442,8 @@ def job_too_old(job: Job, cfg: dict) -> str:
     (a job first seen 10 days ago was posted at least 10 days ago)."""
     from .dates import age_days, date_in_ad
     limit = cfg.get("max_job_age_days")
+    if limit and is_graduate_programme(job.title, cfg):
+        limit = max(int(limit), int(cfg.get("graduate_max_age_days", GRADUATE_MAX_AGE)))   # open for months
     if not limit:
         return ""
     posted = job.posted_at or date_in_ad(job.description)

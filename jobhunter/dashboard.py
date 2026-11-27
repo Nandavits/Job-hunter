@@ -285,7 +285,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, lau
         rows = [enrich(r) for r in rows if (r.get("score") or 0) >= min_score
                 and (not q or q.lower() in f"{r['company']} {r['title']}".lower())]
         if age != "all":                                   # posted within the last N days
-            rows = [r for r in rows if (job_age(r) if job_age(r) is not None else 0) <= AGE_CHOICES[age]]
+            from .filters import is_graduate_programme
+            rows = [r for r in rows if (job_age(r) if job_age(r) is not None else 0) <= AGE_CHOICES[age]
+                    or is_graduate_programme(str(r.get("title") or ""), search)]   # open for months
         if lang in ("en", "de"):                           # English-only ads, or ads asking for German
             from .filters import german_ask
             rows = [r for r in rows if bool(german_ask(r.get("title") or "", r.get("description") or "")[0])

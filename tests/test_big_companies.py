@@ -189,3 +189,26 @@ def test_marked_experience_is_left_out_only_for_graduate_programmes():
     job = profile_for_job(profile, {"title": "Junior Data Analyst (m/w/d)"})
     assert [e["company"] for e in job["experience"]] == ["Curagita AG", "Versatile Software"]
     assert len(profile["experience"]) == 2            # the profile itself is unchanged
+
+
+def test_graduate_programme_ads_may_be_months_old():
+    from jobhunter.collectors.arbeitsagentur import _since
+    from jobhunter.filters import job_too_old
+    from jobhunter.models import Job
+    cfg = {"max_job_age_days": 7, "graduate_roles": True}
+    old_grad = Job(source="x", external_id="1", company="Deutsche Bank", url="u", posted_at="2026-09-04",
+                   title="Graduate Programme 2027 – Technology, Data & Innovation")
+    old_job = Job(source="x", external_id="2", company="X", url="u", posted_at="2026-09-04", title="Data Analyst")
+    import datetime as dt
+    today = dt.date(2026, 11, 27)
+    import jobhunter.dates as d
+    orig = d.age_days
+    d.age_days = lambda s: (today - dt.date.fromisoformat(s[:10])).days if s else None
+    try:
+        assert job_too_old(old_grad, cfg) == ""
+        assert job_too_old(old_job, cfg).startswith("posted")
+        assert job_too_old(old_grad, {**cfg, "graduate_roles": False}).startswith("posted")
+    finally:
+        d.age_days = orig
+    assert _since("Trainee Data", {"published_since_days": 7}) == 100
+    assert _since("Data Analyst", {"published_since_days": 7}) == 7

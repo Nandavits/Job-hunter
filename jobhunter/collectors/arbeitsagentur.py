@@ -109,6 +109,13 @@ def search(session, params: dict) -> list[Job]:
     return []
 
 
+def _since(query: str, cfg: dict) -> int:
+    """Days back to search. Graduate / trainee searches look further back: those ads stay open for months."""
+    from ..filters import GRADUATE, GRADUATE_MAX_AGE
+    days = int(cfg.get("published_since_days", 7))
+    return max(days, min(100, GRADUATE_MAX_AGE)) if GRADUATE.search(query or "") else days
+
+
 def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_details: int = 120) -> list[Job]:
     """Search each query; fetch full descriptions only for jobs that pass the quick `keep` check."""
     results: dict[str, Job] = {}
@@ -116,7 +123,7 @@ def fetch(session, cfg: dict, keep: Callable[[Job], bool] | None = None, max_det
         params = {
             "was": query,
             "angebotsart": 1,  # 1 = employment (not apprenticeships/self-employment)
-            "veroeffentlichtseit": cfg.get("published_since_days", 7),
+            "veroeffentlichtseit": _since(query, cfg),
             "size": 100,
             "page": 1,
         }
